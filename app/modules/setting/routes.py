@@ -1,0 +1,150 @@
+# app/modules/setting/routes.py
+
+from flask import Blueprint, request ,jsonify
+from app.middleware.auth_middleware import login_required
+from app.response import res
+from app.middleware.role_middleware import require_super_admin
+from .service import ( create_user,create_project,
+                       assign_role,
+                       update_role,delete_role,
+                       get_roles_by_project,
+                       add_designation,
+                       get_all_users,
+                       get_all_designations,delete_project_designation )
+
+setting_bp = Blueprint("setting", __name__)
+
+@setting_bp.route("/create-user", methods=["POST"])
+@login_required
+@require_super_admin
+def create_user_route():
+    result = create_user(request)
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("User created successfully", result)
+
+@setting_bp.route("/create-project", methods=["POST"])
+@login_required
+@require_super_admin
+def create_project_route():
+    data = request.get_json()
+
+    if not data:
+        return res("No data provided", code=400)
+
+    result = create_project(data)
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Project created successfully", result)
+
+# PROJECT ROLE =
+
+@setting_bp.route("/assign-role", methods=["POST"])
+@login_required
+def assign_role_route():
+    data = request.get_json()
+
+    if not data:
+        return res("No data provided", code=400)
+
+    result = assign_role(
+        user_id=data.get("user_id"),
+        project_id=data.get("ProjectId"),
+        team_id=data.get("TeamId"),
+        designation_id=data.get("DesignationId")
+    )
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Role assigned successfully", result)
+
+
+@setting_bp.route("/update-role/<int:role_id>", methods=["PUT"])
+@login_required
+def update_role_route(RoleId):
+    data = request.get_json()
+
+    result = update_role(
+        role_id=RoleId,
+        user_id=data.get("user_id"),
+        designation_id=data.get("DesignationId")
+    )
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Role updated successfully", result)
+
+
+@setting_bp.route("/delete-role/<int:role_id>", methods=["DELETE"])
+@login_required
+def delete_role_route(role_id):
+    result = delete_role(role_id)
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Role deleted successfully", result)
+
+
+@setting_bp.route("/project/<int:project_id>/roles", methods=["GET"])
+@login_required
+def get_roles_route(project_id):
+    result = get_roles_by_project(project_id)
+    return res("Roles fetched successfully", result)
+
+# DESIGNATION
+
+@setting_bp.route("/designation", methods=["POST"])
+@login_required
+@require_super_admin
+def add_designation_route():
+    data = request.get_json()
+
+    result = add_designation(data.get("name"))
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Designation added successfully", result)
+
+
+@setting_bp.route("/delete-project-designation", methods=["DELETE"])
+@login_required
+@require_super_admin
+def delete_project_designation_route():
+    data = request.get_json()
+
+    if not data:
+        return res("No data provided", code=400)
+
+    result = delete_project_designation(
+        ProjectId=data.get("ProjectId"),
+        TeamId=data.get("TeamId"),
+        DesignationId=data.get("DesignationId")
+    )
+
+    if "error" in result:
+        return res(result["error"], code=400)
+
+    return res("Designation removed from project", result)
+
+
+@setting_bp.route("/designations", methods=["GET"])
+@login_required
+def get_designations_route():
+    return res("Designations fetched", get_all_designations())
+
+
+#  USERS
+
+@setting_bp.route("/users", methods=["GET"])
+@login_required
+def get_users_route():
+    return res("Users fetched", get_all_users())
+
