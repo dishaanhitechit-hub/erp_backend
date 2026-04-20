@@ -298,7 +298,7 @@ def add_designation_to_project(request):  # Test ready
 def get_all_users(): #Test done & pass
     users = User.query.filter_by(is_active=True).all()
 
-    data = [{"id": u.id, "name": u.username} for u in users]
+    data = [{"id": u.id, "name": u.username,"loginUserName":u.login_username} for u in users]
 
     return  data
 
