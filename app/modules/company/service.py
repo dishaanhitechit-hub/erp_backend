@@ -163,8 +163,8 @@ def update_company(company_id, request):
     data = [{
         "id": company.id,
         "companyName": company.company_name,
-        "panUrl": f"{base_url}uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
+        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
     }]
 
     return res("Company updated successfully", data)
