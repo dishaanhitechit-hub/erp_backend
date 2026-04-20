@@ -23,5 +23,5 @@ def create_app():
     app.register_blueprint(setting_bp, url_prefix="/setting")
 
     from .modules.company.routes import company_bp
-    app.register_blueprint(company_bp, url_prefix="/company")
+    app.register_blueprint(company_bp, url_prefix="/compny")
     return app
