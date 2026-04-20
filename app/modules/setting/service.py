@@ -341,7 +341,7 @@ def get_all_project():
         for p in projects
     ]
 
-    return res("Projects Fetched", data)
+    return data
 
 def get_project_team(projectId):
 
