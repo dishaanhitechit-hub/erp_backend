@@ -138,6 +138,7 @@ def delete_project_designation_route():
 
 @setting_bp.route("/users", methods=["GET"])
 @login_required
+@require_super_admin
 def get_users_route():
     return res("Users fetched", get_all_users(),200)
 
