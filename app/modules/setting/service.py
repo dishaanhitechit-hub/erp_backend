@@ -2,6 +2,7 @@
 import os
 import uuid
 from flask import request
+from flask_jwt_extended import get_jwt_identity
 from datetime import datetime
 from app.models.user import User
 from app.models.role import Role
@@ -311,9 +312,35 @@ def get_all_users(): #Test done & pass
 #     return res("All Designations Fetched", data)
 
 def get_all_project():
-    projects = Project.query.all()
-    data = [{"id": p.id, "projectCode": p.project_code} for p in projects]
-    return res("All Projects Fetched", data)
+    user = get_jwt_identity()
+    user_id = user.get("id")
+    role = user.get("role")
+
+
+    if role == "SUPER_ADMIN":
+        projects = Project.query.all()
+
+    else:
+
+        projects = (
+            db.session.query(Project)
+            .join(ProjectTeam, Project.id == ProjectTeam.project_id)
+            .filter(ProjectTeam.user_id == user_id)
+            .distinct()
+            .all()
+        )
+
+    data = [
+        {
+            "id": p.id,
+            "projectCode": p.project_code,
+            "projectName": p.project_name,
+            "clientName":p.client_name
+        }
+        for p in projects
+    ]
+
+    return res("Projects Fetched", data)
 
 def get_project_team(projectId):
 
