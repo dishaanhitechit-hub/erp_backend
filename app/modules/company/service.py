@@ -58,8 +58,8 @@ def create_company(request):
     data = {
         "id": company.id,
         "companyName": company.company_name,
-        "panUrl": f"{base_url}uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
+        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
     }
 
     return res("Company created successfully", data)
@@ -91,8 +91,8 @@ def get_company_by_id(company_id, request):
         "email": company.email,
 
         #  file URLs
-        "panUrl": f"{base_url}uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
+        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
     }]
 
     return res("Company details fetched successfully", data)
