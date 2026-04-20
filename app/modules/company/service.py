@@ -91,7 +91,7 @@ def get_company_by_id(company_id, request):
             }
             for c in companies
         ]
-    return res("All companies fetched", data, 200)
+        return res("All companies fetched", data, 200)
 
     company = Company.query.get(company_id)
 
