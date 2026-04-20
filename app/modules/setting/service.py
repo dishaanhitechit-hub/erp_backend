@@ -188,17 +188,17 @@ def assign_role(projectId, designationId, teamType, userId=None):  # Test ready
 #     return res("Role updated")
 
 
-# Delete Role
-# def delete_role(roleId):
-#     role = ProjectUserRole.query.get(roleId)
-#
-#     if not role:
-#         return res("Role not found", code=404)
-#
-#     db.session.delete(role)
-#     db.session.commit()
-#
-#     return res("Role deleted successfully")
+#Delete Role
+def delete_role(roleId):
+    role = ProjectUserRole.query.get(roleId)
+
+    if not role:
+        return res("Role not found", code=404)
+
+    db.session.delete(role)
+    db.session.commit()
+
+    return res("Role deleted successfully")
 
 # Delete Designation
 def delete_project_designation(projectId, teamType, designationId):

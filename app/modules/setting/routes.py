@@ -7,10 +7,10 @@ from flask import send_from_directory
 from app.middleware.role_middleware import require_super_admin
 from .service import ( create_user,create_project,
                        assign_role,
-                       # update_role,delete_role,
+                       delete_role,
                        get_roles_by_project,
-                       get_all_users,
-                    delete_project_designation )
+                       get_all_users,get_all_project,
+                    delete_project_designation,add_designation_to_project)
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -64,21 +64,21 @@ def assign_role_route():
     return res("Role assigned successfully", result)
 
 
-@setting_bp.route("/update-role/<int:role_id>", methods=["PUT"])
-@login_required
-def update_role_route(RoleId):
-    data = request.get_json()
-
-    result = update_role(
-        role_id=RoleId,
-        user_id=data.get("user_id"),
-        designation_id=data.get("DesignationId")
-    )
-
-    if "error" in result:
-        return res(result["error"], code=400)
-
-    return res("Role updated successfully", result)
+# @setting_bp.route("/update-role/<int:role_id>", methods=["PUT"])
+# @login_required
+# def update_role_route(RoleId):
+#     data = request.get_json()
+#
+#     result = update_role(
+#         role_id=RoleId,
+#         user_id=data.get("user_id"),
+#         designation_id=data.get("DesignationId")
+#     )
+#
+#     if "error" in result:
+#         return res(result["error"], code=400)
+#
+#     return res("Role updated successfully", result)
 
 
 @setting_bp.route("/delete-role/<int:role_id>", methods=["DELETE"])
@@ -104,14 +104,7 @@ def get_roles_route(project_id):
 @login_required
 @require_super_admin
 def add_designation_route():
-    data = request.get_json()
-
-    result = add_designation(data.get("name"))
-
-    if "error" in result:
-        return res(result["error"], code=400)
-
-    return res("Designation added successfully", result)
+    return add_designation_to_project(request)
 
 
 @setting_bp.route("/delete-project-designation", methods=["DELETE"])
@@ -135,10 +128,10 @@ def delete_project_designation_route():
     return res("Designation removed from project", result)
 
 
-@setting_bp.route("/designations", methods=["GET"])
-@login_required
-def get_designations_route():
-    return res("Designations fetched", get_all_designations())
+# @setting_bp.route("/designations", methods=["GET"])
+# @login_required
+# def get_designations_route():
+#     return res("Designations fetched", get_all_designations())
 
 
 #  USERS
