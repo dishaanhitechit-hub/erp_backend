@@ -2,7 +2,7 @@
 import os
 import uuid
 from flask import request
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity,get_jwt
 from datetime import datetime
 from app.models.user import User
 from app.models.role import Role
@@ -312,9 +312,10 @@ def get_all_users(): #Test done & pass
 #     return res("All Designations Fetched", data)
 
 def get_all_project():
-    user = get_jwt_identity()
-    user_id = user.get("id")
-    role = user.get("role")
+    user_id = int(get_jwt_identity())  # from identity
+    claims = get_jwt()  # from additional_claims
+
+    role = claims.get("role")
 
 
     if role == "SUPER_ADMIN":
