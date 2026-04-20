@@ -64,16 +64,39 @@ def create_company(request):
 
     return res("Company created successfully", data)
 
-from app.models.companies import Company
-from app.response import res
+
 
 def get_company_by_id(company_id, request):
+    base_url = request.host_url
+    if not company_id:
+        companies = Company.query.all()
+
+        data = [
+            {
+                "id": c.id,
+                "companyName": c.company_name,
+                "registeredAddress": c.registered_address,
+                "corporateAddress": c.corporate_address,
+                "pan": c.pan,
+                "gstn": c.gstn,
+                "gstnType": c.gstn_type,
+                "state": c.state,
+                "stateCode": c.state_code,
+                "contactPerson": c.contact_person,
+                "contactNumber": c.contact_number,
+                "whatsappNumber": c.whatsapp_number,
+                "email": c.email,
+                "panUrl": f"{base_url}compny/uploads/company/{c.pan_file}" if c.pan_file else None,
+                "gstnUrl": f"{base_url}compny/uploads/company/{c.gstn_file}" if c.gstn_file else None
+            }
+            for c in companies
+        ]
+    return res("All companies fetched", data, 200)
+
     company = Company.query.get(company_id)
 
     if not company:
-        return res("Company not found", [], 404)
-
-    base_url = request.host_url
+        return res("Company not found", [], 200)
 
     data = [{
         "id": company.id,
@@ -101,7 +124,7 @@ def update_company(company_id, request):
     company = Company.query.get(company_id)
 
     if not company:
-        return res("Company not found", [], 404)
+        return res("Company not found", [], 200)
 
     data = request.form
     files = request.files

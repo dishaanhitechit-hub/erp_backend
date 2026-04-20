@@ -26,10 +26,11 @@ def create():
     return create_company(request)
 
 # GET BY ID
+@company_bp.route("/company", methods=["GET"])
 @company_bp.route("/company/<int:company_id>", methods=["GET"])
 @login_required
 @require_super_admin
-def get_company(company_id):
+def get_company(company_id = None):
     return get_company_by_id(company_id, request)
 
 # UPDATE
