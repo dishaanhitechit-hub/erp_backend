@@ -300,7 +300,7 @@ def get_all_users(): #Test done & pass
 
     data = [{"id": u.id, "name": u.username} for u in users]
 
-    return res("", data)
+    return  data
 
 
 # # Get All Designations
@@ -330,7 +330,8 @@ def get_all_project():
             .distinct()
             .all()
         )
-
+    if not projects:
+        return res("No projects found", [], 404)
     data = [
         {
             "id": p.id,
@@ -341,7 +342,7 @@ def get_all_project():
         for p in projects
     ]
 
-    return data
+    return res("Projects Fetched", data, 404)
 
 def get_project_team(projectId):
 

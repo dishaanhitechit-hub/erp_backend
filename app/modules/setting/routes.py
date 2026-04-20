@@ -139,7 +139,7 @@ def delete_project_designation_route():
 @setting_bp.route("/users", methods=["GET"])
 @login_required
 def get_users_route():
-    return res("Users fetched", get_all_users())
+    return res("Users fetched", get_all_users(),200)
 
 
 @setting_bp.route("/uploads/signatures/<filename>")
@@ -149,4 +149,4 @@ def get_signature(filename):
 @setting_bp.route("/project-list", methods=["GET"])
 @login_required
 def get_project_list_route():
-    return res("Projects Fetched", get_all_project())
+    return  get_all_project()
