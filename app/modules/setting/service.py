@@ -318,7 +318,7 @@ def get_all_project():
     role = claims.get("role")
 
 
-    if role == "SUPER_ADMIN":
+    if role == "super_admin":
         projects = Project.query.all()
 
     else:
