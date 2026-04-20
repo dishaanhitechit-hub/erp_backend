@@ -13,6 +13,9 @@ from app.extensions import db
 from app.response import res
 
 UPLOAD_FOLDER = "uploads/signatures"
+
+
+
 def create_user(request): # Test done & pass
     # print("FORM:", request.form)
     # print("FILES:", request.files)
@@ -26,8 +29,8 @@ def create_user(request): # Test done & pass
     role_name = request.form.get("role")
     email = request.form.get("email")
     mobile = request.form.get("mobile")
-    wp_mobile = request.form.get("wp_mobile")
-    emp_code = request.form.get("emp_code")
+    wp_mobile = request.form.get("wpMobile")
+    emp_code = request.form.get("empCode")
 
     # file
     file = request.files.get("signature")
@@ -47,7 +50,7 @@ def create_user(request): # Test done & pass
         global_role=role
     )
     user.set_password(password)
-
+    base_url = request.host_url
     # save signature file
     if file:
         if not os.path.exists(UPLOAD_FOLDER):
@@ -59,12 +62,20 @@ def create_user(request): # Test done & pass
 
         file.save(filepath)
 
-        user.signature = filepath  # store path
+        user.signature = filename  # store path
 
     db.session.add(user)
     db.session.commit()
-
-    return res("User created", code=201)
+    return res(
+        "User created",
+        data={
+            "id": user.id,
+            "username": user.username,
+            "empCode": user.emp_code,
+            "signatureUrl": f"{base_url}uploads/signatures/{user.signature}"
+        },
+        code=201
+    )
 
 def parse_date(date_str): #Test done & pass
     try:
@@ -76,8 +87,8 @@ def parse_date(date_str): #Test done & pass
 def create_project(data): #Test done & pass
     try:
         # Required fields
-        project_code = data.get("ProjectCode")
-        project_name = data.get("ProjectName")
+        project_code = data.get("projectCode")
+        project_name = data.get("projectName")
 
         if not project_code or not project_name:
             return res("Project Code and Project Name required", code=400)
@@ -96,29 +107,29 @@ def create_project(data): #Test done & pass
         project = Project(
             project_code=project_code,
             project_name=project_name,
-            client_name=data.get("ClientName"),
-            project_details=data.get("ProjectDetails"),
-            registered_address=data.get("RegisteredAddress"),
-            proj_mgmt_contact_number=data.get("proj_mgmt_contact_number"),
-            proj_mgmt_email_id=data.get("proj_mgmt_email_id"),
-            commercial_manager=data.get("CommercialManager"),
-            comm_mgmt_email_id=data.get("comm_mgmt_email_id"),
-            comm_mgmt_contact_number=data.get("comm_mgmt_contact_number"),
-            gstn=data.get("Gstn"),
-            billing_address=data.get("BillingAddress"),
-            shipping_address=data.get("ShippingAddress"),
-            shipping_address_2=data.get("ShippingAddress_2"),
-            shipping_address_3=data.get("ShippingAddress_3"),
-            project_manager=data.get("ProjectManager"),
-            initial_order_value=data.get("InitialOrderValue"),
-            revised_order_value=data.get("RevisedOrderValue"),
+            client_name=data.get("clientName"),
+            project_details=data.get("projectDetails"),
+            registered_address=data.get("registeredAddress"),
+            proj_mgmt_contact_number=data.get("projMgmtContactNumber"),
+            proj_mgmt_email_id=data.get("projMgmtEmailId"),
+            commercial_manager=data.get("commercialManager"),
+            comm_mgmt_email_id=data.get("commMgmtEmailId"),
+            comm_mgmt_contact_number=data.get("commMgmtContactNumber"),
+            gstn=data.get("gstn"),
+            billing_address=data.get("billingAddress"),
+            shipping_address=data.get("shippingAddress"),
+            shipping_address_2=data.get("shippingAddress2"),
+            shipping_address_3=data.get("shippingAddress3"),
+            project_manager=data.get("projectManager"),
+            initial_order_value=data.get("initialOrderValue"),
+            revised_order_value=data.get("revisedOrderValue"),
             status=status,
 
             #  Date fields
-            schedule_date=parse_date(data.get("ScheduleDate")),
-            schedule_completion_date=parse_date(data.get("ScheduleCompletionDate")),
-            original_start_date=parse_date(data.get("OriginalStartDate")),
-            extended_complete_date=parse_date(data.get("ExtendedCompleteDate")),
+            schedule_date=parse_date(data.get("scheduleDate")),
+            schedule_completion_date=parse_date(data.get("scheduleCompletionDate")),
+            original_start_date=parse_date(data.get("originalStartDate")),
+            extended_complete_date=parse_date(data.get("extendedCompleteDate")),
         )
 
         #  Save
@@ -128,8 +139,8 @@ def create_project(data): #Test done & pass
         return res(
             "Project created",
             data={
-                "ProjectId": project.id,
-                "ProjectCode": project.project_code
+                "projectId": project.id,
+                "projectCode": project.project_code
             },
             code=201
         )
@@ -140,96 +151,84 @@ def create_project(data): #Test done & pass
         return res("Internal server error", code=500)
 
 #Assign Role
-def assign_role(ProjectId, DesignationId, TeamId, user_id=None): #Test done & pass
+def assign_role(projectId, designationId, teamType, userId=None):  # Test ready
 
-    team = ProjectTeam.query.get(TeamId)
-    if not team or team.project_id != ProjectId:
-        return res("Invalid team for this project", code=400)
-
-    existing = ProjectUserRole.query.filter_by(
-        user_id=user_id,
-        project_id=ProjectId,
-        designation_id=DesignationId,
-        team_id=TeamId
+    pt = ProjectTeam.query.filter_by(
+        project_id=projectId,
+        designation_id=designationId,
+        team_type=teamType
     ).first()
 
-    if existing:
-        return res("Already exists", code=400)
+    if not pt:
+        return res("Designation not found in this project team", code=404)
 
-    role = ProjectUserRole(
-        user_id=user_id,  # can be NULL
-        project_id=ProjectId,
-        designation_id=DesignationId,
-        team_id=TeamId
-    )
+    # assign
+    pt.user_id = userId
 
-    db.session.add(role)
     db.session.commit()
 
-    return res("Role added", code=201)
+    return res("User assigned successfully", code=200)
 
 # Update Role
-def update_role(RoleId, user_id=None, DesignationId=None):
-    role = ProjectUserRole.query.get(RoleId)
-
-    if not role:
-        return res("Role not found", code=404)
-
-    # NULL assignment
-    if user_id is not None:
-        role.user_id = user_id
-
-    if DesignationId:
-        role.designation_id = DesignationId
-
-    db.session.commit()
-
-    return res("Role updated")
+# def update_role(roleId, userId=None, designationId=None):
+#     role = ProjectUserRole.query.get(roleId)
+#
+#     if not role:
+#         return res("Role not found", code=404)
+#
+#     # NULL assignment
+#     if userId is not None:
+#         role.user_id = userId
+#
+#     if designationId:
+#         role.designation_id = designationId
+#
+#     db.session.commit()
+#
+#     return res("Role updated")
 
 
 # Delete Role
-def delete_role(RoleId):
-    role = ProjectUserRole.query.get(RoleId)
-
-    if not role:
-        return res("Role not found", code=404)
-
-    db.session.delete(role)
-    db.session.commit()
-
-    return res("Role deleted successfully")
+# def delete_role(roleId):
+#     role = ProjectUserRole.query.get(roleId)
+#
+#     if not role:
+#         return res("Role not found", code=404)
+#
+#     db.session.delete(role)
+#     db.session.commit()
+#
+#     return res("Role deleted successfully")
 
 # Delete Designation
-def delete_project_designation(ProjectId, TeamId, DesignationId):
+def delete_project_designation(projectId, teamType, designationId):
 
-    roles = ProjectUserRole.query.filter_by(
-        project_id=ProjectId,
-        team_id=TeamId,
-        designation_id=DesignationId
-    ).all()
+    pt = ProjectTeam.query.filter_by(
+        project_id=projectId,
+        designation_id=designationId,
+        team_type=teamType
+    ).first()
 
-    if not roles:
+    if not pt:
         return res("Designation not found in this project", code=404)
 
-    for r in roles:
-        db.session.delete(r)
-
+    db.session.delete(pt)
     db.session.commit()
 
     return res("Designation removed from project")
 
 # Get Roles by Project
-def get_roles_by_project(ProjectId): #Test done & pass
-    roles = ProjectUserRole.query.filter_by(project_id=ProjectId).all()
+def get_roles_by_project(projectId): #Test done & pass
+    roles = ProjectUserRole.query.filter_by(project_id=projectId).all()
 
     data = [
         {
             "id": r.id,
-            "user_id": r.user_id,
-            "user_name": r.user.username if r.user else None,
-            "DesignationId": r.designation_id,
-            "DesignationName": r.designation.name if r.designation else None,
-            "TeamId": r.team_id
+            "userId": r.user_id,
+            "userName": r.user.username if r.user else None,
+            "designationId": r.designation_id,
+            "designationName": r.designation.name if r.designation else None,
+            "teamId": r.team_id
         }
         for r in roles
     ]
@@ -237,15 +236,61 @@ def get_roles_by_project(ProjectId): #Test done & pass
 
 
 # Add Designation
-def add_designation(name): #Test done & pass
-    if Designation.query.filter_by(name=name).first():
-        return res("Designation already exists", code=400)
+# def add_designation(name): #Test done & pass
+#     if Designation.query.filter_by(name=name).first():
+#         return res("Designation already exists", code=400)
+#
+#     d = Designation(name=name)
+#     db.session.add(d)
+#     db.session.commit()
+#
+#     return res("Designation added", code=201)
 
-    d = Designation(name=name)
-    db.session.add(d)
+
+def add_designation_to_project(request):  # Test ready
+
+    data = request.get_json()
+
+    designation_name = data.get("designationName")
+    project_id = data.get("projectId")
+    team_type = data.get("teamType")  # "SITE" or "HO"
+
+    if not designation_name or not project_id or not team_type:
+        return res("Missing required fields", code=400)
+
+    # normalize name (important)
+    designation_name = designation_name.strip().lower()
+
+    # check or create designation (MASTER)
+    designation = Designation.query.filter_by(name=designation_name).first()
+
+    if not designation:
+        designation = Designation(name=designation_name)
+        db.session.add(designation)
+        db.session.flush()  # get id without commit
+
+    # check duplicate in same project + team
+    exists = ProjectTeam.query.filter_by(
+        project_id=project_id,
+        designation_id=designation.id,
+        team_type=team_type
+    ).first()
+
+    if exists:
+        return res("Designation already added in this team", code=400)
+
+    # create mapping (user = NULL initially)
+    pt = ProjectTeam(
+        project_id=project_id,
+        designation_id=designation.id,
+        team_type=team_type,
+        user_id=None
+    )
+
+    db.session.add(pt)
     db.session.commit()
 
-    return res("Designation added", code=201)
+    return res("Designation added to project", code=201)
 
 
 #  Get All Users
@@ -257,10 +302,33 @@ def get_all_users(): #Test done & pass
     return res("", data)
 
 
-# Get All Designations
-def get_all_designations(): #Test done & pass
-    roles = Designation.query.all()
+# # Get All Designations
+# def get_all_designations(): #Test done & pass
+#     roles = Designation.query.all()
+#
+#     data = [{"id": r.id, "name": r.name} for r in roles]
+#
+#     return res("All Designations Fetched", data)
 
-    data = [{"id": r.id, "name": r.name} for r in roles]
+def get_all_project():
+    projects = Project.query.all()
+    data = [{"id": p.id, "projectCode": p.project_code} for p in projects]
+    return res("All Projects Fetched", data)
 
-    return res("", data)
+def get_project_team(projectId):
+
+    teams = ProjectTeam.query.filter_by(project_id=projectId).all()
+
+    data = [
+        {
+            "id": t.id,
+            "designationId": t.designation_id,
+            "designationName": t.designation.name if t.designation else None,
+            "teamType": t.team_type,
+            "userId": t.user_id,
+            "userName": t.user.username if t.user else None
+        }
+        for t in teams
+    ]
+
+    return res(data)

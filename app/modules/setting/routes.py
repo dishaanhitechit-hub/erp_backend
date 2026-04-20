@@ -3,14 +3,14 @@
 from flask import Blueprint, request ,jsonify
 from app.middleware.auth_middleware import login_required
 from app.response import res
+from flask import send_from_directory
 from app.middleware.role_middleware import require_super_admin
 from .service import ( create_user,create_project,
                        assign_role,
-                       update_role,delete_role,
+                       # update_role,delete_role,
                        get_roles_by_project,
-                       add_designation,
                        get_all_users,
-                       get_all_designations,delete_project_designation )
+                    delete_project_designation )
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -148,3 +148,12 @@ def get_designations_route():
 def get_users_route():
     return res("Users fetched", get_all_users())
 
+
+@setting_bp.route("/uploads/signatures/<filename>")
+def get_signature(filename):
+    return send_from_directory("uploads/signatures", filename)
+
+@setting_bp.route("/project-list", methods=["GET"])
+@login_required
+def get_project_list_route():
+    return res("Users fetched", get_all_project())
