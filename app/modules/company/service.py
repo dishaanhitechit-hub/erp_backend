@@ -63,7 +63,7 @@ def create_company(request):
     base_url = request.host_url
 
     data = [{
-        "id": company.id,
+        "companyId": company.id,
         "companyName": company.company_name,
         "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
         "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
@@ -80,7 +80,7 @@ def get_company_by_id(company_id, request):
 
         data = [
             {
-                "id": c.id,
+                "companyId": c.id,
                 "companyName": c.company_name,
                 "registeredAddress": c.registered_address,
                 "corporateAddress": c.corporate_address,
@@ -106,7 +106,7 @@ def get_company_by_id(company_id, request):
         return res("Company not found", [], 200)
 
     data = [{
-        "id": company.id,
+        "companyId": company.id,
         "companyName": company.company_name,
         "registeredAddress": company.registered_address,
         "corporateAddress": company.corporate_address,
@@ -196,7 +196,7 @@ def update_company(company_id, request):
     base_url = request.host_url
 
     data = [{
-        "id": company.id,
+        "companyId": company.id,
         "companyName": company.company_name,
         "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
         "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None

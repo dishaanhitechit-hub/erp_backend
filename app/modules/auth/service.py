@@ -30,5 +30,3 @@ def login_user(loginUserName, password):
 
     return res("Succesfully Loggin", data)
 
-
-#
