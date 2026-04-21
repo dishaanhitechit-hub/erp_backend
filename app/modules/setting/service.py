@@ -67,15 +67,15 @@ def create_user(request): # Test done & pass
 
     db.session.add(user)
     db.session.commit()
+    data = [{
+        "id": user.id,
+        "username": user.username,
+        "empCode": user.emp_code,
+        "loginUserName": user.login_username,
+        "signatureUrl": f"{base_url}uploads/signatures/{user.signature}"
+    }]
     return res(
-        "User created",
-        data={
-            "id": user.id,
-            "username": user.username,
-            "empCode": user.emp_code,
-            "signatureUrl": f"{base_url}uploads/signatures/{user.signature}"
-        },
-        code=201
+        "User created", data,code=201
     )
 
 def parse_date(date_str): #Test done & pass
@@ -136,13 +136,12 @@ def create_project(data): #Test done & pass
         #  Save
         db.session.add(project)
         db.session.commit()
-
+        data = [{
+            "projectId": project.id,
+            "projectCode": project.project_code
+        }]
         return res(
-            "Project created",
-            data={
-                "projectId": project.id,
-                "projectCode": project.project_code
-            },
+            "Project created",data,
             code=201
         )
 
