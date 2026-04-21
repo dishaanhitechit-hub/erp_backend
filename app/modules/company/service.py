@@ -137,8 +137,9 @@ def update_company(company_id, request):
     files = request.files
 
     errors = validate_company_data(data)
+    st=[errors]
     if errors:
-        return res("Validation failed", errors, 400)
+        return res("Validation failed", st, 400)
 
     # Update fields
     company.company_name = data.get("companyName", company.company_name)
