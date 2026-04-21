@@ -1,11 +1,12 @@
 import os
 import uuid
+from flask_jwt_extended import get_jwt, get_jwt_identity
 from flask import current_app
 from app.models.companies import Company
 from app.extensions import db
 from app.modules.company.validate import validate_company_data
 from app.response import res
-
+# from flask_login import current_user
 
 UPLOAD_FOLDER = "uploads/company"
 
@@ -203,3 +204,23 @@ def update_company(company_id, request):
     }]
 
     return res("Company updated successfully", data)
+
+def get_my_companies():
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    role = claims.get("role")
+    data = []
+    if role == "super_admin":
+        companies = Company.query.filter_by(created_by=user_id).all()
+
+        data= [
+            {
+                "companyId": c.id,
+                "companyName": c.company_name
+                # "email": c.email,
+                # "contactNumber": c.contact_number,
+                # "createdAt": c.created_at
+            }
+            for c in companies
+        ]
+    return res("Company Id fetched successfully", data,code=200)

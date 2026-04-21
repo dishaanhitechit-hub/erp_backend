@@ -27,3 +27,7 @@ class Company(db.Model):
     gstn_file = db.Column(db.String(255), nullable=True)
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    # relationship
+    creator = db.relationship("User", backref="companies", lazy=True)

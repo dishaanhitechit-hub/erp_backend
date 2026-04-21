@@ -2,6 +2,7 @@
 
 from flask_jwt_extended import verify_jwt_in_request
 from functools import wraps
+from flask import g
 
 def login_required(fn):
     @wraps(fn)

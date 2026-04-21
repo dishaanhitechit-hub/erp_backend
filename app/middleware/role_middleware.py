@@ -2,6 +2,7 @@
 
 from flask_jwt_extended import get_jwt,get_jwt_identity
 from functools import wraps
+from flask import g
 
 def require_super_admin(fn):
     @wraps(fn)
@@ -13,6 +14,11 @@ def require_super_admin(fn):
 
         if not user_id or claims.get("role") != "super_admin":
             return {"msg": "Access denied"}, 403
+
+        g.current_user = {
+            "id": user_id,
+            "role": claims.get("role")
+        }
 
         return fn(*args, **kwargs)
     return wrapper

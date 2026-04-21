@@ -1,22 +1,21 @@
 from flask import send_from_directory
-from flask import Blueprint, request ,jsonify,abort
-from .service import create_company, get_company_by_id, update_company
+from flask import make_response
+from flask import Blueprint, request
+from .service import create_company, get_company_by_id, update_company,get_my_companies
 import os
+
 from app.middleware.auth_middleware import login_required
-from app.response import res
+
 from app.middleware.role_middleware import require_super_admin
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads/company")
 company_bp = Blueprint("company", __name__)
 
 @company_bp.route("/uploads/company/<filename>", methods=["GET"])
-@login_required
-@require_super_admin
 def get_company_file(filename):
-    try:
-        return send_from_directory(UPLOAD_FOLDER, filename)
-    except FileNotFoundError:
-        return abort(404, description="File not found")
+    response = make_response(send_from_directory(UPLOAD_FOLDER, filename))
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 # CREATE
 @company_bp.route("/company", methods=["POST"])
@@ -39,3 +38,8 @@ def get_company(company_id = None):
 @require_super_admin
 def update(company_id):
     return update_company(company_id, request)
+
+@company_bp.route("/my-companies", methods=["GET"])
+@login_required
+def get_my_company():
+    return get_my_companies()
