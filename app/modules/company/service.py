@@ -15,7 +15,7 @@ def create_company(request):
 
     errors = validate_company_data(data)
     st=[errors]
-    if st:
+    if errors:
         return res("Validation failed", st, 400)
 
     company = Company(
