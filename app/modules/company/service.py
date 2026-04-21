@@ -3,13 +3,19 @@ import uuid
 from flask import current_app
 from app.models.companies import Company
 from app.extensions import db
+from app.modules.company.validate import validate_company_data
 from app.response import res
+
 
 UPLOAD_FOLDER = "uploads/company"
 
 def create_company(request):
     data = request.form
     files = request.files
+
+    errors = validate_company_data(data)
+    if errors:
+        return res("Validation failed", errors, 400)
 
     company = Company(
         company_name=data.get("companyName"),
@@ -128,6 +134,10 @@ def update_company(company_id, request):
 
     data = request.form
     files = request.files
+
+    errors = validate_company_data(data)
+    if errors:
+        return res("Validation failed", errors, 400)
 
     # Update fields
     company.company_name = data.get("companyName", company.company_name)

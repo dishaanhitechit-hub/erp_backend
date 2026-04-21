@@ -14,7 +14,7 @@ class Company(db.Model):
     gstn = db.Column(db.String(20), nullable=True)
     gstn_type = db.Column(db.String(50), nullable=True)
 
-    state = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(100), nullable=True,)
     state_code = db.Column(db.String(10), nullable=True)
 
     contact_person = db.Column(db.String(100), nullable=True)
