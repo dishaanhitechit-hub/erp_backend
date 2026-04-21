@@ -13,9 +13,10 @@ def create_company(request):
     data = request.form
     files = request.files
 
-    errors = [validate_company_data(data)]
-    if errors:
-        return res("Validation failed", errors, 400)
+    errors = validate_company_data(data)
+    st=[errors]
+    if st:
+        return res("Validation failed", st, 400)
 
     company = Company(
         company_name=data.get("companyName"),
