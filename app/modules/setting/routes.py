@@ -1,5 +1,5 @@
 # app/modules/setting/routes.py
-
+import os
 from flask import Blueprint, request ,jsonify
 from app.middleware.auth_middleware import login_required
 from app.response import res
@@ -13,6 +13,8 @@ from .service import ( create_user,create_project,
                     delete_project_designation,add_designation_to_project)
 
 setting_bp = Blueprint("setting", __name__)
+
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads/signatures")
 
 @setting_bp.route("/create-user", methods=["POST"])
 @login_required
@@ -145,7 +147,7 @@ def get_users_route():
 
 @setting_bp.route("/uploads/signatures/<filename>")
 def get_signature(filename):
-    return send_from_directory("uploads/signatures", filename)
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 @setting_bp.route("/project-list", methods=["GET"])
 @login_required

@@ -13,7 +13,7 @@ from app.models.designation import Designation
 from app.extensions import db
 from app.response import res
 
-UPLOAD_FOLDER = "uploads/signatures"
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads/signatures")
 
 
 
@@ -72,7 +72,7 @@ def create_user(request): # Test done & pass
         "username": user.username,
         "empCode": user.emp_code,
         "loginUserName": user.login_username,
-        "signatureUrl": f"{base_url}uploads/signatures/{user.signature}"
+        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
     }]
     return res(
         "User created", data,code=201
