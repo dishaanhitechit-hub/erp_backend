@@ -13,7 +13,7 @@ def create_company(request):
     data = request.form
     files = request.files
 
-    errors = validate_company_data(data)
+    errors = [validate_company_data(data)]
     if errors:
         return res("Validation failed", errors, 400)
 
@@ -61,12 +61,12 @@ def create_company(request):
 
     base_url = request.host_url
 
-    data = {
+    data = [{
         "id": company.id,
         "companyName": company.company_name,
         "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
         "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
-    }
+    }]
 
     return res("Company created successfully", data)
 
