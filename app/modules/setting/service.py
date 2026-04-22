@@ -69,10 +69,16 @@ def create_user(request): # Test done & pass
     db.session.commit()
     data = [{
         "id": user.id,
-        "username": user.username,
+        "userName": user.username,
         "empCode": user.emp_code,
         "loginUserName": user.login_username,
+        "email" : user.email,
+        "mobile": user.mobile,
+        "whatsapp": user.wp_mobile,
+        "role":user.global_role.name if user.global_role else None,
+        "status":user.is_active,
         "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+
     }]
     return res(
         "User created", data,code=201
@@ -296,8 +302,16 @@ def add_designation_to_project(request):  # Test ready
 #  Get All Users
 def get_all_users(): #Test done & pass
     users = User.query.filter_by(is_active=True).all()
-
-    data = [{"id": u.id, "name": u.username,"loginUserName":u.login_username} for u in users]
+    data = [{ "id": u.id,
+        "userName": u.username,
+        "empCode": u.emp_code,
+        "loginUserName": u.login_username,
+        "email" : u.email,
+        "mobile": u.mobile,
+        "whatsapp": u.wp_mobile,
+        "role":u.global_role.name if u.global_role else None,
+        "status":u.is_active,
+        } for u in users]
 
     return  data
 

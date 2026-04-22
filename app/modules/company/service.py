@@ -1,7 +1,7 @@
 import os
 import uuid
 from flask_jwt_extended import get_jwt, get_jwt_identity
-from flask import current_app
+from flask import g
 from app.models.companies import Company
 from app.extensions import db
 from app.modules.company.validate import validate_company_data
@@ -34,6 +34,10 @@ def create_company(request):
         email=data.get("email")
     )
 
+    # if hasattr(g, "current_user") and g.current_user["role"] == "super_admin":
+    #     company.created_by = g.current_user["id"]
+    # else:
+    #     company.created_by = None
     # ensure folder exists
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
@@ -206,13 +210,12 @@ def update_company(company_id, request):
     return res("Company updated successfully", data)
 
 def get_my_companies():
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     claims = get_jwt()
     role = claims.get("role")
     data = []
-    if role == "super_admin":
+    if role and role.lower() == "super_admin":
         companies = Company.query.filter_by(created_by=user_id).all()
-
         data= [
             {
                 "companyId": c.id,
