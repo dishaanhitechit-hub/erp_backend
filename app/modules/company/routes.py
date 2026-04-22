@@ -41,5 +41,6 @@ def update(company_id):
 
 @company_bp.route("/my-companies", methods=["GET"])
 @login_required
+@require_super_admin
 def get_my_company():
     return get_my_companies()

@@ -18,20 +18,15 @@ UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads/signatures")
 
 
 def create_user(request): # Test done & pass
-    # print("FORM:", request.form)
-    # print("FILES:", request.files)
-    #
-    # role_name = request.form.get("role")
-    #
-    # print("ROLE:", role_name)
-    # form data
+
     username = request.form.get("username")
     password = request.form.get("password")
     role_name = request.form.get("role")
     email = request.form.get("email")
     mobile = request.form.get("mobile")
-    wp_mobile = request.form.get("wpMobile")
-    emp_code = request.form.get("empCode")
+    wp_mobile = request.form.get("whatsapp")
+    emp_code = request.form.get("employeeCode")
+    is_active = request.form.get("status")
 
     # file
     file = request.files.get("signature")
@@ -48,7 +43,8 @@ def create_user(request): # Test done & pass
         mobile=mobile,
         wp_mobile=wp_mobile,
         emp_code=emp_code,
-        global_role=role
+        global_role=role,
+        is_active= bool(is_active)
     )
     user.set_password(password)
     base_url = request.host_url
@@ -69,8 +65,8 @@ def create_user(request): # Test done & pass
     db.session.commit()
     data = [{
         "id": user.id,
-        "userName": user.username,
-        "empCode": user.emp_code,
+        "username": user.username,
+        "employeeCode": user.emp_code,
         "loginUserName": user.login_username,
         "email" : user.email,
         "mobile": user.mobile,
@@ -81,7 +77,7 @@ def create_user(request): # Test done & pass
 
     }]
     return res(
-        "User created", data,code=201
+        "User created", data,code=200
     )
 
 def parse_date(date_str): #Test done & pass
@@ -130,8 +126,9 @@ def create_project(data): #Test done & pass
             project_manager=data.get("projectManager"),
             initial_order_value=data.get("initialOrderValue"),
             revised_order_value=data.get("revisedOrderValue"),
+            state=data.get("state"),
+            state_code=data.get("stateCode"),
             status=status,
-
             #  Date fields
             schedule_date=parse_date(data.get("scheduleDate")),
             schedule_completion_date=parse_date(data.get("scheduleCompletionDate")),
@@ -316,13 +313,7 @@ def get_all_users(): #Test done & pass
     return  data
 
 
-# # Get All Designations
-# def get_all_designations(): #Test done & pass
-#     roles = Designation.query.all()
-#
-#     data = [{"id": r.id, "name": r.name} for r in roles]
-#
-#     return res("All Designations Fetched", data)
+
 
 def get_all_project():
     user_id = int(get_jwt_identity())  # from identity
@@ -350,7 +341,10 @@ def get_all_project():
             "id": p.id,
             "projectCode": p.project_code,
             "projectName": p.project_name,
-            "clientName":p.client_name
+            "customerName":p.client_name,
+            "gstn":p.gstn,
+            "state":p.state,
+            "status":p.status
         }
         for p in projects
     ]
@@ -374,3 +368,154 @@ def get_project_team(projectId):
     ]
 
     return res(data)
+
+
+def get_project_by_id(projectId):
+    project = Project.query.get(projectId)
+
+    if not project:
+        return res("Project not found", code=404)
+
+    data = [{
+        "id": project.id,
+        "projectCode": project.project_code,
+        "projectName": project.project_name,
+        "clientName": project.client_name,
+        "projectDetails": project.project_details,
+        "registeredAddress": project.registered_address,
+
+        "projectManagementContact": project.proj_mgmt_contact_number,
+        "projectManagementEmail": project.proj_mgmt_email_id,
+
+        "commercialManager": project.commercial_manager,
+        "commercialEmail": project.comm_mgmt_email_id,
+        "commercialContact": project.comm_mgmt_contact_number,
+
+        "gstn": project.gstn,
+        "state": project.state,
+        "stateCode": project.state_code,
+
+        "billingAddress": project.billing_address,
+        "shippingAddress1": project.shipping_address,
+        "shippingAddress2": project.shipping_address_2,
+        "shippingAddress3": project.shipping_address_3,
+
+        "projectManager": project.project_manager,
+
+        "initialOrderValue": project.initial_order_value,
+        "revisedOrderValue": project.revised_order_value,
+
+        "scheduleDate": project.schedule_date.isoformat() if project.schedule_date else None,
+        "scheduleCompletionDate": project.schedule_completion_date.isoformat() if project.schedule_completion_date else None,
+
+        "originalStartDate": project.original_start_date.isoformat() if project.original_start_date else None,
+        "extendedCompleteDate": project.extended_complete_date.isoformat() if project.extended_complete_date else None,
+
+        "status": project.status
+    }]
+
+    return res("Project fetched", data)
+
+def update_project(projectId, data):
+    project = Project.query.get(projectId)
+
+    if not project:
+        return res("Project not found",[], code=200)
+
+    project.project_name = data.get("projectName", project.project_name)
+    project.client_name = data.get("clientName", project.client_name)
+    project.status = data.get("status", project.status)
+
+    db.session.commit()
+
+    return res("Project updated successfully")
+
+def get_user_by_id(userId):
+    user = User.query.get(userId)
+
+    if not user:
+        return res("User not found",[], code=200)
+
+    base_url = request.host_url
+    data =[{
+        "id": user.id,
+        "username": user.username,
+        "employeeCode": user.emp_code,
+        "loginUserName": user.login_username,
+        "email": user.email,
+        "mobile": user.mobile,
+        "whatsapp": user.wp_mobile,
+        "role": user.global_role.name if user.global_role else None,
+        "status": user.is_active,
+        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+
+    }]
+
+    return res("User fetched", data,200)
+
+
+def update_user(userId, request):
+    user = User.query.get(userId)
+
+    if not user:
+        return res("User not found", code=404)
+
+    username = request.form.get("username")
+    password = request.form.get("password")
+    role_name = request.form.get("role")
+    email = request.form.get("email")
+    mobile = request.form.get("mobile")
+    wp_mobile = request.form.get("whatsapp")
+    emp_code = request.form.get("employeeCode")
+    is_active = request.form.get("status")
+
+    # update fields
+    user.username = username or user.username
+    user.email = email or user.email
+    user.mobile = mobile or user.mobile
+    user.wp_mobile = wp_mobile or user.wp_mobile
+    user.emp_code = emp_code or user.emp_code
+
+    if is_active is not None:
+        user.is_active = bool(is_active)
+
+    # update role
+    if role_name:
+        role = Role.query.filter_by(name=role_name).first()
+        if role:
+            user.global_role = role
+
+    # password update
+    if password:
+        user.set_password(password)
+
+    # file upload
+    base_url = request.host_url
+    file = request.files.get("signature")
+    if file:
+        if not os.path.exists(UPLOAD_FOLDER):
+            os.makedirs(UPLOAD_FOLDER)
+
+        ext = file.filename.split('.')[-1]
+        filename = f"{uuid.uuid4()}.{ext}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+        file.save(filepath)
+        user.signature = filename
+
+    db.session.commit()
+
+    data = [{
+        "id": user.id,
+        "username": user.username,
+        "employeeCode": user.emp_code,
+        "loginUserName": user.login_username,
+        "email": user.email,
+        "mobile": user.mobile,
+        "whatsapp": user.wp_mobile,
+        "role": user.global_role.name if user.global_role else None,
+        "status": user.is_active,
+        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+    }]
+
+    return res("User updated successfully", data, 200)

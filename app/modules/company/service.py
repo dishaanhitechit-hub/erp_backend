@@ -38,6 +38,7 @@ def create_company(request):
         company.created_by = g.current_user["id"]
     else:
         company.created_by = None
+
     # ensure folder exists
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)

@@ -16,22 +16,20 @@ class Project(db.Model):
     commercial_manager = db.Column(db.String(200))
     comm_mgmt_email_id = db.Column(db.String(200))
     comm_mgmt_contact_number = db.Column(db.String(200))
-
     gstn = db.Column(db.String(200))
-
+    state = db.Column(db.String(200))
+    state_code = db.Column(db.String(200))
     billing_address = db.Column(db.String(400))
     shipping_address = db.Column(db.String(400))
     shipping_address_2= db.Column(db.String(400))
     shipping_address_3 = db.Column(db.String(400))
     project_manager = db.Column(db.String(200))
-
     initial_order_value = db.Column(db.String(200))
     schedule_date = db.Column(db.Date)
     schedule_completion_date = db.Column(db.Date)
     revised_order_value = db.Column(db.String(200))
     original_start_date = db.Column(db.Date)
     extended_complete_date = db.Column(db.Date)
-
     status = db.Column(db.String(50))  # ongoing / hold / completed
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())

@@ -10,7 +10,7 @@ from .service import ( create_user,create_project,
                        delete_role,
                        get_roles_by_project,
                        get_all_users,get_all_project,
-                    delete_project_designation,add_designation_to_project)
+                    delete_project_designation,add_designation_to_project,get_user_by_id,update_user,get_project_by_id,update_project)
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -153,3 +153,25 @@ def get_signature(filename):
 @login_required
 def get_project_list_route():
     return  get_all_project()
+
+@setting_bp.route("/user/<int:userId>", methods=["GET", "PUT"])
+@login_required
+def handle_user(userId):
+
+    if request.method == "GET":
+        return get_user_by_id(userId)
+
+    if request.method == "PUT":
+        # data = handle_user(request)
+        return update_user(userId, request)
+
+@setting_bp.route("/project/<int:projectId>", methods=["GET", "PUT"])
+@login_required
+def handle_project(projectId):
+
+    if request.method == "GET":
+        return get_project_by_id(projectId)
+
+    if request.method == "PUT":
+        data = request.get_json()
+        return update_project(projectId, data)
