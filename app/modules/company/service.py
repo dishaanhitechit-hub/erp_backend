@@ -34,10 +34,10 @@ def create_company(request):
         email=data.get("email")
     )
 
-    # if hasattr(g, "current_user") and g.current_user["role"] == "super_admin":
-    #     company.created_by = g.current_user["id"]
-    # else:
-    #     company.created_by = None
+    if hasattr(g, "current_user") and g.current_user["role"] == "super_admin":
+        company.created_by = g.current_user["id"]
+    else:
+        company.created_by = None
     # ensure folder exists
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
