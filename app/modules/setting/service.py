@@ -424,7 +424,7 @@ def get_project_by_id(projectId):
         "stateCode": project.state_code,
 
         "billingAddress": project.billing_address,
-        "shippingAddress1": project.shipping_address,
+        "shippingAddress": project.shipping_address,
         "shippingAddress2": project.shipping_address_2,
         "shippingAddress3": project.shipping_address_3,
 
