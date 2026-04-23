@@ -412,12 +412,12 @@ def get_project_by_id(projectId):
         "projectDetails": project.project_details,
         "registeredAddress": project.registered_address,
 
-        "projectManagementContact": project.proj_mgmt_contact_number,
-        "projectManagementEmail": project.proj_mgmt_email_id,
+        "projMgmtContactNumber": project.proj_mgmt_contact_number,
+        "projMgmtEmailId": project.proj_mgmt_email_id,
 
         "commercialManager": project.commercial_manager,
-        "commercialEmail": project.comm_mgmt_email_id,
-        "commercialContact": project.comm_mgmt_contact_number,
+        "commMgmtEmailId": project.comm_mgmt_email_id,
+        "commMgmtContactNumber": project.comm_mgmt_contact_number,
 
         "gstn": project.gstn,
         "state": project.state,
