@@ -342,35 +342,35 @@ def get_all_project():
         "projectCode": p.project_code,
         "projectName": p.project_name,
         "clientName": p.client_name,
-        "projectDetails": p.project_details,
-        "registeredAddress": p.registered_address,
-
-        "projectManagementContact": p.proj_mgmt_contact_number,
-        "projectManagementEmail": p.proj_mgmt_email_id,
-
-        "commercialManager": p.commercial_manager,
-        "commercialEmail": p.comm_mgmt_email_id,
-        "commercialContact": p.comm_mgmt_contact_number,
+        # "projectDetails": p.project_details,
+        # "registeredAddress": p.registered_address,
+        #
+        # "projectManagementContact": p.proj_mgmt_contact_number,
+        # "projectManagementEmail": p.proj_mgmt_email_id,
+        #
+        # "commercialManager": p.commercial_manager,
+        # "commercialEmail": p.comm_mgmt_email_id,
+        # "commercialContact": p.comm_mgmt_contact_number,
 
         "gstn": p.gstn,
         "state": p.state,
-        "stateCode": p.state_code,
-
-        "billingAddress": p.billing_address,
-        "shippingAddress1": p.shipping_address,
-        "shippingAddress2": p.shipping_address_2,
-        "shippingAddress3": p.shipping_address_3,
-
-        "projectManager": p.project_manager,
-
-        "initialOrderValue": p.initial_order_value,
-        "revisedOrderValue": p.revised_order_value,
-
-        "scheduleDate": p.schedule_date.isoformat() if p.schedule_date else None,
-        "scheduleCompletionDate": p.schedule_completion_date.isoformat() if p.schedule_completion_date else None,
-
-        "originalStartDate": p.original_start_date.isoformat() if p.original_start_date else None,
-        "extendedCompleteDate": p.extended_complete_date.isoformat() if p.extended_complete_date else None,
+        # "stateCode": p.state_code,
+        #
+        # "billingAddress": p.billing_address,
+        # "shippingAddress1": p.shipping_address,
+        # "shippingAddress2": p.shipping_address_2,
+        # "shippingAddress3": p.shipping_address_3,
+        #
+        # "projectManager": p.project_manager,
+        #
+        # "initialOrderValue": p.initial_order_value,
+        # "revisedOrderValue": p.revised_order_value,
+        #
+        # "scheduleDate": p.schedule_date.isoformat() if p.schedule_date else None,
+        # "scheduleCompletionDate": p.schedule_completion_date.isoformat() if p.schedule_completion_date else None,
+        #
+        # "originalStartDate": p.original_start_date.isoformat() if p.original_start_date else None,
+        # "extendedCompleteDate": p.extended_complete_date.isoformat() if p.extended_complete_date else None,
 
         "status": p.status
         }
@@ -501,12 +501,13 @@ def update_project(projectId, data):
 
         db.session.commit()
 
-        response_data = [{
+        data = [{
             "projectId": project.id,
-            "projectCode": project.project_code
+            "projectCode": project.project_code,
+            "projectName": project.project_name
         }]
 
-        return res("Project updated successfully", response_data, 200)
+        return res("Project updated successfully", data, 200)
 
     except Exception as e:
         db.session.rollback()
