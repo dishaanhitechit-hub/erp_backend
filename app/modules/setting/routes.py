@@ -25,7 +25,7 @@ def create_user_route():
     if "error" in result:
         return res(result["error"], code=400)
 
-    return res("User created successfully", result)
+    return result
 
 @setting_bp.route("/create-project", methods=["POST"])
 @login_required
@@ -175,3 +175,4 @@ def handle_project(projectId):
     if request.method == "PUT":
         data = request.get_json()
         return update_project(projectId, data)
+

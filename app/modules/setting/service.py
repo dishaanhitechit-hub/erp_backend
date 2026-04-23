@@ -44,7 +44,7 @@ def create_user(request): # Test done & pass
         wp_mobile=wp_mobile,
         emp_code=emp_code,
         global_role=role,
-        is_active= bool(is_active)
+        is_active= is_active
     )
     user.set_password(password)
     base_url = request.host_url
@@ -338,13 +338,41 @@ def get_all_project():
         return res("No projects found", [], 404)
     data = [
         {
-            "id": p.id,
-            "projectCode": p.project_code,
-            "projectName": p.project_name,
-            "customerName":p.client_name,
-            "gstn":p.gstn,
-            "state":p.state,
-            "status":p.status
+        "id": p.id,
+        "projectCode": p.project_code,
+        "projectName": p.project_name,
+        "clientName": p.client_name,
+        "projectDetails": p.project_details,
+        "registeredAddress": p.registered_address,
+
+        "projectManagementContact": p.proj_mgmt_contact_number,
+        "projectManagementEmail": p.proj_mgmt_email_id,
+
+        "commercialManager": p.commercial_manager,
+        "commercialEmail": p.comm_mgmt_email_id,
+        "commercialContact": p.comm_mgmt_contact_number,
+
+        "gstn": p.gstn,
+        "state": p.state,
+        "stateCode": p.state_code,
+
+        "billingAddress": p.billing_address,
+        "shippingAddress1": p.shipping_address,
+        "shippingAddress2": p.shipping_address_2,
+        "shippingAddress3": p.shipping_address_3,
+
+        "projectManager": p.project_manager,
+
+        "initialOrderValue": p.initial_order_value,
+        "revisedOrderValue": p.revised_order_value,
+
+        "scheduleDate": p.schedule_date.isoformat() if p.schedule_date else None,
+        "scheduleCompletionDate": p.schedule_completion_date.isoformat() if p.schedule_completion_date else None,
+
+        "originalStartDate": p.original_start_date.isoformat() if p.original_start_date else None,
+        "extendedCompleteDate": p.extended_complete_date.isoformat() if p.extended_complete_date else None,
+
+        "status": p.status
         }
         for p in projects
     ]
@@ -417,18 +445,73 @@ def get_project_by_id(projectId):
     return res("Project fetched", data)
 
 def update_project(projectId, data):
-    project = Project.query.get(projectId)
+    try:
+        project = Project.query.get(projectId)
 
-    if not project:
-        return res("Project not found",[], code=200)
+        if not project:
+            return res("Project not found", code=404)
 
-    project.project_name = data.get("projectName", project.project_name)
-    project.client_name = data.get("clientName", project.client_name)
-    project.status = data.get("status", project.status)
+        # 🔹 Optional: prevent duplicate project code
+        project_code = data.get("projectCode")
+        if project_code and project_code != project.project_code:
+            existing = Project.query.filter_by(project_code=project_code).first()
+            if existing:
+                return res("Project code already exists", code=400)
+            project.project_code = project_code
 
-    db.session.commit()
+        # 🔹 Validate status
+        status = data.get("status")
+        if status and status not in ["ongoing", "hold", "completed"]:
+            return res("Invalid status", code=400)
 
-    return res("Project updated successfully")
+        # 🔹 Update fields (only if provided)
+        project.project_name = data.get("projectName", project.project_name)
+        project.client_name = data.get("clientName", project.client_name)
+        project.project_details = data.get("projectDetails", project.project_details)
+        project.registered_address = data.get("registeredAddress", project.registered_address)
+        project.proj_mgmt_contact_number = data.get("projMgmtContactNumber", project.proj_mgmt_contact_number)
+        project.proj_mgmt_email_id = data.get("projMgmtEmailId", project.proj_mgmt_email_id)
+        project.commercial_manager = data.get("commercialManager", project.commercial_manager)
+        project.comm_mgmt_email_id = data.get("commMgmtEmailId", project.comm_mgmt_email_id)
+        project.comm_mgmt_contact_number = data.get("commMgmtContactNumber", project.comm_mgmt_contact_number)
+        project.gstn = data.get("gstn", project.gstn)
+        project.billing_address = data.get("billingAddress", project.billing_address)
+        project.shipping_address = data.get("shippingAddress", project.shipping_address)
+        project.shipping_address_2 = data.get("shippingAddress2", project.shipping_address_2)
+        project.shipping_address_3 = data.get("shippingAddress3", project.shipping_address_3)
+        project.project_manager = data.get("projectManager", project.project_manager)
+        project.initial_order_value = data.get("initialOrderValue", project.initial_order_value)
+        project.revised_order_value = data.get("revisedOrderValue", project.revised_order_value)
+        project.state = data.get("state", project.state)
+        project.state_code = data.get("stateCode", project.state_code)
+        project.status = status if status else project.status
+
+        # 🔹 Date fields
+        if data.get("scheduleDate"):
+            project.schedule_date = parse_date(data.get("scheduleDate"))
+
+        if data.get("scheduleCompletionDate"):
+            project.schedule_completion_date = parse_date(data.get("scheduleCompletionDate"))
+
+        if data.get("originalStartDate"):
+            project.original_start_date = parse_date(data.get("originalStartDate"))
+
+        if data.get("extendedCompleteDate"):
+            project.extended_complete_date = parse_date(data.get("extendedCompleteDate"))
+
+        db.session.commit()
+
+        response_data = [{
+            "projectId": project.id,
+            "projectCode": project.project_code
+        }]
+
+        return res("Project updated successfully", response_data, 200)
+
+    except Exception as e:
+        db.session.rollback()
+        print("ERROR:", str(e))
+        return res("Internal server error", code=500)
 
 def get_user_by_id(userId):
     user = User.query.get(userId)
@@ -447,6 +530,7 @@ def get_user_by_id(userId):
         "whatsapp": user.wp_mobile,
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
+        "password":user.password,
         "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
 
     }]
@@ -477,7 +561,7 @@ def update_user(userId, request):
     user.emp_code = emp_code or user.emp_code
 
     if is_active is not None:
-        user.is_active = bool(is_active)
+        user.is_active = is_active
 
     # update role
     if role_name:
