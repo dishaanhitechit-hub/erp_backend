@@ -13,7 +13,7 @@ from app.models.designation import Designation
 from app.extensions import db
 from app.response import res
 
-UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads/signatures")
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
 
 
@@ -160,23 +160,33 @@ def create_project(data): #Test done & pass
         return res("Internal server error", code=500)
 
 #Assign Role
-def assign_role(projectId, designationId, teamType, userId=None):  # Test ready
+def assign_role(data):
+    project_id = data.get("projectId")
+    role_user_map = data.get("roleUserMap", [])
 
-    pt = ProjectTeam.query.filter_by(
-        project_id=projectId,
-        designation_id=designationId,
-        team_type=teamType
-    ).first()
+    if not project_id:
+        return res("Project ID is required", code=400)
 
-    if not pt:
-        return res("Designation not found in this project team", code=404)
+    if not role_user_map:
+        return res("roleUserMap is required", code=400)
 
-    # assign
-    pt.user_id = userId
+    for item in role_user_map:
+        designation_id = item.get("designationId")
+        team_type = item.get("teamType")
+        user_id = item.get("userId")
+
+        pt = ProjectTeam.query.filter_by(
+            project_id=project_id,
+            designation_id=designation_id,
+            team_type=team_type
+        ).first()
+
+        if pt:
+            pt.user_id = user_id
 
     db.session.commit()
 
-    return res("User assigned successfully", code=200)
+    return res("Roles assigned successfully", code=200)
 
 # Update Role
 # def update_role(roleId, userId=None, designationId=None):

@@ -47,23 +47,14 @@ def create_project_route():
 
 @setting_bp.route("/assign-role", methods=["POST"])
 @login_required
+@require_super_admin
 def assign_role_route():
     data = request.get_json()
 
     if not data:
         return res("No data provided", code=400)
 
-    result = assign_role(
-        user_id=data.get("user_id"),
-        project_id=data.get("ProjectId"),
-        team_id=data.get("TeamId"),
-        designation_id=data.get("DesignationId")
-    )
-
-    if "error" in result:
-        return res(result["error"], code=400)
-
-    return res("Role assigned successfully", result)
+    return assign_role(data)
 
 
 # @setting_bp.route("/update-role/<int:role_id>", methods=["PUT"])

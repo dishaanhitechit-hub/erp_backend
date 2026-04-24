@@ -8,7 +8,7 @@ from app.modules.company.validate import validate_company_data
 from app.response import res
 # from flask_login import current_user
 
-UPLOAD_FOLDER = "uploads/company"
+UPLOAD_FOLDER = "/mnt/data/uploads/company"
 
 def create_company(request):
     data = request.form
@@ -228,3 +228,6 @@ def get_my_companies():
             for c in companies
         ]
     return res("Company Id fetched successfully", data,code=200)
+
+
+
