@@ -244,10 +244,10 @@ def get_roles_by_project_code(projectCode):
     if not project:
         return res("Project not found", [], 404)
 
-    # Step 2: Get all roles for this project
+
     project_roles = ProjectUserRole.query.filter_by(project_id=project.id).all()
 
-    # Step 3: Prepare role-user mapping
+
     roleUserMap = [
         {
             "id": r.id,
@@ -256,20 +256,21 @@ def get_roles_by_project_code(projectCode):
             "loginUserName": r.user.login_username if r.user else None,
             "designationId": r.designation_id,
             "designationName": r.designation.name if r.designation else None,
-            "teamId": r.team_id,
+            # "teamId": r.team_id,
             "teamName":r.team.team_type
         }
         for r in project_roles
     ]
 
-    # Step 4: Final structured response
-    return  {
+
+    data=[ {
         "projectId": project.id,
         "projectCode": project.project_code,
         "projectName": project.project_name,
         "clientName": project.client_name,
         "roleUserMap": roleUserMap
-    }
+    }]
+    return res("Succesfully retrieved project roles", data=data,code=200)
 
 def update_roles_by_project_code(projectCode, data):
     project = Project.query.filter_by(project_code=projectCode).first()
@@ -298,7 +299,7 @@ def update_roles_by_project_code(projectCode, data):
         existing_same_designation = ProjectUserRole.query.filter(
             ProjectUserRole.project_id == project.id,
             ProjectUserRole.designation_id == role.designation_id,
-            ProjectUserRole.team_id == role.team_id,
+            # ProjectUserRole.team_id == role.team_id,
             ProjectUserRole.id != role.id
         ).first()
 
@@ -370,7 +371,12 @@ def add_designation_to_project(request):  # Test ready
 
     db.session.add(pt)
     db.session.commit()
-
+    data=[{
+        "designationName": designation.name,
+        "designationId": designation.id,
+        "teamName": team_type,
+        # "teamId":project.team_id
+    }]
     return res("Designation added to project", code=201)
 
 
