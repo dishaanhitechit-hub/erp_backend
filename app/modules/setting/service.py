@@ -375,7 +375,7 @@ def add_designation_to_project(request):
     if not designation_name or not project_id or not team_id:
         return res("Missing required fields", code=400)
 
-    designation_name = designation_name.strip().lower()
+    # designation_name = designation_name.strip().lower()
 
     designation = Designation.query.filter_by(name=designation_name).first()
 
