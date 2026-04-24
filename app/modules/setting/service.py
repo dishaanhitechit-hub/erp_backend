@@ -379,7 +379,7 @@ def add_designation_to_project(request):  # Test ready
         "teamId": team_id,
         "teamName": team.team_type if team else None
     }]
-    return res("Designation added to project", code=201)
+    return res("Designation added to project", data,code=201)
 
 
 #  Get All Users
