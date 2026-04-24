@@ -28,6 +28,7 @@ def create_user(request): # Test done & pass
     emp_code = request.form.get("employeeCode")
     is_active = request.form.get("status")
 
+
     # file
     file = request.files.get("signature")
 
@@ -35,6 +36,11 @@ def create_user(request): # Test done & pass
     role = Role.query.filter_by(name=role_name).first()
     if not role:
         return res("Role not found", code=404)
+
+    status_value = True
+
+    if is_active is not None:
+        status_value = str(is_active).lower() in ["true", "1", "yes"]
 
     # create user
     user = User(
@@ -44,7 +50,7 @@ def create_user(request): # Test done & pass
         wp_mobile=wp_mobile,
         emp_code=emp_code,
         global_role=role,
-        is_active= is_active
+        is_active= status_value
     )
     user.set_password(password)
     base_url = request.host_url
@@ -221,21 +227,40 @@ def delete_project_designation(projectId, teamType, designationId):
     return res("Designation removed from project")
 
 # Get Roles by Project
-def get_roles_by_project(projectId): #Test done & pass
-    roles = ProjectUserRole.query.filter_by(project_id=projectId).all()
+def get_roles_by_project_code(projectCode):
+    # Step 1: Get project using projectCode
+    project = Project.query.filter_by(project_code=projectCode).first()
 
-    data = [
+    if not project:
+        return res("Project not found", [], 404)
+
+    # Step 2: Get all roles for this project
+    project_roles = ProjectUserRole.query.filter_by(project_id=project.id).all()
+
+    # Step 3: Prepare role-user mapping
+    roleUserMap = [
         {
             "id": r.id,
             "userId": r.user_id,
             "userName": r.user.username if r.user else None,
+            "loginUserName": r.user.login_username if r.user else None,
             "designationId": r.designation_id,
             "designationName": r.designation.name if r.designation else None,
             "teamId": r.team_id
         }
-        for r in roles
+        for r in project_roles
     ]
-    return res("", data)
+
+    # Step 4: Final structured response
+    return  {
+        "projectId": project.id,
+        "projectCode": project.project_code,
+        "projectName": project.project_name,
+        "clientName": project.client_name,
+        "roleUserMap": roleUserMap
+    }
+
+
 
 
 # Add Designation
@@ -531,7 +556,7 @@ def get_user_by_id(userId):
         "whatsapp": user.wp_mobile,
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
-        "password":user.password,
+        "password": "",
         "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
 
     }]
@@ -561,14 +586,15 @@ def update_user(userId, request):
     user.wp_mobile = wp_mobile or user.wp_mobile
     user.emp_code = emp_code or user.emp_code
 
-    if is_active is not None:
-        user.is_active = is_active
 
     # update role
     if role_name:
         role = Role.query.filter_by(name=role_name).first()
         if role:
             user.global_role = role
+
+    if is_active is not None:
+        user.is_active = str(is_active).lower() in ["true", "1", "yes"]
 
     # password update
     if password:

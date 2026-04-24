@@ -8,7 +8,7 @@ from app.middleware.role_middleware import require_super_admin
 from .service import ( create_user,create_project,
                        assign_role,
                        delete_role,
-                       get_roles_by_project,
+                       get_roles_by_project_code,
                        get_all_users,get_all_project,
                     delete_project_designation,add_designation_to_project,get_user_by_id,update_user,get_project_by_id,update_project)
 
@@ -94,10 +94,10 @@ def delete_role_route(role_id):
     return res("Role deleted successfully", result)
 
 
-@setting_bp.route("/project/<int:project_id>/roles", methods=["GET"])
+@setting_bp.route("/project/<string:projectCode>/roles", methods=["GET"])
 @login_required
-def get_roles_route(project_id):
-    result = get_roles_by_project(project_id)
+def get_roles_route(projectCode):
+    result = get_roles_by_project_code(projectCode)
     return res("Roles fetched successfully", result)
 
 # DESIGNATION
