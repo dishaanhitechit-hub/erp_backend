@@ -211,7 +211,7 @@ def seed_data():
                 user_id=pt.user_id,
                 project_id=pt.project_id,
                 designation_id=pt.designation_id,
-                team_id=pt.id
+                team_id=pt.team_id  # FIXED
             ).first()
 
             if existing:
@@ -221,12 +221,15 @@ def seed_data():
                 user_id=pt.user_id,
                 project_id=pt.project_id,
                 designation_id=pt.designation_id,
-                team_id=pt.id
+                team_id=pt.team_id  # FIXED
             )
 
             db.session.add(pur)
 
         db.session.commit()
+
+
+
 
         print("✅ Seeding completed successfully!")
 

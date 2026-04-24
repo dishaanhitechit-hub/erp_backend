@@ -300,7 +300,7 @@ def update_roles_by_project_code(projectCode, data):
         existing_same_designation = ProjectUserRole.query.filter(
             ProjectUserRole.project_id == project.id,
             ProjectUserRole.designation_id == role.designation_id,
-            # ProjectUserRole.team_id == role.team_id,
+            ProjectUserRole.team_id == role.team_id,
             ProjectUserRole.id != role.id
         ).first()
 
@@ -466,7 +466,6 @@ def get_all_project():
     return res("Projects Fetched", data, 200)
 
 def get_project_team(projectId):
-
     teams = ProjectTeam.query.filter_by(project_id=projectId).all()
 
     data = [
@@ -474,14 +473,15 @@ def get_project_team(projectId):
             "id": t.id,
             "designationId": t.designation_id,
             "designationName": t.designation.name if t.designation else None,
-            "teamType": t.team_type,
+            "teamId": t.team_id,
+            "teamName": t.team.team_type if t.team else None,
             "userId": t.user_id,
             "userName": t.user.username if t.user else None
         }
         for t in teams
     ]
 
-    return res(data)
+    return res("Project team fetched", data, 200)
 
 
 def get_project_by_id(projectId):
