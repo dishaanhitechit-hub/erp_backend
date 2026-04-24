@@ -290,8 +290,25 @@ def update_roles_by_project_code(projectCode, data):
             project_id=project.id
         ).first()
 
-        if role:
-            role.user_id = user_id  # can also be None for unassign
+        if not role:
+            continue
+
+        # Prevent duplicate designation
+        existing_same_designation = ProjectUserRole.query.filter(
+            ProjectUserRole.project_id == project.id,
+            ProjectUserRole.designation_id == role.designation_id,
+            ProjectUserRole.team_id == role.team_id,
+            ProjectUserRole.id != role.id
+        ).first()
+
+        if existing_same_designation:
+            return res(
+                f"Duplicate designation found for {role.designation.name}",
+                [],
+                400
+            )
+
+        role.user_id = user_id
 
     db.session.commit()
 
