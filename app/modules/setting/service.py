@@ -256,7 +256,8 @@ def get_roles_by_project_code(projectCode):
             "loginUserName": r.user.login_username if r.user else None,
             "designationId": r.designation_id,
             "designationName": r.designation.name if r.designation else None,
-            "teamId": r.team_id
+            "teamId": r.team_id,
+            "teamName":r.team.team_type
         }
         for r in project_roles
     ]
