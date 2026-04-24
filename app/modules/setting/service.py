@@ -7,6 +7,7 @@ from datetime import datetime
 from app.models.user import User
 from app.models.role import Role
 from app.models.project import Project
+from app.models.og_team import Team
 from app.models.team import ProjectTeam
 from app.models.project_role import ProjectUserRole
 from app.models.designation import Designation
@@ -220,12 +221,12 @@ def delete_role(roleId):
     return res("Role deleted successfully")
 
 # Delete Designation
-def delete_project_designation(projectId, teamType, designationId):
+def delete_project_designation(projectId, teamId, designationId):
 
     pt = ProjectTeam.query.filter_by(
         project_id=projectId,
         designation_id=designationId,
-        team_type=teamType
+        team_id=teamId
     ).first()
 
     if not pt:
@@ -256,7 +257,7 @@ def get_roles_by_project_code(projectCode):
             "loginUserName": r.user.login_username if r.user else None,
             "designationId": r.designation_id,
             "designationName": r.designation.name if r.designation else None,
-            # "teamId": r.team_id,
+            "teamId": r.team_id,
             "teamName":r.team.team_type
         }
         for r in project_roles
@@ -335,9 +336,9 @@ def add_designation_to_project(request):  # Test ready
 
     designation_name = data.get("designationName")
     project_id = data.get("projectId")
-    team_type = data.get("teamType")  # "SITE" or "HO"
+    team_id = data.get("teamId") # "SITE" or "HO"
 
-    if not designation_name or not project_id or not team_type:
+    if not designation_name or not project_id or not team_id:
         return res("Missing required fields", code=400)
 
     # normalize name (important)
@@ -355,7 +356,7 @@ def add_designation_to_project(request):  # Test ready
     exists = ProjectTeam.query.filter_by(
         project_id=project_id,
         designation_id=designation.id,
-        team_type=team_type
+        team_id=team_id
     ).first()
 
     if exists:
@@ -365,17 +366,18 @@ def add_designation_to_project(request):  # Test ready
     pt = ProjectTeam(
         project_id=project_id,
         designation_id=designation.id,
-        team_type=team_type,
+        team_id=team_id,
         user_id=None
     )
+    team = Team.query.get(team_id)
 
     db.session.add(pt)
     db.session.commit()
     data=[{
         "designationName": designation.name,
         "designationId": designation.id,
-        "teamName": team_type,
-        # "teamId":project.team_id
+        "teamId": team_id,
+        "teamName": team.team_type if team else None
     }]
     return res("Designation added to project", code=201)
 

@@ -9,7 +9,7 @@ class ProjectTeam(db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"))
     designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"))
 
-    team_type = db.Column(db.String(20))  # "SITE", "HO"
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"))  # "SITE", "HO"
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
@@ -17,3 +17,4 @@ class ProjectTeam(db.Model):
     project = db.relationship("Project", backref="teams")
     designation = db.relationship("Designation")
     user = db.relationship("User")
+    team = db.relationship("Team")

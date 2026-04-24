@@ -1,18 +1,16 @@
 import random
-from app import create_app
-from app.extensions import db
-import random
-import uuid
 from faker import Faker
 
 from app import create_app
 from app.extensions import db
+
 from app.models.user import User
 from app.models.role import Role
 from app.models.project import Project
 from app.models.team import ProjectTeam
 from app.models.project_role import ProjectUserRole
 from app.models.designation import Designation
+from app.models.og_team import Team
 
 app = create_app()
 fake = Faker()
@@ -20,125 +18,218 @@ fake = Faker()
 
 def seed_data():
     with app.app_context():
-
         print("🔄 Seeding started...")
 
-        # ---------- ROLES ----------
-        roles = {
-            "super_admin": Role(name="super_admin"),
-            "admin": Role(name="admin"),
-            "user": Role(name="user"),
-        }
+        # =================================================
+        # ROLES (super_admin must exist)
+        # =================================================
 
-        db.session.add_all(roles.values())
+        role_names = ["super_admin", "admin", "user"]
+        roles = {}
+
+        for role_name in role_names:
+            existing = Role.query.filter_by(name=role_name).first()
+
+            if existing:
+                roles[role_name] = existing
+            else:
+                new_role = Role(name=role_name)
+                db.session.add(new_role)
+                db.session.flush()
+                roles[role_name] = new_role
+
         db.session.commit()
 
-        # ---------- USERS ----------
-        users = []
+        # =================================================
+        # SUPER ADMIN (must exist)
+        # =================================================
 
-        # ---------- MUST SUPER ADMIN ----------
-        super_admin_role = roles["super_admin"]
+        super_admin = User.query.filter_by(
+            email="superadmin@test.com"
+        ).first()
 
-        super_admin = User(
-            username="superadmin",
-            email="superadmin@test.com",
-            mobile="9999999999",
-            wp_mobile="9999999999",
-            emp_code="EMP0001",
-            global_role=super_admin_role
-        )
-        super_admin.set_password("123456")
-
-        db.session.add(super_admin)
-        db.session.commit()
-
-        users.append(super_admin)
-
-        # ---------- RANDOM USERS ----------
-        for i in range(19):  # total 20 users (1 already created)
-            role_choice = random.choice(list(roles.values()))
-
-            user = User(
-                username=fake.user_name() + str(i),
-                email=fake.email(),
-                mobile=fake.phone_number()[:15],
-                wp_mobile=fake.phone_number()[:15],
-                emp_code=f"EMP{1001 + i}",
-                global_role=role_choice
+        if not super_admin:
+            super_admin = User(
+                username="Super Admin",
+                email="superadmin@test.com",
+                mobile="9999999999",
+                wp_mobile="9999999999",
+                emp_code="EMP0001",
+                global_role=roles["super_admin"]
             )
+
+            super_admin.set_password("123456")
+
+            db.session.add(super_admin)
+            db.session.commit()
+
+            print("✅ Super Admin created")
+        else:
+            print("✅ Super Admin already exists")
+
+        users = [super_admin]
+
+        # =================================================
+        # RANDOM USERS
+        # =================================================
+
+        for i in range(19):
+            user = User(
+                username=fake.name(),
+                email=f"user{i}@test.com",
+                mobile=f"98{random.randint(10000000, 99999999)}",
+                wp_mobile=f"98{random.randint(10000000, 99999999)}",
+                emp_code=f"EMP{1002 + i}",
+                global_role=random.choice(
+                    [roles["admin"], roles["user"]]
+                )
+            )
+
             user.set_password("123456")
 
+            db.session.add(user)
             users.append(user)
 
-        db.session.add_all(users[1:])  # skip already added superadmin
         db.session.commit()
 
-        # ---------- DESIGNATIONS ----------
+        # =================================================
+        # DESIGNATIONS
+        # =================================================
+
         designation_names = [
-            "Manager", "Engineer", "Supervisor",
-            "QA", "Store", "HR", "Finance", "Admin"
+            "Manager",
+            "Engineer",
+            "Supervisor",
+            "QA",
+            "Store",
+            "HR",
+            "Finance",
+            "Admin"
         ]
 
         designations = []
-        for name in designation_names:
-            d = Designation(name=name)
-            designations.append(d)
 
-        db.session.add_all(designations)
+        for name in designation_names:
+            existing = Designation.query.filter_by(name=name).first()
+
+            if existing:
+                designations.append(existing)
+            else:
+                d = Designation(name=name)
+                db.session.add(d)
+                db.session.flush()
+                designations.append(d)
+
         db.session.commit()
 
-        # ---------- PROJECTS ----------
+        # =================================================
+        # MASTER TEAM TABLE (teams)
+        # HO / SITE
+        # =================================================
+
+        master_team_names = ["HO", "SITE"]
+        master_teams = []
+
+        for t_name in master_team_names:
+            existing = Team.query.filter_by(
+                team_type=t_name
+            ).first()
+
+            if existing:
+                master_teams.append(existing)
+            else:
+                t = Team(team_type=t_name)
+                db.session.add(t)
+                db.session.flush()
+                master_teams.append(t)
+
+        db.session.commit()
+
+        # =================================================
+        # PROJECTS
+        # =================================================
+
         projects = []
+
         for i in range(5):
-            p = Project(
+            project = Project(
                 project_code=f"P{100+i}",
                 project_name=fake.company(),
                 client_name=fake.company(),
-                status=random.choice(["ongoing", "completed", "hold"])
-            )
-            projects.append(p)
-
-        db.session.add_all(projects)
-        db.session.commit()
-
-        # ---------- TEAMS ----------
-        teams = []
-        for project in projects:
-            site = ProjectTeam(project_id=project.id, name="SITE")
-            ho = ProjectTeam(project_id=project.id, name="HO")
-            teams.extend([site, ho])
-
-        db.session.add_all(teams)
-        db.session.commit()
-
-        # ---------- PROJECT ROLES ----------
-        for team in teams:
-            for d in designations:
-
-                # Ensure only ONE designation per team/project
-                existing = ProjectUserRole.query.filter_by(
-                    project_id=team.project_id,
-                    team_id=team.id,
-                    designation_id=d.id
-                ).first()
-
-                if existing:
-                    continue
-
-                role = ProjectUserRole(
-                    project_id=team.project_id,
-                    team_id=team.id,
-                    designation_id=d.id,
-                    user_id=random.choice(users).id if random.random() > 0.5 else None
+                status=random.choice(
+                    ["ongoing", "completed", "hold"]
                 )
+            )
 
-                db.session.add(role)
+            db.session.add(project)
+            projects.append(project)
+
+        db.session.commit()
+
+        # =================================================
+        # PROJECT TEAMS
+        # One designation + one team + one project
+        # =================================================
+
+        project_teams = []
+
+        for project in projects:
+            for team in master_teams:
+                for designation in designations:
+
+                    existing = ProjectTeam.query.filter_by(
+                        project_id=project.id,
+                        designation_id=designation.id,
+                        team_id=team.id
+                    ).first()
+
+                    if existing:
+                        project_teams.append(existing)
+                        continue
+
+                    pt = ProjectTeam(
+                        project_id=project.id,
+                        designation_id=designation.id,
+                        team_id=team.id,
+                        user_id=random.choice(users).id
+                        if random.random() > 0.5
+                        else None
+                    )
+
+                    db.session.add(pt)
+                    db.session.flush()
+                    project_teams.append(pt)
+
+        db.session.commit()
+
+        # =================================================
+        # PROJECT USER ROLES
+        # =================================================
+
+        for pt in project_teams:
+            existing = ProjectUserRole.query.filter_by(
+                user_id=pt.user_id,
+                project_id=pt.project_id,
+                designation_id=pt.designation_id,
+                team_id=pt.id
+            ).first()
+
+            if existing:
+                continue
+
+            pur = ProjectUserRole(
+                user_id=pt.user_id,
+                project_id=pt.project_id,
+                designation_id=pt.designation_id,
+                team_id=pt.id
+            )
+
+            db.session.add(pur)
 
         db.session.commit()
 
         print("✅ Seeding completed successfully!")
 
 
-
 if __name__ == "__main__":
-        seed_data()
+    seed_data()
