@@ -309,48 +309,39 @@ def update_roles_by_project_code(projectCode, data):
         return res("roleUserMap is required", [], 400)
 
     for item in role_user_map:
-        role_id = item.get("id")
+        designation_id = item.get("designationId")
+        team_id = item.get("teamId")
         user_id = item.get("userId")
 
         role = ProjectUserRole.query.filter_by(
-            id=role_id,
-            project_id=project.id
+            project_id=project.id,
+            designation_id=designation_id,
+            team_id=team_id
         ).first()
 
         if not role:
             continue
 
-        # Prevent duplicate designation in same team
-        existing_same_designation = ProjectUserRole.query.filter(
-            ProjectUserRole.project_id == project.id,
-            ProjectUserRole.designation_id == role.designation_id,
-            ProjectUserRole.team_id == role.team_id,
-            ProjectUserRole.id != role.id
-        ).first()
-
-        if existing_same_designation:
-            return res(
-                f"Duplicate designation found for {role.designation.name}",
-                [],
-                400
-            )
-
-        # Update ProjectUserRole
+        # update ProjectUserRole
         role.user_id = user_id
 
-        # Also update ProjectTeam
+        # update ProjectTeam also
         pt = ProjectTeam.query.filter_by(
             project_id=project.id,
-            designation_id=role.designation_id,
-            team_id=role.team_id
+            designation_id=designation_id,
+            team_id=team_id
         ).first()
 
         if pt:
             pt.user_id = user_id
 
     db.session.commit()
-
-    return res("Roles updated successfully", [], 200)
+    data=[
+        {
+            "projectId": project.id
+        }
+    ]
+    return res("Roles updated successfully", data, 200)
 
 
 # Add Designation
