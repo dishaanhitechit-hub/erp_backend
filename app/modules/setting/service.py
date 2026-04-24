@@ -215,14 +215,27 @@ def delete_role(roleId):
     if not role:
         return res("Role not found", code=404)
 
+    # also update ProjectTeam (set unassigned)
+    pt = ProjectTeam.query.filter_by(
+        project_id=role.project_id,
+        designation_id=role.designation_id,
+        team_id=role.team_id
+    ).first()
+
+    if pt:
+        pt.user_id = None
+
+    # remove role row
     db.session.delete(role)
     db.session.commit()
 
     return res("Role deleted successfully")
 
+
 # Delete Designation
 def delete_project_designation(projectId, teamId, designationId):
 
+    # delete from ProjectTeam
     pt = ProjectTeam.query.filter_by(
         project_id=projectId,
         designation_id=designationId,
@@ -233,6 +246,17 @@ def delete_project_designation(projectId, teamId, designationId):
         return res("Designation not found in this project", code=404)
 
     db.session.delete(pt)
+
+    # also delete from ProjectUserRole
+    pur = ProjectUserRole.query.filter_by(
+        project_id=projectId,
+        designation_id=designationId,
+        team_id=teamId
+    ).all()
+
+    for row in pur:
+        db.session.delete(row)
+
     db.session.commit()
 
     return res("Designation removed from project")
@@ -296,7 +320,7 @@ def update_roles_by_project_code(projectCode, data):
         if not role:
             continue
 
-        # Prevent duplicate designation
+        # Prevent duplicate designation in same team
         existing_same_designation = ProjectUserRole.query.filter(
             ProjectUserRole.project_id == project.id,
             ProjectUserRole.designation_id == role.designation_id,
@@ -311,7 +335,18 @@ def update_roles_by_project_code(projectCode, data):
                 400
             )
 
+        # Update ProjectUserRole
         role.user_id = user_id
+
+        # Also update ProjectTeam
+        pt = ProjectTeam.query.filter_by(
+            project_id=project.id,
+            designation_id=role.designation_id,
+            team_id=role.team_id
+        ).first()
+
+        if pt:
+            pt.user_id = user_id
 
     db.session.commit()
 
@@ -330,29 +365,25 @@ def update_roles_by_project_code(projectCode, data):
 #     return res("Designation added", code=201)
 
 
-def add_designation_to_project(request):  # Test ready
-
+def add_designation_to_project(request):
     data = request.get_json()
 
     designation_name = data.get("designationName")
     project_id = data.get("projectId")
-    team_id = data.get("teamId") # "SITE" or "HO"
+    team_id = data.get("teamId")
 
     if not designation_name or not project_id or not team_id:
         return res("Missing required fields", code=400)
 
-    # normalize name (important)
     designation_name = designation_name.strip().lower()
 
-    # check or create designation (MASTER)
     designation = Designation.query.filter_by(name=designation_name).first()
 
     if not designation:
         designation = Designation(name=designation_name)
         db.session.add(designation)
-        db.session.flush()  # get id without commit
+        db.session.flush()
 
-    # check duplicate in same project + team
     exists = ProjectTeam.query.filter_by(
         project_id=project_id,
         designation_id=designation.id,
@@ -362,24 +393,36 @@ def add_designation_to_project(request):  # Test ready
     if exists:
         return res("Designation already added in this team", code=400)
 
-    # create mapping (user = NULL initially)
+    # table 1
     pt = ProjectTeam(
         project_id=project_id,
         designation_id=designation.id,
         team_id=team_id,
         user_id=None
     )
+    db.session.add(pt)
+
+    # table 2
+    pur = ProjectUserRole(
+        user_id=None,
+        project_id=project_id,
+        designation_id=designation.id,
+        team_id=team_id
+    )
+    db.session.add(pur)
+
+    db.session.commit()
+
     team = Team.query.get(team_id)
 
-    db.session.add(pt)
-    db.session.commit()
-    data=[{
+    data = [{
         "designationName": designation.name,
         "designationId": designation.id,
         "teamId": team_id,
         "teamName": team.team_type if team else None
     }]
-    return res("Designation added to project", data,code=201)
+
+    return res("Designation added to project", data, code=201)
 
 
 #  Get All Users
