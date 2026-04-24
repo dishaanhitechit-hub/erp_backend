@@ -160,33 +160,33 @@ def create_project(data): #Test done & pass
         return res("Internal server error", code=500)
 
 #Assign Role
-def assign_role(data):
-    project_id = data.get("projectId")
-    role_user_map = data.get("roleUserMap", [])
-
-    if not project_id:
-        return res("Project ID is required", code=400)
-
-    if not role_user_map:
-        return res("roleUserMap is required", code=400)
-
-    for item in role_user_map:
-        designation_id = item.get("designationId")
-        team_type = item.get("teamType")
-        user_id = item.get("userId")
-
-        pt = ProjectTeam.query.filter_by(
-            project_id=project_id,
-            designation_id=designation_id,
-            team_type=team_type
-        ).first()
-
-        if pt:
-            pt.user_id = user_id
-
-    db.session.commit()
-
-    return res("Roles assigned successfully", code=200)
+# def assign_role(data):
+#     project_id = data.get("projectId")
+#     role_user_map = data.get("roleUserMap", [])
+#
+#     if not project_id:
+#         return res("Project ID is required", code=400)
+#
+#     if not role_user_map:
+#         return res("roleUserMap is required", code=400)
+#
+#     for item in role_user_map:
+#         designation_id = item.get("designationId")
+#         team_type = item.get("teamType")
+#         user_id = item.get("userId")
+#
+#         pt = ProjectTeam.query.filter_by(
+#             project_id=project_id,
+#             designation_id=designation_id,
+#             team_type=team_type
+#         ).first()
+#
+#         if pt:
+#             pt.user_id = user_id
+#
+#     db.session.commit()
+#
+#     return res("Roles assigned successfully", code=200)
 
 # Update Role
 # def update_role(roleId, userId=None, designationId=None):
@@ -270,7 +270,32 @@ def get_roles_by_project_code(projectCode):
         "roleUserMap": roleUserMap
     }
 
+def update_roles_by_project_code(projectCode, data):
+    project = Project.query.filter_by(project_code=projectCode).first()
 
+    if not project:
+        return res("Project not found", [], 404)
+
+    role_user_map = data.get("roleUserMap", [])
+
+    if not role_user_map:
+        return res("roleUserMap is required", [], 400)
+
+    for item in role_user_map:
+        role_id = item.get("id")
+        user_id = item.get("userId")
+
+        role = ProjectUserRole.query.filter_by(
+            id=role_id,
+            project_id=project.id
+        ).first()
+
+        if role:
+            role.user_id = user_id  # can also be None for unassign
+
+    db.session.commit()
+
+    return res("Roles updated successfully", [], 200)
 
 
 # Add Designation
