@@ -131,8 +131,8 @@ def cc_code_delete(ccId):
 @login_required
 @require_admin
 def group_create():
-    createdBy = None
-    return create_group(request.json, createdBy)
+
+    return create_group(request.json, )
 
 
 @master_bp.route("/group/list", methods=["GET"])
