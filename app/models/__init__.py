@@ -4,3 +4,7 @@ from .project import Project
 from .designation import Designation
 from .project_role import ProjectUserRole
 from .companies import Company
+from .vendor import Vendor
+from .item import Item
+from .cc_code import CCCode
+from .category_group import GroupMaster, CategoryMaster

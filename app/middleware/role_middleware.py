@@ -22,3 +22,24 @@ def require_super_admin(fn):
 
         return fn(*args, **kwargs)
     return wrapper
+
+def require_admin(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+
+        # allow both admin + super_admin
+        allowed_roles = ["admin", "super_admin"]
+
+        if not user_id or claims.get("role") not in allowed_roles:
+            return {"msg": "Admin access denied"}, 403
+
+        g.current_user = {
+            "id": user_id,
+            "role": claims.get("role")
+        }
+
+        return fn(*args, **kwargs)
+
+    return wrapper

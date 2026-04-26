@@ -25,6 +25,9 @@ def create_app():
     from .modules.company.routes import company_bp
     app.register_blueprint(company_bp, url_prefix="/compny")
 
+    from .modules.master.routes import master_bp
+    app.register_blueprint(master_bp, url_prefix="/master")
+
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
 
