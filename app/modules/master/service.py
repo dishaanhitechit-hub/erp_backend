@@ -545,14 +545,25 @@ def update_cc_code(ccId, data):
     if not cc:
         return res("CC Code not found", [], 404)
 
+    newCcCode = data.get("ccCode", cc.cc_code)
+
+    existing = CCCode.query.filter(
+        CCCode.cc_code == newCcCode ,
+        CCCode.id != ccId
+    ).first()
+
+    if existing:
+        return res("CC Code already exists", [], 400)
+
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = data.get("groupId", cc.group_id)
     cc.category_id = data.get("categoryId", cc.category_id)
+    cc.cc_code = newCcCode
     try:
         db.session.commit()
         data=[{
-            "ccId": cc.id,
-        "ccCode": cc.cc_code,
+        "ccId": cc.id,
+        "ccCode": cc.cc_code ,
         "ccName": cc.cc_name,
         "ccGroupId": cc.group_id,
         "ccCategoryId": cc.category_id,
