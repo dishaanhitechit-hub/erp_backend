@@ -15,26 +15,39 @@ from app.extensions import db
 UPLOAD_FOLDER = "/uploads/vendor"
 
 
-# ==========================================
+# Vendor Code generator
+def generate_ledger_code():
+    last_vendor = Vendor.query.order_by(
+        Vendor.id.desc()
+    ).first()
+
+    if not last_vendor:
+        return "3000001"
+
+    last_code = last_vendor.ledger_code
+
+    try:
+        last_number = int(last_code[1:])
+    except:
+        last_number = 0
+
+    new_number = last_number + 1
+
+    return f"L{new_number:06d}"
+
+def generate_item_code():
+    last_item = Item.query.order_by(
+        Item.id.desc()
+    ).first()
+    if not last_item:
+        return "3000001"
 # CREATE VENDOR
-# ==========================================
-
-
-
-
 def create_vendor(request):
     data = request.form
     files = request.files
 
-    existing = Vendor.query.filter_by(
-        ledger_code=data.get("ledgerCode")
-    ).first()
-
-    if existing:
-        return res("Ledger Code already exists", [], 400)
-
     vendor = Vendor(
-        ledger_code=data.get("ledgerCode"),
+        ledger_code=generate_ledger_code(),
         ledger_name=data.get("ledgerName"),
         registered_address=data.get("registeredAddress"),
         corporate_address=data.get("corporateAddress"),
@@ -103,28 +116,28 @@ def create_vendor(request):
     baseUrl = request.host_url
 
     responseData = [{
-        "vendorId": vendor.id,
+        "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
 
         "tradeLicenceUrl":
-            f"{baseUrl}vendor/uploads/{vendor.trade_licence_file}"
+            f"{baseUrl}uploads/vendor/{vendor.trade_licence_file}"
             if vendor.trade_licence_file else None,
 
         "panUrl":
-            f"{baseUrl}vendor/uploads/{vendor.pan_file}"
+            f"{baseUrl}uploads/vendor/{vendor.pan_file}"
             if vendor.pan_file else None,
 
         "gstnUrl":
-            f"{baseUrl}vendor/uploads/{vendor.gstn_file}"
+            f"{baseUrl}uploads/vendor/{vendor.gstn_file}"
             if vendor.gstn_file else None,
 
         "bankDetailsUrl":
-            f"{baseUrl}vendor/uploads/{vendor.bank_details_file}"
+            f"{baseUrl}uploads/vendor/{vendor.bank_details_file}"
             if vendor.bank_details_file else None
     }]
 
-    return res("Vendor created successfully", responseData, 201)
+    return res("ledger  created successfully", responseData, 201)
 
 
 def get_all_vendors():
@@ -134,7 +147,7 @@ def get_all_vendors():
 
     for vendor in vendors:
         data.append({
-            "vendorId": vendor.id,
+            "ledgerId": vendor.id,
             "ledgerCode": vendor.ledger_code,
             "ledgerName": vendor.ledger_name,
             "vendorCategory": (
@@ -145,17 +158,17 @@ def get_all_vendors():
             "createdAt": vendor.created_at
         })
 
-    return res("Vendor list fetched successfully", data, 200)
+    return res("ledger  list fetched successfully", data, 200)
 
 
-def get_vendor_by_id(vendorId):
-    vendor = Vendor.query.get(vendorId)
+def get_vendor_by_id(ledgerId):
+    vendor = Vendor.query.get(ledgerId)
 
     if not vendor:
-        return res("Vendor not found", [], 404)
+        return res("ledger  not found", [], 404)
 
     data = [{
-        "vendorId": vendor.id,
+        "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
         "registeredAddress": vendor.registered_address,
@@ -190,7 +203,7 @@ def get_vendor_by_id(vendorId):
         "createdAt": vendor.created_at
     }]
 
-    return res("Vendor fetched successfully", data, 200)
+    return res("ledger  fetched successfully", data, 200)
 
 # UPDATE VENDOR
 
@@ -206,7 +219,7 @@ def update_vendor(vendorId, request):
     vendor = Vendor.query.get(vendorId)
 
     if not vendor:
-        return res("Vendor not found", [], 404)
+        return res("ledger  not found", [], 404)
 
     vendor.ledger_name = data.get("ledgerName", vendor.ledger_name)
     vendor.registered_address = data.get("registeredAddress", vendor.registered_address)
@@ -267,9 +280,9 @@ def update_vendor(vendorId, request):
     db.session.commit()
 
     return res(
-        "Vendor updated successfully",
+        "ledger updated successfully",
         [{
-            "vendorId": vendor.id,
+            "ledgerId": vendor.id,
             "ledgerCode": vendor.ledger_code,
             "ledgerName": vendor.ledger_name
         }],
@@ -327,7 +340,8 @@ def create_item(data):
         [{
             "itemId": item.id,
             "itemCode": item.item_code,
-            "itemName": item.item_name
+            "itemName": item.item_name,
+            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}"if item.cc_code else None
         }],
         201
         )
@@ -349,11 +363,15 @@ def get_all_items():
             "itemDescription": item.item_description,
             "itemCategoryId": item.category_id,
             "ccName": (
-                item.cc_name.cc_name
-                if item.cc_name else None
+                item.cc_code.cc_name
+                if item.cc_code else None
             ),
+
+            "status": item.status,
+            "hsnSac": item.hsn_sac,
+            "gstPercentage": item.gst_percentage,
             "itemCategoryName": item.category.category_name,
-            "status": item.status
+            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
         })
 
     return res("Item list fetched successfully", data, 200)
@@ -372,12 +390,13 @@ def get_item_by_id(itemId):
         "itemDescription": item.item_description,
         "unit": item.unit,
         "ccName": (
-            item.cc_name.cc_name
-            if item.cc_name else None
+            item.cc_code.cc_name
+            if item.cc_code else None
         ),
         "hsnSac": item.hsn_sac,
         "gstPercentage": item.gst_percentage,
-        "itemCategoryName": item.category.category_name
+        "itemCategoryName": item.category.category_name,
+        "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
     }]
 
     return res("Item fetched successfully", data, 200)
@@ -404,7 +423,8 @@ def update_item(itemId, data):
         [{
             "itemId": item.id,
             "itemCode": item.item_code,
-            "itemName": item.item_name
+            "itemName": item.item_name,
+            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
         }],
         200
     )

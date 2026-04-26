@@ -1,7 +1,7 @@
 from flask import send_from_directory
 from flask import make_response
 from flask import Blueprint, request
-
+from flask import send_from_directory
 
 from app.middleware.auth_middleware import login_required
 
@@ -9,7 +9,7 @@ from app.middleware.role_middleware import require_super_admin,require_admin
 
 from app.modules.master.service import *
 master_bp = Blueprint('master', __name__)
-
+UPLOAD_FOLDER = "/uploads/vendor"
 
 # ==========================================
 # VENDOR ROUTES

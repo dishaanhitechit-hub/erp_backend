@@ -56,6 +56,10 @@ class Item(db.Model):
         nullable=True
     )
 
+    # item_display_code:db.Column(
+    #     db.String(50),
+    #     nullable=False
+    # )
     # ==================================
     # UNIT + TAX DETAILS
     # ==================================
