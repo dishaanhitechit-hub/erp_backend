@@ -85,7 +85,7 @@ class Item(db.Model):
         lazy=True
     )
 
-    cc_name = db.relationship(
+    cc_code = db.relationship(
         "CCCode",
         backref="items",
         lazy=True

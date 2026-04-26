@@ -57,8 +57,7 @@ def vendor_delete(vendorId):
 @login_required
 @require_admin
 def item_create():
-    createdBy = None
-    return create_item(request.form, createdBy)
+    return create_item(request.json)
 
 
 @master_bp.route("/item/list", methods=["GET"])
@@ -79,7 +78,7 @@ def item_detail(itemId):
 @login_required
 @require_admin
 def item_update(itemId):
-    return update_item(itemId, request.form)
+    return update_item(itemId, request.json)
 
 
 @master_bp.route("/item/delete/<int:itemId>", methods=["DELETE"])
@@ -97,7 +96,7 @@ def item_delete(itemId):
 @require_admin
 def cc_code_create():
     createdBy = None
-    return create_cc_code(request.form, createdBy)
+    return create_cc_code(request.json, createdBy)
 
 
 @master_bp.route("/cc-code/list", methods=["GET"])
@@ -118,7 +117,7 @@ def cc_code_detail(ccId):
 @login_required
 @require_admin
 def cc_code_update(ccId):
-    return update_cc_code(ccId, request.form)
+    return update_cc_code(ccId, request.json)
 
 
 @master_bp.route("/cc-code/delete/<int:ccId>", methods=["DELETE"])
@@ -132,7 +131,7 @@ def cc_code_delete(ccId):
 @require_admin
 def group_create():
 
-    return create_group(request.json, )
+    return create_group(request.json)
 
 
 @master_bp.route("/group/list", methods=["GET"])

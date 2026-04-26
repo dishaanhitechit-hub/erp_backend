@@ -295,13 +295,14 @@ def delete_vendor(vendorId):
     return res("Vendor deleted successfully", [], 200)
 
 
-def create_item(data, createdBy=None):
+def create_item(data):
     existing = Item.query.filter_by(
         item_code=data.get("itemCode")
     ).first()
 
     if existing:
         return res("Item Code already exists", [], 400)
+
 
     item = Item(
         item_code=data.get("itemCode"),
@@ -312,13 +313,16 @@ def create_item(data, createdBy=None):
         unit=data.get("unit"),
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
-        created_by=createdBy
     )
+    if hasattr(g, "current_user"):
+        item.created_by = g.current_user.get("id")
+    else:
+        item.created_by = None
+    try:
+        db.session.add(item)
+        db.session.commit()
 
-    db.session.add(item)
-    db.session.commit()
-
-    return res(
+        return res(
         "Item created successfully",
         [{
             "itemId": item.id,
@@ -326,7 +330,10 @@ def create_item(data, createdBy=None):
             "itemName": item.item_name
         }],
         201
-    )
+        )
+    except Exception :
+        db.session.rollback()
+        return res("Failed to create item", [], 500)
 
 
 def get_all_items():
@@ -339,6 +346,13 @@ def get_all_items():
             "itemId": item.id,
             "itemCode": item.item_code,
             "itemName": item.item_name,
+            "itemDescription": item.item_description,
+            "itemCategoryId": item.category_id,
+            "ccName": (
+                item.cc_name.cc_name
+                if item.cc_name else None
+            ),
+            "itemCategoryName": item.category.category_name,
             "status": item.status
         })
 
@@ -357,8 +371,13 @@ def get_item_by_id(itemId):
         "itemName": item.item_name,
         "itemDescription": item.item_description,
         "unit": item.unit,
+        "ccName": (
+            item.cc_name.cc_name
+            if item.cc_name else None
+        ),
         "hsnSac": item.hsn_sac,
-        "gstPercentage": item.gst_percentage
+        "gstPercentage": item.gst_percentage,
+        "itemCategoryName": item.category.category_name
     }]
 
     return res("Item fetched successfully", data, 200)
@@ -418,20 +437,24 @@ def create_cc_code(data, createdBy=None):
         category_id=data.get("categoryId"),
         created_by=createdBy
     )
+    try:
+        db.session.add(ccCode)
+        db.session.commit()
 
-    db.session.add(ccCode)
-    db.session.commit()
+        data = [{
+        "ccId": ccCode.id,
+        "ccCode": ccCode.cc_code,
+        "ccName": ccCode.cc_name,
+        "ccGroupId": ccCode.group_id,
+        "ccCategoryId": ccCode.category_id,
+        "ccCategoryName": ccCode.category.category_name,
+        "ccGroupName": ccCode.group.group_name
+        }]
 
-    return res(
-        "CC Code created successfully",
-        [{
-            "ccId": ccCode.id,
-            "ccCode": ccCode.cc_code,
-            "ccName": ccCode.cc_name
-        }],
-        201
-    )
-
+        return res("CC Code created successfully",data,201)
+    except Exception :
+        db.session.rollback()
+        return res("Something went wrong", [], 500)
 
 def get_all_cc_codes():
     ccCodes = CCCode.query.order_by(CCCode.id.desc()).all()
@@ -441,8 +464,12 @@ def get_all_cc_codes():
     for cc in ccCodes:
         data.append({
             "ccId": cc.id,
-            "ccCode": cc.cc_code,
-            "ccName": cc.cc_name
+        "ccCode": cc.cc_code,
+        "ccName": cc.cc_name,
+        "ccGroupId": cc.group_id,
+        "ccCategoryId": cc.category_id,
+        "ccCategoryName": cc.category.category_name,
+        "ccGroupName": cc.group.group_name
         })
 
     return res("CC Code list fetched successfully", data, 200)
@@ -457,7 +484,11 @@ def get_cc_code_by_id(ccId):
     data = [{
         "ccId": cc.id,
         "ccCode": cc.cc_code,
-        "ccName": cc.cc_name
+        "ccName": cc.cc_name,
+        "ccGroupId": cc.group_id,
+        "ccCategoryId": cc.category_id,
+        "ccCategoryName": cc.category.category_name,
+        "ccGroupName": cc.group.group_name
     }]
 
     return res("CC Code fetched successfully", data, 200)
@@ -472,19 +503,24 @@ def update_cc_code(ccId, data):
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = data.get("groupId", cc.group_id)
     cc.category_id = data.get("categoryId", cc.category_id)
-
-    db.session.commit()
-
-    return res(
-        "CC Code updated successfully",
-        [{
+    try:
+        db.session.commit()
+        data=[{
             "ccId": cc.id,
-            "ccCode": cc.cc_code,
-            "ccName": cc.cc_name
-        }],
+        "ccCode": cc.cc_code,
+        "ccName": cc.cc_name,
+        "ccGroupId": cc.group_id,
+        "ccCategoryId": cc.category_id,
+        "ccCategoryName": cc.category.category_name,
+        "ccGroupName": cc.group.group_name }]
+        return res(
+        "CC Code updated successfully",
+        data,
         200
-    )
-
+        )
+    except Exception :
+        db.session.rollback()
+        return res("Something went wrong", [], 500)
 
 def delete_cc_code(ccId):
     cc = CCCode.query.get(ccId)
