@@ -147,15 +147,40 @@ def get_all_vendors():
 
     for vendor in vendors:
         data.append({
-            "ledgerId": vendor.id,
-            "ledgerCode": vendor.ledger_code,
-            "ledgerName": vendor.ledger_name,
-            "vendorCategory": (
-                vendor.vendor_category.category_name
-                if vendor.vendor_category else None
-            ),
-            "status": vendor.status,
-            "createdAt": vendor.created_at
+
+        "ledgerId": vendor.id,
+        "ledgerCode": vendor.ledger_code,
+        "ledgerName": vendor.ledger_name,
+        "registeredAddress": vendor.registered_address,
+        "corporateAddress": vendor.corporate_address,
+
+        "vendorCategory": (
+            vendor.vendor_category.category_name
+            if vendor.vendor_category else None
+        ),
+
+        "pan": vendor.pan,
+        "gstin": vendor.gstin,
+        "stateCode": vendor.state_code,
+        "stateName": vendor.state_name,
+
+        "primaryContactPerson": vendor.primary_contact_person,
+        "primaryContactNumber": vendor.primary_contact_number,
+        "designation": vendor.designation,
+        "whatsappNumber": vendor.whatsapp_number,
+
+        "bankAccountNumber": vendor.bank_account_number,
+        "bankName": vendor.bank_name,
+        "branchName": vendor.branch_name,
+        "ifscCode": vendor.ifsc_code,
+
+        "tradeLicenceFile": vendor.trade_licence_file,
+        "panFile": vendor.pan_file,
+        "gstnFile": vendor.gstn_file,
+        "bankDetailsFile": vendor.bank_details_file,
+
+        "status": vendor.status,
+        "createdAt": vendor.created_at
         })
 
     return res("ledger  list fetched successfully", data, 200)

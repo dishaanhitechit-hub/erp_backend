@@ -15,35 +15,35 @@ UPLOAD_FOLDER = "/uploads/vendor"
 # VENDOR ROUTES
 # ==========================================
 
-@master_bp.route("/vendor/create", methods=["POST"])
+@master_bp.route("/ledger/create", methods=["POST"])
 @login_required
 @require_admin
 def vendor_create():
     return create_vendor(request)
 
 
-@master_bp.route("/vendor/list", methods=["GET"])
+@master_bp.route("/ledger/list", methods=["GET"])
 @login_required
 @require_admin
 def vendor_list():
     return get_all_vendors()
 
 
-@master_bp.route("/vendor/<int:vendorId>", methods=["GET"])
+@master_bp.route("/ledger/<int:vendorId>", methods=["GET"])
 @login_required
 @require_admin
 def vendor_detail(vendorId):
     return get_vendor_by_id(vendorId)
 
 
-@master_bp.route("/vendor/update/<int:vendorId>", methods=["PUT"])
+@master_bp.route("/ledger/update/<int:vendorId>", methods=["PUT"])
 @login_required
 @require_admin
 def vendor_update(vendorId):
     return update_vendor(vendorId, request)
 
 
-@master_bp.route("/vendor/delete/<int:vendorId>", methods=["DELETE"])
+@master_bp.route("/ledger/delete/<int:vendorId>", methods=["DELETE"])
 @login_required
 @require_admin
 def vendor_delete(vendorId):
