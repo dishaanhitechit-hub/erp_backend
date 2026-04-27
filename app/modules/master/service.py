@@ -41,7 +41,8 @@ def generate_item_code():
         Item.id.desc()
     ).first()
     if not last_item:
-        return "3000001"
+        return "001"
+
 # CREATE VENDOR
 def create_vendor(request):
     data = request.form
@@ -341,16 +342,16 @@ def delete_vendor(vendorId):
 
 
 def create_item(data):
-    existing = Item.query.filter_by(
-        item_code=data.get("itemCode")
-    ).first()
-
-    if existing:
-        return res("Item Code already exists", [], 400)
+    # existing = Item.query.filter_by(
+    #     item_code=data.get("itemCode")
+    # ).first()
+    #
+    # if existing:
+    #     return res("Item Code already exists", [], 400)
 
 
     item = Item(
-        item_code=data.get("itemCode"),
+        item_code=generate_item_code(),
         category_id=data.get("itemCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         item_name=data.get("itemName"),
@@ -443,7 +444,7 @@ def update_item(itemId, data):
     if not item:
         return res("Item not found", [], 404)
 
-    item.category_id = data.get("categoryId", item.category_id)
+    item.category_id = data.get("itemCategoryId", item.category_id)
     item.cc_code_id = data.get("ccCodeId", item.cc_code_id)
     item.item_name = data.get("itemName", item.item_name)
     item.item_description = data.get("itemDescription", item.item_description)
