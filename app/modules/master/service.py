@@ -23,7 +23,7 @@ def generate_ledger_code():
     ).first()
 
     if not last_vendor:
-        return "000001"
+        return "3000001"
 
     last_code = last_vendor.ledger_code
 
