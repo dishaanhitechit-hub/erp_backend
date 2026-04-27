@@ -9,6 +9,7 @@ from app.models.item import Item
 from app.models.cc_code import *
 from app.models.category_group import *
 from app.extensions import db
+from app.cloudinary_uploader import *
 
 
 
@@ -79,36 +80,36 @@ def create_vendor(request):
         os.makedirs(UPLOAD_FOLDER)
 
     tradeFile = files.get("tradeLicenceFile")
-    if tradeFile:
-        ext = tradeFile.filename.split(".")[-1]
-        filename = f"trade_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        tradeFile.save(filepath)
-        vendor.trade_licence_file = filename
+    vendor.trade_licence_file = upload_file_to_cloudinary(
+        file=tradeFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="trade_licence"
+    )
 
     panFile = files.get("panFile")
-    if panFile:
-        ext = panFile.filename.split(".")[-1]
-        filename = f"pan_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        panFile.save(filepath)
-        vendor.pan_file = filename
+    vendor.pan_file = upload_file_to_cloudinary(
+        file=panFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="pan"
+    )
 
     gstnFile = files.get("gstnFile")
-    if gstnFile:
-        ext = gstnFile.filename.split(".")[-1]
-        filename = f"gstn_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        gstnFile.save(filepath)
-        vendor.gstn_file = filename
+    vendor.gstn_file = upload_file_to_cloudinary(
+        file=gstnFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="gstn"
+    )
 
     bankFile = files.get("bankDetailsFile")
-    if bankFile:
-        ext = bankFile.filename.split(".")[-1]
-        filename = f"bank_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        bankFile.save(filepath)
-        vendor.bank_details_file = filename
+    vendor.bank_details_file = upload_file_to_cloudinary(
+        file=bankFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="bank_details"
+    )
 
     db.session.add(vendor)
     db.session.commit()
@@ -120,21 +121,20 @@ def create_vendor(request):
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
 
-        "tradeLicenceUrl":
-            f"{baseUrl}uploads/vendor/{vendor.trade_licence_file}"
-            if vendor.trade_licence_file else None,
+        "tradeLicenceUrl": vendor.trade_licence_file,
+
 
         "panUrl":
-            f"{baseUrl}uploads/vendor/{vendor.pan_file}"
-            if vendor.pan_file else None,
+            vendor.pan_file,
+
 
         "gstnUrl":
-            f"{baseUrl}uploads/vendor/{vendor.gstn_file}"
-            if vendor.gstn_file else None,
+            vendor.gstn_file,
+
 
         "bankDetailsUrl":
-            f"{baseUrl}uploads/vendor/{vendor.bank_details_file}"
-            if vendor.bank_details_file else None
+            vendor.bank_details_file
+
     }]
 
     return res("ledger  created successfully", responseData, 201)
@@ -271,36 +271,36 @@ def update_vendor(vendorId, request):
     # --------------------------------------
 
     tradeFile = files.get("tradeLicenceFile")
-    if tradeFile:
-        ext = tradeFile.filename.split(".")[-1]
-        filename = f"trade_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        tradeFile.save(filepath)
-        vendor.trade_licence_file = filename
+    vendor.trade_licence_file = upload_file_to_cloudinary(
+        file=tradeFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="trade_licence"
+    )
 
     panFile = files.get("panFile")
-    if panFile:
-        ext = panFile.filename.split(".")[-1]
-        filename = f"pan_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        panFile.save(filepath)
-        vendor.pan_file = filename
+    vendor.pan_file = upload_file_to_cloudinary(
+        file=panFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="pan"
+    )
 
     gstnFile = files.get("gstnFile")
-    if gstnFile:
-        ext = gstnFile.filename.split(".")[-1]
-        filename = f"gstn_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        gstnFile.save(filepath)
-        vendor.gstn_file = filename
+    vendor.gstn_file = upload_file_to_cloudinary(
+        file=gstnFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="gstn"
+    )
 
     bankFile = files.get("bankDetailsFile")
-    if bankFile:
-        ext = bankFile.filename.split(".")[-1]
-        filename = f"bank_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        bankFile.save(filepath)
-        vendor.bank_details_file = filename
+    vendor.bank_details_file = upload_file_to_cloudinary(
+        file=bankFile,
+        mainFolder="ledger",
+        subFolder=vendor.ledger_code,
+        fileName="bank_details"
+    )
 
     db.session.commit()
 
