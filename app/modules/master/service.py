@@ -23,7 +23,7 @@ def generate_ledger_code():
     ).first()
 
     if not last_vendor:
-        return "3000001"
+        return "000001"
 
     last_code = last_vendor.ledger_code
 
@@ -34,7 +34,7 @@ def generate_ledger_code():
 
     new_number = last_number + 1
 
-    return f"L{new_number:06d}"
+    return f"3{new_number:06d}"
 
 def generate_item_code():
     last_item = Item.query.order_by(
