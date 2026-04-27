@@ -40,8 +40,18 @@ def generate_item_code():
     last_item = Item.query.order_by(
         Item.id.desc()
     ).first()
+
     if not last_item:
         return "001"
+
+    try:
+        last_number = int(last_item.item_code)
+    except:
+        last_number = 0
+
+    new_number = last_number + 1
+
+    return f"{new_number:03d}"
 
 # CREATE VENDOR
 def create_vendor(request):
@@ -360,6 +370,9 @@ def create_item(data):
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
     )
+    print(item)
+    # db.session.add(item)
+    # db.session.commit()
     if hasattr(g, "current_user"):
         item.created_by = g.current_user.get("id")
     else:
@@ -429,6 +442,8 @@ def get_item_by_id(itemId):
             item.cc_code.cc_name
             if item.cc_code else None
         ),
+        "itemCategoryId": item.category_id,
+        "ccCodeId": item.cc_code_id,
         "hsnSac": item.hsn_sac,
         "gstPercentage": item.gst_percentage,
         "itemCategoryName": item.category.category_name,
