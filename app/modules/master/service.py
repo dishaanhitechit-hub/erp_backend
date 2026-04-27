@@ -351,7 +351,7 @@ def create_item(data):
 
     item = Item(
         item_code=data.get("itemCode"),
-        category_id=data.get("categoryId"),
+        category_id=data.get("itemCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         item_name=data.get("itemName"),
         item_description=data.get("itemDescription"),
@@ -373,6 +373,8 @@ def create_item(data):
             "itemId": item.id,
             "itemCode": item.item_code,
             "itemName": item.item_name,
+            "ccCodeId": item.cc_code_id,
+
             "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}"if item.cc_code else None
         }],
         201
@@ -398,6 +400,7 @@ def get_all_items():
                 item.cc_code.cc_name
                 if item.cc_code else None
             ),
+
 
             "status": item.status,
             "hsnSac": item.hsn_sac,
