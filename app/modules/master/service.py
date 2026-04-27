@@ -269,7 +269,8 @@ def update_vendor(vendorId, request):
     # --------------------------------------
 
     tradeFile = files.get("tradeLicenceFile")
-    vendor.trade_licence_file = upload_file_to_cloudinary(
+    if tradeFile:
+        vendor.trade_licence_file = upload_file_to_cloudinary(
         file=tradeFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -277,7 +278,8 @@ def update_vendor(vendorId, request):
     )
 
     panFile = files.get("panFile")
-    vendor.pan_file = upload_file_to_cloudinary(
+    if panFile:
+        vendor.pan_file = upload_file_to_cloudinary(
         file=panFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -285,7 +287,8 @@ def update_vendor(vendorId, request):
     )
 
     gstnFile = files.get("gstnFile")
-    vendor.gstn_file = upload_file_to_cloudinary(
+    if gstnFile:
+        vendor.gstn_file = upload_file_to_cloudinary(
         file=gstnFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -293,7 +296,8 @@ def update_vendor(vendorId, request):
     )
 
     bankFile = files.get("bankDetailsFile")
-    vendor.bank_details_file = upload_file_to_cloudinary(
+    if bankFile:
+        vendor.bank_details_file = upload_file_to_cloudinary(
         file=bankFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,

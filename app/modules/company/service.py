@@ -6,6 +6,7 @@ from app.models.companies import Company
 from app.extensions import db
 from app.modules.company.validate import validate_company_data
 from app.response import res
+from app.cloudinary_uploader import *
 # from flask_login import current_user
 
 UPLOAD_FOLDER = "/mnt/data/uploads/company"
