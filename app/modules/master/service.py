@@ -114,7 +114,6 @@ def create_vendor(request):
     db.session.add(vendor)
     db.session.commit()
 
-    baseUrl = request.host_url
 
     responseData = [{
         "ledgerId": vendor.id,
@@ -147,7 +146,6 @@ def get_all_vendors():
 
     for vendor in vendors:
         data.append({
-
         "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
@@ -309,7 +307,12 @@ def update_vendor(vendorId, request):
         [{
             "ledgerId": vendor.id,
             "ledgerCode": vendor.ledger_code,
-            "ledgerName": vendor.ledger_name
+            "ledgerName": vendor.ledger_name,
+            "tradeLicenceFile": vendor.trade_licence_file,
+            "panFile": vendor.pan_file,
+            "gstnFile": vendor.gstn_file,
+            "bankDetailsFile": vendor.bank_details_file
+
         }],
         200
     )
