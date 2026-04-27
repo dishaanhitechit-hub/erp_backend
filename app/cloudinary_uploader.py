@@ -1,7 +1,6 @@
 import cloudinary.uploader
 
 
-
 def upload_file_to_cloudinary(file, mainFolder, subFolder, fileName):
     """
     Generic upload function
@@ -19,11 +18,39 @@ def upload_file_to_cloudinary(file, mainFolder, subFolder, fileName):
         return None
 
     try:
+        filename = file.filename.lower()
+
+
+        # Detect raw files like PDF / DOC
+
+
+        raw_extensions = [
+            "pdf",
+            "doc",
+            "docx",
+            "xls",
+            "xlsx",
+            "csv",
+            "txt",
+            "zip"
+        ]
+
+        extension = filename.split(".")[-1]
+
+        if extension in raw_extensions:
+            resourceType = "raw"
+        else:
+            resourceType = "image"
+
+
+        # Upload to Cloudinary
+
+
         upload_result = cloudinary.uploader.upload(
             file,
             folder=f"{mainFolder}/{subFolder}",
             public_id=fileName,
-            resource_type="auto",
+            resource_type=resourceType,
             overwrite=True
         )
 
