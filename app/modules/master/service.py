@@ -154,11 +154,11 @@ def get_all_vendors():
         "registeredAddress": vendor.registered_address,
         "corporateAddress": vendor.corporate_address,
 
-        "vendorCategory": (
-            vendor.vendor_category.category_name
-            if vendor.vendor_category else None
-        ),
-
+        # "vendorCategory": (
+        #     vendor.vendor_category.category_name
+        #     if vendor.vendor_category else None
+        # ),
+        "categoryId": vendor.category_id,
         "pan": vendor.pan,
         "gstin": vendor.gstin,
         "stateCode": vendor.state_code,
