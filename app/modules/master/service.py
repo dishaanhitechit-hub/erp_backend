@@ -546,9 +546,12 @@ def create_cc_code(data, createdBy=None):
         return res("Something went wrong", [], 500)
 
 def get_all_cc_codes(data):
-    dropdownResponse = get_cc_code_list(data)
-    if dropdownResponse:
-        return dropdownResponse
+    categoryId=data.get("categoryId")
+    if catagoryId:
+        return get_cc_code_list(data)
+    # dropdownResponse = get_cc_code_list(data)
+    # if dropdownResponse:
+    #     return dropdownResponse
 
     ccCodes = CCCode.query.order_by(CCCode.id.desc()).all()
 
