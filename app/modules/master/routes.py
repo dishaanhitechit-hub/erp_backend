@@ -57,6 +57,7 @@ def vendor_delete(vendorId):
 @login_required
 @require_admin
 def item_create():
+    # data = request.args.to_dict() if request.args else request.json
     return create_item(request.json)
 
 
@@ -78,6 +79,7 @@ def item_detail(itemId):
 @login_required
 @require_admin
 def item_update(itemId):
+    # data = request.args.to_dict() if request.args else request.json
     return update_item(itemId, request.json)
 
 
@@ -103,7 +105,8 @@ def cc_code_create():
 @login_required
 @require_admin
 def cc_code_list():
-    return get_all_cc_codes()
+    data = request.args.to_dict() if request.args else {}
+    return get_all_cc_codes(data)
 
 
 @master_bp.route("/cc-code/<int:ccId>", methods=["GET"])
@@ -164,7 +167,8 @@ def category_create():
 @login_required
 @require_admin
 def category_list():
-    return get_all_categories()
+    data = request.args.to_dict() if request.args else {}
+    return get_all_categories(data)
 
 
 @master_bp.route("/category/update/<int:categoryId>", methods=["PUT"])
@@ -172,3 +176,75 @@ def category_list():
 @require_admin
 def category_update(categoryId):
     return update_category(categoryId, request.json)
+
+# ASSET ROUTE
+
+@master_bp.route("/asset/create", methods=["POST"])
+@login_required
+@require_admin
+def asset_create():
+    # data = request.args.to_dict() if request.args else request.json
+    return create_asset(request.json)
+
+
+@master_bp.route("/asset/list", methods=["GET"])
+@login_required
+@require_admin
+def asset_list():
+    return get_all_assets()
+
+
+@master_bp.route("/asset/<int:assetId>", methods=["GET"])
+@login_required
+@require_admin
+def asset_detail(assetId):
+    return get_asset_by_id(assetId)
+
+
+@master_bp.route("/asset/update/<int:assetId>", methods=["PUT"])
+@login_required
+@require_admin
+def asset_update(assetId):
+    # data = request.args.to_dict() if request.args else request.json
+    return update_asset(assetId, request.json)
+
+
+@master_bp.route("/asset/delete/<int:assetId>", methods=["DELETE"])
+@login_required
+@require_admin
+def asset_delete(assetId):
+    return delete_asset(assetId)
+
+@master_bp.route("/unit/create", methods=["POST"])
+@login_required
+@require_admin
+def unit_create():
+    return create_unit(request.json)
+
+
+@master_bp.route("/unit/list", methods=["GET"])
+@login_required
+@require_admin
+def unit_list():
+    return get_all_units()
+
+
+@master_bp.route("/unit/<int:unitId>", methods=["GET"])
+@login_required
+@require_admin
+def unit_detail(unitId):
+    return get_unit_by_id(unitId)
+
+
+@master_bp.route("/unit/update/<int:unitId>", methods=["PUT"])
+@login_required
+@require_admin
+def unit_update(unitId):
+    return update_unit(unitId, request.json)
+
+
+@master_bp.route("/unit/delete/<int:unitId>", methods=["DELETE"])
+@login_required
+@require_admin
+def unit_delete(unitId):
+    return delete_unit(unitId)

@@ -6,12 +6,13 @@ from flask import g
 from app.response import res
 from app.models.vendor import Vendor
 from app.models.item import Item
+from app.models.asset import *
 from app.models.cc_code import *
+from app.models.unit import *
 from app.models.category_group import *
 from app.extensions import db
 from app.cloudinary_uploader import *
-
-
+from app.modules.helper import get_category_by_head_under,get_cc_code_list
 
 UPLOAD_FOLDER = "/uploads/vendor"
 
@@ -46,6 +47,23 @@ def generate_item_code():
 
     try:
         last_number = int(last_item.item_code)
+    except:
+        last_number = 0
+
+    new_number = last_number + 1
+
+    return f"{new_number:03d}"
+
+def generate_asset_code():
+    last_asset = Asset.query.order_by(
+        Asset.id.desc()
+    ).first()
+
+    if not last_asset:
+        return "001"
+
+    try:
+        last_number = int(last_asset.asset_code)
     except:
         last_number = 0
 
@@ -126,7 +144,7 @@ def create_vendor(request):
     db.session.commit()
 
 
-    responseData = [{
+    data = [{
         "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
@@ -147,7 +165,7 @@ def create_vendor(request):
 
     }]
 
-    return res("ledger  created successfully", responseData, 201)
+    return res("ledger  created successfully", data, 201)
 
 
 def get_all_vendors():
@@ -352,12 +370,8 @@ def delete_vendor(vendorId):
 
 
 def create_item(data):
-    # existing = Item.query.filter_by(
-    #     item_code=data.get("itemCode")
-    # ).first()
-    #
-    # if existing:
-    #     return res("Item Code already exists", [], 400)
+
+    # Normal Create Item Flow
 
 
     item = Item(
@@ -370,30 +384,32 @@ def create_item(data):
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
     )
-    print(item)
-    # db.session.add(item)
-    # db.session.commit()
+
     if hasattr(g, "current_user"):
         item.created_by = g.current_user.get("id")
     else:
         item.created_by = None
+
     try:
         db.session.add(item)
         db.session.commit()
 
         return res(
-        "Item created successfully",
-        [{
-            "itemId": item.id,
-            "itemCode": item.item_code,
-            "itemName": item.item_name,
-            "ccCodeId": item.cc_code_id,
-
-            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}"if item.cc_code else None
-        }],
-        201
+            "Item created successfully",
+            [{
+                "itemId": item.id,
+                "itemCode": item.item_code,
+                "itemName": item.item_name,
+                "ccCodeId": item.cc_code_id,
+                "itemDisplayCode": (
+                    f"{item.cc_code.cc_code}_{item.item_code}"
+                    if item.cc_code else None
+                )
+            }],
+            201
         )
-    except Exception :
+
+    except Exception:
         db.session.rollback()
         return res("Failed to create item", [], 500)
 
@@ -454,6 +470,8 @@ def get_item_by_id(itemId):
 
 
 def update_item(itemId, data):
+
+
     item = Item.query.get(itemId)
 
     if not item:
@@ -527,7 +545,11 @@ def create_cc_code(data, createdBy=None):
         db.session.rollback()
         return res("Something went wrong", [], 500)
 
-def get_all_cc_codes():
+def get_all_cc_codes(data):
+    dropdownResponse = get_cc_code_list(data)
+    if dropdownResponse:
+        return dropdownResponse
+
     ccCodes = CCCode.query.order_by(CCCode.id.desc()).all()
 
     data = []
@@ -754,7 +776,10 @@ def get_all_groups():
 # GET ALL CATEGORIES
 
 
-def get_all_categories():
+def get_all_categories(data):
+    dropdownResponse = get_category_by_head_under(data)
+    if dropdownResponse:
+        return dropdownResponse
     categories = CategoryMaster.query.order_by(
         CategoryMaster.id.desc()
     ).all()
@@ -774,3 +799,269 @@ def get_all_categories():
         data,
         200
     )
+
+
+# same code for Asset:
+# Item -> Asset
+# item -> asset
+# item_code -> asset_code
+# item_name -> asset_name
+# item_description -> asset_description
+# itemDisplayCode -> assetDisplayCode
+
+def create_asset(data):
+
+
+    asset = Asset(
+        asset_code=generate_asset_code(),
+        category_id=data.get("assetCategoryId"),
+        cc_code_id=data.get("ccCodeId"),
+        asset_name=data.get("assetName"),
+        asset_description=data.get("assetDescription"),
+        unit=data.get("unit"),
+        hsn_sac=data.get("hsnSac"),
+        gst_percentage=data.get("gstPercentage"),
+    )
+
+    if hasattr(g, "current_user"):
+        asset.created_by = g.current_user.get("id")
+    else:
+        asset.created_by = None
+
+    try:
+        db.session.add(asset)
+        db.session.commit()
+
+        return res(
+            "Asset created successfully",
+            [{
+                "assetId": asset.id,
+                "assetCode": asset.asset_code,
+                "assetName": asset.asset_name,
+                "ccCodeId": asset.cc_code_id,
+                "assetDisplayCode": (
+                    f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                    if asset.cc_code else None
+                )
+            }],
+            201
+        )
+
+    except Exception:
+        db.session.rollback()
+        return res("Failed to create asset", [], 500)
+
+
+def get_all_assets():
+    assets = Asset.query.order_by(Asset.id.desc()).all()
+
+    data = []
+
+    for asset in assets:
+        data.append({
+            "assetId": asset.id,
+            "assetCode": asset.asset_code,
+            "assetName": asset.asset_name,
+            "assetDescription": asset.asset_description,
+            "assetCategoryId": asset.category_id,
+            "ccName": (
+                asset.cc_code.cc_name
+                if asset.cc_code else None
+            ),
+            "status": asset.status,
+            "hsnSac": asset.hsn_sac,
+            "gstPercentage": asset.gst_percentage,
+            "assetCategoryName": asset.category.category_name,
+            "assetDisplayCode": (
+                f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                if asset.cc_code else None
+            )
+        })
+
+    return res("Asset list fetched successfully", data, 200)
+
+
+def get_asset_by_id(assetId):
+    asset = Asset.query.get(assetId)
+
+    if not asset:
+        return res("Asset not found", [], 404)
+
+    data = [{
+        "assetId": asset.id,
+        "assetCode": asset.asset_code,
+        "assetName": asset.asset_name,
+        "assetDescription": asset.asset_description,
+        "unit": asset.unit,
+        "ccName": (
+            asset.cc_code.cc_name
+            if asset.cc_code else None
+        ),
+        "assetCategoryId": asset.category_id,
+        "ccCodeId": asset.cc_code_id,
+        "hsnSac": asset.hsn_sac,
+        "gstPercentage": asset.gst_percentage,
+        "assetCategoryName": asset.category.category_name,
+        "assetDisplayCode": (
+            f"{asset.cc_code.cc_code}_{asset.asset_code}"
+            if asset.cc_code else None
+        )
+    }]
+
+    return res("Asset fetched successfully", data, 200)
+
+
+def update_asset(assetId, data):
+
+
+    asset = Asset.query.get(assetId)
+
+    if not asset:
+        return res("Asset not found", [], 404)
+
+    asset.category_id = data.get("assetCategoryId", asset.category_id)
+    asset.cc_code_id = data.get("ccCodeId", asset.cc_code_id)
+    asset.asset_name = data.get("assetName", asset.asset_name)
+    asset.asset_description = data.get("assetDescription", asset.asset_description)
+    asset.unit = data.get("unit", asset.unit)
+    asset.hsn_sac = data.get("hsnSac", asset.hsn_sac)
+    asset.gst_percentage = data.get("gstPercentage", asset.gst_percentage)
+
+    db.session.commit()
+
+    return res(
+        "Asset updated successfully",
+        [{
+            "assetId": asset.id,
+            "assetCode": asset.asset_code,
+            "assetName": asset.asset_name,
+            "assetDisplayCode": (
+                f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                if asset.cc_code else None
+            )
+        }],
+        200
+    )
+
+
+def delete_asset(assetId):
+    asset = Asset.query.get(assetId)
+
+    if not asset:
+        return res("Asset not found", [], 404)
+
+    db.session.delete(asset)
+    db.session.commit()
+
+    return res("Asset deleted successfully", [], 200)
+
+# service.py
+
+def create_unit(data):
+    unit = Unit(
+        unit_name=data.get("unitName"),
+        short_name=data.get("shortName"),
+        unit_type=data.get("unitType"),
+        parent_unit_id=data.get("parentUnitId"),
+        parent_unit_multiply_factor=data.get("parentUnitMultiplyFactor"),
+        unit_category=data.get("unitCategory")
+    )
+
+    if hasattr(g, "current_user"):
+        unit.created_by = g.current_user.get("id")
+    else:
+        unit.created_by = None
+
+    db.session.add(unit)
+    db.session.commit()
+
+    return res(
+        "Unit created successfully",
+        [{
+            "unitId": unit.id,
+            "unitName": unit.unit_name,
+            "shortName": unit.short_name
+        }],
+        201
+    )
+
+
+def get_all_units():
+    units = Unit.query.order_by(Unit.id.desc()).all()
+
+    data = [{
+        "unitId": unit.id,
+        "unitName": unit.unit_name,
+        "shortName": unit.short_name,
+        "unitType": unit.unit_type,
+        "parentUnitId": unit.parent_unit_id,
+        "parentUnitName": unit.parent_unit.unit_name if unit.parent_unit else None,
+        "parentUnitMultiplyFactor": unit.parent_unit_multiply_factor,
+        "unitCategory": unit.unit_category,
+        "status": unit.status
+    } for unit in units]
+
+    return res("Unit list fetched successfully", data, 200)
+
+
+def get_unit_by_id(unitId):
+    unit = Unit.query.get(unitId)
+
+    if not unit:
+        return res("Unit not found", [], 404)
+
+    return res(
+        "Unit fetched successfully",
+        [{
+            "unitId": unit.id,
+            "unitName": unit.unit_name,
+            "shortName": unit.short_name,
+            "unitType": unit.unit_type,
+            "parentUnitId": unit.parent_unit_id,
+            "parentUnitName": unit.parent_unit.unit_name if unit.parent_unit else None,
+            "parentUnitMultiplyFactor": unit.parent_unit_multiply_factor,
+            "unitCategory": unit.unit_category,
+            "status": unit.status
+        }],
+        200
+    )
+
+
+def update_unit(unitId, data):
+    unit = Unit.query.get(unitId)
+
+    if not unit:
+        return res("Unit not found", [], 404)
+
+    unit.unit_name = data.get("unitName", unit.unit_name)
+    unit.short_name = data.get("shortName", unit.short_name)
+    unit.unit_type = data.get("unitType", unit.unit_type)
+    unit.parent_unit_id = data.get("parentUnitId", unit.parent_unit_id)
+    unit.parent_unit_multiply_factor = data.get(
+        "parentUnitMultiplyFactor",
+        unit.parent_unit_multiply_factor
+    )
+    unit.unit_category = data.get("unitCategory", unit.unit_category)
+
+    db.session.commit()
+
+    return res(
+        "Unit updated successfully",
+        [{
+            "unitId": unit.id,
+            "unitName": unit.unit_name
+        }],
+        200
+    )
+
+
+def delete_unit(unitId):
+    unit = Unit.query.get(unitId)
+
+    if not unit:
+        return res("Unit not found", [], 404)
+
+    db.session.delete(unit)
+    db.session.commit()
+
+    return res("Unit deleted successfully", [], 200)
