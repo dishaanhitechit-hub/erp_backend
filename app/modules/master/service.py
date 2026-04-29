@@ -777,9 +777,11 @@ def get_all_groups():
 
 
 def get_all_categories(data):
-    dropdownResponse = get_category_by_head_under(data)
-    if dropdownResponse:
-        return dropdownResponse
+    if headUnder:
+        return get_category_by_head_under(data)
+    # dropdownResponse = get_category_by_head_under(data)
+    # if dropdownResponse:
+    #     return dropdownResponse
     categories = CategoryMaster.query.order_by(
         CategoryMaster.id.desc()
     ).all()
