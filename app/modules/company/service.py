@@ -64,6 +64,8 @@ def create_company(request):
         gstn_file.save(filepath)
         company.gstn_file = filename
 
+    print(request.json)
+
     db.session.add(company)
     db.session.commit()
 

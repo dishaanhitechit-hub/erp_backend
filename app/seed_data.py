@@ -69,169 +69,169 @@ def seed_data():
 
         users = [super_admin]
 
-        # =================================================
-        # RANDOM USERS
-        # =================================================
-
-        for i in range(19):
-            user = User(
-                username=fake.name(),
-                email=f"user{i}@test.com",
-                mobile=f"98{random.randint(10000000, 99999999)}",
-                wp_mobile=f"98{random.randint(10000000, 99999999)}",
-                emp_code=f"EMP{1002 + i}",
-                global_role=random.choice(
-                    [roles["admin"], roles["user"]]
-                )
-            )
-
-            user.set_password("123456")
-
-            db.session.add(user)
-            users.append(user)
-
-        db.session.commit()
-
-        # =================================================
-        # DESIGNATIONS
-        # =================================================
-
-        designation_names = [
-            "Manager",
-            "Engineer",
-            "Supervisor",
-            "QA",
-            "Store",
-            "HR",
-            "Finance",
-            "Admin"
-        ]
-
-        designations = []
-
-        for name in designation_names:
-            existing = Designation.query.filter_by(name=name).first()
-
-            if existing:
-                designations.append(existing)
-            else:
-                d = Designation(name=name)
-                db.session.add(d)
-                db.session.flush()
-                designations.append(d)
-
-        db.session.commit()
-
-        # =================================================
-        # MASTER TEAM TABLE (teams)
-        # HO / SITE
-        # =================================================
-
-        master_team_names = ["HO", "SITE"]
-        master_teams = []
-
-        for t_name in master_team_names:
-            existing = Team.query.filter_by(
-                team_type=t_name
-            ).first()
-
-            if existing:
-                master_teams.append(existing)
-            else:
-                t = Team(team_type=t_name)
-                db.session.add(t)
-                db.session.flush()
-                master_teams.append(t)
-
-        db.session.commit()
-
-        # =================================================
-        # PROJECTS
-        # =================================================
-
-        projects = []
-
-        for i in range(5):
-            project = Project(
-                project_code=f"P{100+i}",
-                project_name=fake.company(),
-                client_name=fake.company(),
-                status=random.choice(
-                    ["ongoing", "completed", "hold"]
-                )
-            )
-
-            db.session.add(project)
-            projects.append(project)
-
-        db.session.commit()
-
-        # =================================================
-        # PROJECT TEAMS
-        # One designation + one team + one project
-        # =================================================
-
-        project_teams = []
-
-        for project in projects:
-            for team in master_teams:
-                for designation in designations:
-
-                    existing = ProjectTeam.query.filter_by(
-                        project_id=project.id,
-                        designation_id=designation.id,
-                        team_id=team.id
-                    ).first()
-
-                    if existing:
-                        project_teams.append(existing)
-                        continue
-
-                    pt = ProjectTeam(
-                        project_id=project.id,
-                        designation_id=designation.id,
-                        team_id=team.id,
-                        user_id=random.choice(users).id
-                        if random.random() > 0.5
-                        else None
-                    )
-
-                    db.session.add(pt)
-                    db.session.flush()
-                    project_teams.append(pt)
-
-        db.session.commit()
-
-        # =================================================
-        # PROJECT USER ROLES
-        # =================================================
-
-        for pt in project_teams:
-            existing = ProjectUserRole.query.filter_by(
-                user_id=pt.user_id,
-                project_id=pt.project_id,
-                designation_id=pt.designation_id,
-                team_id=pt.team_id  # FIXED
-            ).first()
-
-            if existing:
-                continue
-
-            pur = ProjectUserRole(
-                user_id=pt.user_id,
-                project_id=pt.project_id,
-                designation_id=pt.designation_id,
-                team_id=pt.team_id  # FIXED
-            )
-
-            db.session.add(pur)
-
-        db.session.commit()
-
-
-
-
-        print("✅ Seeding completed successfully!")
+        # # =================================================
+        # # RANDOM USERS
+        # # =================================================
+        #
+        # for i in range(19):
+        #     user = User(
+        #         username=fake.name(),
+        #         email=f"user{i}@test.com",
+        #         mobile=f"98{random.randint(10000000, 99999999)}",
+        #         wp_mobile=f"98{random.randint(10000000, 99999999)}",
+        #         emp_code=f"EMP{1002 + i}",
+        #         global_role=random.choice(
+        #             [roles["admin"], roles["user"]]
+        #         )
+        #     )
+        #
+        #     user.set_password("123456")
+        #
+        #     db.session.add(user)
+        #     users.append(user)
+        #
+        # db.session.commit()
+        #
+        # # =================================================
+        # # DESIGNATIONS
+        # # =================================================
+        #
+        # designation_names = [
+        #     "Manager",
+        #     "Engineer",
+        #     "Supervisor",
+        #     "QA",
+        #     "Store",
+        #     "HR",
+        #     "Finance",
+        #     "Admin"
+        # ]
+        #
+        # designations = []
+        #
+        # for name in designation_names:
+        #     existing = Designation.query.filter_by(name=name).first()
+        #
+        #     if existing:
+        #         designations.append(existing)
+        #     else:
+        #         d = Designation(name=name)
+        #         db.session.add(d)
+        #         db.session.flush()
+        #         designations.append(d)
+        #
+        # db.session.commit()
+        #
+        # # =================================================
+        # # MASTER TEAM TABLE (teams)
+        # # HO / SITE
+        # # =================================================
+        #
+        # master_team_names = ["HO", "SITE"]
+        # master_teams = []
+        #
+        # for t_name in master_team_names:
+        #     existing = Team.query.filter_by(
+        #         team_type=t_name
+        #     ).first()
+        #
+        #     if existing:
+        #         master_teams.append(existing)
+        #     else:
+        #         t = Team(team_type=t_name)
+        #         db.session.add(t)
+        #         db.session.flush()
+        #         master_teams.append(t)
+        #
+        # db.session.commit()
+        #
+        # # =================================================
+        # # PROJECTS
+        # # =================================================
+        #
+        # projects = []
+        #
+        # for i in range(5):
+        #     project = Project(
+        #         project_code=f"P{100+i}",
+        #         project_name=fake.company(),
+        #         client_name=fake.company(),
+        #         status=random.choice(
+        #             ["ongoing", "completed", "hold"]
+        #         )
+        #     )
+        #
+        #     db.session.add(project)
+        #     projects.append(project)
+        #
+        # db.session.commit()
+        #
+        # # =================================================
+        # # PROJECT TEAMS
+        # # One designation + one team + one project
+        # # =================================================
+        #
+        # project_teams = []
+        #
+        # for project in projects:
+        #     for team in master_teams:
+        #         for designation in designations:
+        #
+        #             existing = ProjectTeam.query.filter_by(
+        #                 project_id=project.id,
+        #                 designation_id=designation.id,
+        #                 team_id=team.id
+        #             ).first()
+        #
+        #             if existing:
+        #                 project_teams.append(existing)
+        #                 continue
+        #
+        #             pt = ProjectTeam(
+        #                 project_id=project.id,
+        #                 designation_id=designation.id,
+        #                 team_id=team.id,
+        #                 user_id=random.choice(users).id
+        #                 if random.random() > 0.5
+        #                 else None
+        #             )
+        #
+        #             db.session.add(pt)
+        #             db.session.flush()
+        #             project_teams.append(pt)
+        #
+        # db.session.commit()
+        #
+        # # =================================================
+        # # PROJECT USER ROLES
+        # # =================================================
+        #
+        # for pt in project_teams:
+        #     existing = ProjectUserRole.query.filter_by(
+        #         user_id=pt.user_id,
+        #         project_id=pt.project_id,
+        #         designation_id=pt.designation_id,
+        #         team_id=pt.team_id  # FIXED
+        #     ).first()
+        #
+        #     if existing:
+        #         continue
+        #
+        #     pur = ProjectUserRole(
+        #         user_id=pt.user_id,
+        #         project_id=pt.project_id,
+        #         designation_id=pt.designation_id,
+        #         team_id=pt.team_id  # FIXED
+        #     )
+        #
+        #     db.session.add(pur)
+        #
+        # db.session.commit()
+        #
+        #
+        #
+        #
+        # print("✅ Seeding completed successfully!")
 
 
 if __name__ == "__main__":
