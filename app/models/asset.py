@@ -90,10 +90,10 @@ class Asset(db.Model):
     # RELATIONSHIPS
     # ==================================
 
-    category = db.relationship(
-        "CategoryMaster",
-        backref="assets",
-        lazy=True
+    category_code = db.Column(
+        db.String(50),
+        db.ForeignKey("category_master.fixed_code"),
+        nullable=False
     )
 
     cc_code = db.relationship(

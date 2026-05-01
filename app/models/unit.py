@@ -1,6 +1,3 @@
-# models/unit.py
-# SQLAlchemy ORM for Unit Master
-
 from app.extensions import db
 from datetime import datetime
 
@@ -26,27 +23,31 @@ class Unit(db.Model):
         unique=True,
         nullable=False
     )
-    # Example:
-    # Kilogram
-    # Meter
-    # Piece
-    # Box
 
     short_name = db.Column(
         db.String(50),
         nullable=False
     )
-    # Example:
-    # KG
-    # MTR
-    # PCS
-    # BX
 
     unit_type = db.Column(
         db.String(50),
         nullable=False
     )
     # Parent / Child
+
+    # ==================================
+    # UNIT CATEGORY
+    # ==================================
+
+    category_name = db.Column(
+        db.String(100),
+        nullable=False
+    )
+    # Example:
+    # Weight
+    # Length
+    # Count
+    # Volume
 
     # ==================================
     # PARENT UNIT DETAILS
@@ -57,29 +58,11 @@ class Unit(db.Model):
         db.ForeignKey("units.id"),
         nullable=True
     )
-    # if unit_type = Child
 
     parent_unit_multiply_factor = db.Column(
         db.Numeric(10, 2),
         nullable=True
     )
-    # Example:
-    # 1 Box = 10 Piece
-
-    # ==================================
-    # UNIT CATEGORY
-    # ==================================
-
-    unit_category = db.Column(
-        db.String(100),
-        nullable=False
-    )
-    # Example:
-    # SI
-    # CGS
-    # FPS
-    # Local
-    # Commercial
 
     # ==================================
     # SELF RELATIONSHIP

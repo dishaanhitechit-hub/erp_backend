@@ -42,9 +42,9 @@ class Vendor(db.Model):
     # VENDOR CATEGORY FROM CATEGORY MASTER
     # =====================================
 
-    category_id = db.Column(
-        db.Integer,
-        db.ForeignKey("category_master.id"),
+    category_code = db.Column(
+        db.String(50),
+        db.ForeignKey("category_master.fixed_code"),
         nullable=False
     )
 

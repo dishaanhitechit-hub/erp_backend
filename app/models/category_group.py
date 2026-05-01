@@ -1,8 +1,8 @@
 # models/category_group.py
-# SQLAlchemy ORM for Category & Group Master
 
 from app.extensions import db
 from datetime import datetime
+
 
 # =========================================
 # GROUP MASTER
@@ -21,10 +21,6 @@ class GroupMaster(db.Model):
         unique=True,
         nullable=False
     )
-    # Example:
-    # Revenue
-    # Direct Expenses
-    # Fixed Asset
 
     head_under = db.Column(
         db.String(100),
@@ -51,15 +47,15 @@ class GroupMaster(db.Model):
     created_by = db.Column(
         db.Integer,
         nullable=True
-    )  # FK to users later
+    )
 
     def __repr__(self):
         return f"<GroupMaster {self.group_name}>"
 
 
-
 # =========================================
 # CATEGORY MASTER
+# Centralized Business Category Registry
 # =========================================
 
 class CategoryMaster(db.Model):
@@ -70,22 +66,21 @@ class CategoryMaster(db.Model):
         primary_key=True
     )
 
+    fixed_code = db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False
+    )
+    # Example:
+    # RAW_MATERIAL
+    # FIXED_ASSET
+    # ELECTRICAL_VENDOR
+
     category_name = db.Column(
         db.String(150),
         unique=True,
         nullable=False
     )
-    # Example:
-    # Items
-    # Ledger
-    # Unit
-    # Tax
-
-    head_under = db.Column(
-        db.String(100),
-        nullable=False
-    )
-    # Items / Ledger / Unit / Tax
 
     status = db.Column(
         db.String(30),
@@ -106,9 +101,7 @@ class CategoryMaster(db.Model):
     created_by = db.Column(
         db.Integer,
         nullable=True
-    )  # FK to users later
+    )
 
     def __repr__(self):
         return f"<CategoryMaster {self.category_name}>"
-
-

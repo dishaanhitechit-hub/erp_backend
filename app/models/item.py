@@ -1,11 +1,3 @@
-# models/item.py
-# SQLAlchemy ORM for Item Code Master
-# models/item.py
-# Updated ORM:
-# 1. cc_category renamed to cc_name
-# 2. cc_name fetched from CCCode table
-# 3. item_category fetched from CategoryMaster table
-
 from app.extensions import db
 from datetime import datetime
 
@@ -30,16 +22,16 @@ class Item(db.Model):
         db.String(50),
         unique=True,
         nullable=False
-    )  # Auto Generated
+    )
 
-    # item_category fetched from category_master
-    category_id = db.Column(
-        db.Integer,
-        db.ForeignKey("category_master.id"),
+    # FK → category_master.fixed_code
+    category_code = db.Column(
+        db.String(50),
+        db.ForeignKey("category_master.fixed_code"),
         nullable=False
     )
 
-    # cc_name fetched from cc_codes table
+    # FK → cc_codes.id
     cc_code_id = db.Column(
         db.Integer,
         db.ForeignKey("cc_codes.id"),
@@ -56,10 +48,6 @@ class Item(db.Model):
         nullable=True
     )
 
-    # item_display_code:db.Column(
-    #     db.String(50),
-    #     nullable=False
-    # )
     # ==================================
     # UNIT + TAX DETAILS
     # ==================================
@@ -95,11 +83,13 @@ class Item(db.Model):
         backref="items",
         lazy=True
     )
+
     unit = db.relationship(
         "Unit",
         backref="items",
         lazy=True
     )
+
     # ==================================
     # STATUS + AUDIT
     # ==================================
@@ -123,7 +113,7 @@ class Item(db.Model):
     created_by = db.Column(
         db.Integer,
         nullable=True
-    )  # FK to users table later
+    )
 
     # ==================================
     # STRING REPRESENTATION

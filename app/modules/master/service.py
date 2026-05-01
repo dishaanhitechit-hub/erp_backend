@@ -82,7 +82,7 @@ def create_vendor(request):
         registered_address=data.get("registeredAddress"),
         corporate_address=data.get("corporateAddress"),
 
-        category_id=data.get("categoryId"),
+        category_code=data.get("categoryId"),
 
         pan=data.get("pan"),
         gstin=data.get("gstin"),
@@ -185,7 +185,7 @@ def get_all_vendors():
             vendor.vendor_category.category_name
             if vendor.vendor_category else None
         ),
-        "categoryId": vendor.category_id,
+        "categoryId": vendor.category_code,
         "pan": vendor.pan,
         "gstin": vendor.gstin,
         "stateCode": vendor.state_code,
@@ -230,7 +230,7 @@ def get_vendor_by_id(ledgerId):
             vendor.vendor_category.category_name
             if vendor.vendor_category else None
         ),
-        "categoryId": vendor.category_id,
+        "categoryId": vendor.category_code,
         "pan": vendor.pan,
         "gstin": vendor.gstin,
         "stateCode": vendor.state_code,
@@ -276,7 +276,7 @@ def update_vendor(vendorId, request):
     vendor.ledger_name = data.get("ledgerName", vendor.ledger_name)
     vendor.registered_address = data.get("registeredAddress", vendor.registered_address)
     vendor.corporate_address = data.get("corporateAddress", vendor.corporate_address)
-    vendor.category_id = data.get("categoryId", vendor.category_id)
+    vendor.category_code = data.get("categoryId", vendor.category_code)
 
     vendor.pan = data.get("pan", vendor.pan)
     vendor.gstin = data.get("gstin", vendor.gstin)
@@ -376,11 +376,11 @@ def create_item(data):
 
     item = Item(
         item_code=generate_item_code(),
-        category_id=data.get("itemCategoryId"),
+        category_code=data.get("itemCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         item_name=data.get("itemName"),
         item_description=data.get("itemDescription"),
-        unit=data.get("unit"),
+        unit_id=data.get("unit"),
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
     )
@@ -425,7 +425,7 @@ def get_all_items():
             "itemCode": item.item_code,
             "itemName": item.item_name,
             "itemDescription": item.item_description,
-            "itemCategoryId": item.category_id,
+            "itemCategoryId": item.category_code,
             "ccName": (
                 item.cc_code.cc_name
                 if item.cc_code else None
@@ -453,12 +453,12 @@ def get_item_by_id(itemId):
         "itemCode": item.item_code,
         "itemName": item.item_name,
         "itemDescription": item.item_description,
-        "unit": item.unit,
+        "unit": item.unit_id,
         "ccName": (
             item.cc_code.cc_name
             if item.cc_code else None
         ),
-        "itemCategoryId": item.category_id,
+        "itemCategoryId": item.category_code,
         "ccCodeId": item.cc_code_id,
         "hsnSac": item.hsn_sac,
         "gstPercentage": item.gst_percentage,
@@ -477,11 +477,11 @@ def update_item(itemId, data):
     if not item:
         return res("Item not found", [], 404)
 
-    item.category_id = data.get("itemCategoryId", item.category_id)
+    item.category_code = data.get("itemCategoryId", item.category_code)
     item.cc_code_id = data.get("ccCodeId", item.cc_code_id)
     item.item_name = data.get("itemName", item.item_name)
     item.item_description = data.get("itemDescription", item.item_description)
-    item.unit = data.get("unit", item.unit)
+    item.unit_id = data.get("unit", item.unit_id)
     item.hsn_sac = data.get("hsnSac", item.hsn_sac)
     item.gst_percentage = data.get("gstPercentage", item.gst_percentage)
 
@@ -519,11 +519,18 @@ def create_cc_code(data, createdBy=None):
     if existing:
         return res("CC Code already exists", [], 400)
 
+    # category = CategoryMaster.query.filter_by(
+    #     fixed_code=data.get("categoryFixedCode")
+    # ).first()
+    #
+    # if not category:
+    #     return res("Invalid Category Fixed Code", [], 400)
+
     ccCode = CCCode(
         cc_code=data.get("ccCode"),
         cc_name=data.get("ccName"),
         group_id=data.get("groupId"),
-        category_id=data.get("categoryId"),
+        category_code=data.get("categoryCode"),
         created_by=createdBy
     )
     try:
@@ -535,8 +542,9 @@ def create_cc_code(data, createdBy=None):
         "ccCode": ccCode.cc_code,
         "ccName": ccCode.cc_name,
         "ccGroupId": ccCode.group_id,
-        "ccCategoryId": ccCode.category_id,
+        # "ccCategoryId": ccCode.category_id,
         "ccCategoryName": ccCode.category.category_name,
+        "ccCategoryId": ccCode.category_code,
         "ccGroupName": ccCode.group.group_name
         }]
 
@@ -546,26 +554,48 @@ def create_cc_code(data, createdBy=None):
         return res("Something went wrong", [], 500)
 
 def get_all_cc_codes(data):
-    dropdownResponse = get_cc_code_list(data)
-    if dropdownResponse:
-        return dropdownResponse
+    categoryCode = data.get("categoryId") if data else None
+    search = data.get("search", "").strip() if data else ""
 
-    ccCodes = CCCode.query.order_by(CCCode.id.desc()).all()
+    query = CCCode.query
+
+    # filter by category fixed_code if sent
+    if categoryCode:
+        query = query.filter_by(
+            category_code=categoryCode
+        )
+
+    # search by cc code or cc name
+    if search:
+        query = query.filter(
+            db.or_(
+                CCCode.cc_code.ilike(f"%{search}%"),
+                CCCode.cc_name.ilike(f"%{search}%")
+            )
+        )
+
+    ccCodes = query.order_by(
+        CCCode.id.desc()
+    ).all()
 
     data = []
 
     for cc in ccCodes:
         data.append({
             "ccId": cc.id,
-        "ccCode": cc.cc_code,
-        "ccName": cc.cc_name,
-        "ccGroupId": cc.group_id,
-        "ccCategoryId": cc.category_id,
-        "ccCategoryName": cc.category.category_name,
-        "ccGroupName": cc.group.group_name
+            "ccCode": cc.cc_code,
+            "ccName": cc.cc_name,
+            "ccGroupId": cc.group_id,
+            "ccCategoryId": cc.category_code,   # fixed_code
+            "ccCategoryName": cc.category.category_name if cc.category else None,
+            "ccGroupName": cc.group.group_name if cc.group else None
         })
 
-    return res("CC Code list fetched successfully", data, 200)
+    return res(
+        "CC Code list fetched successfully",
+       data,
+        200
+    )
 
 
 def get_cc_code_by_id(ccId):
@@ -579,9 +609,10 @@ def get_cc_code_by_id(ccId):
         "ccCode": cc.cc_code,
         "ccName": cc.cc_name,
         "ccGroupId": cc.group_id,
-        "ccCategoryId": cc.category_id,
-        "ccCategoryName": cc.category.category_name,
-        "ccGroupName": cc.group.group_name
+        "ccCategoryId": cc.category_code,
+        "ccCategoryFixedCode": cc.category.fixed_code,
+        "ccCategoryName": cc.category.category_name if cc.category else None,
+        "ccGroupName": cc.group.group_name if cc.group else None
     }]
 
     return res("CC Code fetched successfully", data, 200)
@@ -605,7 +636,7 @@ def update_cc_code(ccId, data):
 
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = data.get("groupId", cc.group_id)
-    cc.category_id = data.get("categoryId", cc.category_id)
+    cc.category_code = data.get("categoryId", cc.category_code)
     cc.cc_code = newCcCode
     try:
         db.session.commit()
@@ -614,9 +645,9 @@ def update_cc_code(ccId, data):
         "ccCode": cc.cc_code ,
         "ccName": cc.cc_name,
         "ccGroupId": cc.group_id,
-        "ccCategoryId": cc.category_id,
-        "ccCategoryName": cc.category.category_name,
-        "ccGroupName": cc.group.group_name }]
+        "ccCategoryId": cc.category_code,
+        "ccCategoryName": cc.category.category_name if cc.category else None,
+        "ccGroupName": cc.group.group_name if cc.group else None}]
         return res(
         "CC Code updated successfully",
         data,
@@ -673,32 +704,46 @@ def create_group(data):
 
 
 def create_category(data):
+
     existing = CategoryMaster.query.filter_by(
         category_name=data.get("categoryName")
     ).first()
 
     if existing:
         return res("Category already exists", [], 400)
+
     if hasattr(g, "current_user"):
         createdBy = g.current_user.get("id")
+    else:
+        createdBy = None
+
     category = CategoryMaster(
+        fixed_code=data.get("categoryCode"),
         category_name=data.get("categoryName"),
-        head_under=data.get("headUnder"),
         created_by=createdBy
     )
 
-    db.session.add(category)
-    db.session.commit()
+    try:
+        db.session.add(category)
+        db.session.commit()
 
-    return res(
-        "Category created successfully",
-        [{
-            "categoryId": category.id,
-            "categoryName": category.category_name,
-            "headUnder": category.head_under
-        }],
-        201
-    )
+        return res(
+            "Category created successfully",
+            [{
+                "categoryId": category.id,
+                "categoryCode": category.fixed_code,
+                "categoryName": category.category_name
+            }],
+            201
+        )
+
+    except Exception:
+        db.session.rollback()
+        return res(
+            "Failed to create category",
+            [],
+            500
+        )
 
 def update_group(groupId, data):
     group = GroupMaster.query.get(groupId)
@@ -726,25 +771,44 @@ def update_group(groupId, data):
 
 
 def update_category(categoryId, data):
+
     category = CategoryMaster.query.get(categoryId)
 
     if not category:
         return res("Category not found", [], 404)
 
-    category.category_name = data.get("categoryName", category.category_name)
-    category.head_under = data.get("headUnder", category.head_under)
-
-    db.session.commit()
-
-    return res(
-        "Category updated successfully",
-        [{
-            "categoryId": category.id,
-            "categoryName": category.category_name,
-            "headUnder": category.head_under
-        }],
-        200
+    category.fixed_code = data.get(
+        "categoryCode",
+        category.fixed_code
     )
+
+    category.category_name = data.get(
+        "categoryName",
+        category.category_name
+    )
+
+    try:
+        db.session.commit()
+
+        return res(
+            "Category updated successfully",
+            [{
+                "categoryId": category.id,
+                "categoryCode": category.fixed_code,
+                "categoryName": category.category_name
+            }],
+            200
+        )
+
+    except Exception:
+        db.session.rollback()
+
+        return res(
+            "Failed to update category",
+            [],
+            500
+        )
+
 
 
 # GET ALL GROUPS
@@ -777,9 +841,7 @@ def get_all_groups():
 
 
 def get_all_categories(data):
-    dropdownResponse = get_category_by_head_under(data)
-    if dropdownResponse:
-        return dropdownResponse
+
     categories = CategoryMaster.query.order_by(
         CategoryMaster.id.desc()
     ).all()
@@ -789,8 +851,8 @@ def get_all_categories(data):
     for category in categories:
         data.append({
             "categoryId": category.id,
+            "categoryCode": category.fixed_code,
             "categoryName": category.category_name,
-            "headUnder": category.head_under,
             "status": category.status
         })
 
@@ -799,7 +861,6 @@ def get_all_categories(data):
         data,
         200
     )
-
 
 # same code for Asset:
 # Item -> Asset
@@ -814,11 +875,11 @@ def create_asset(data):
 
     asset = Asset(
         asset_code=generate_asset_code(),
-        category_id=data.get("assetCategoryId"),
+        category_code=data.get("assetCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         asset_name=data.get("assetName"),
         asset_description=data.get("assetDescription"),
-        unit=data.get("unit"),
+        unit_id=data.get("unit"),
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
     )
@@ -863,7 +924,7 @@ def get_all_assets():
             "assetCode": asset.asset_code,
             "assetName": asset.asset_name,
             "assetDescription": asset.asset_description,
-            "assetCategoryId": asset.category_id,
+            "assetCategoryId": asset.category_code,
             "ccName": (
                 asset.cc_code.cc_name
                 if asset.cc_code else None
@@ -892,12 +953,12 @@ def get_asset_by_id(assetId):
         "assetCode": asset.asset_code,
         "assetName": asset.asset_name,
         "assetDescription": asset.asset_description,
-        "unit": asset.unit,
+        "unit": asset.unit_id,
         "ccName": (
             asset.cc_code.cc_name
             if asset.cc_code else None
         ),
-        "assetCategoryId": asset.category_id,
+        "assetCategoryId": asset.category_code,
         "ccCodeId": asset.cc_code_id,
         "hsnSac": asset.hsn_sac,
         "gstPercentage": asset.gst_percentage,
@@ -919,11 +980,11 @@ def update_asset(assetId, data):
     if not asset:
         return res("Asset not found", [], 404)
 
-    asset.category_id = data.get("assetCategoryId", asset.category_id)
+    asset.category_code = data.get("assetCategoryId", asset.category_code)
     asset.cc_code_id = data.get("ccCodeId", asset.cc_code_id)
     asset.asset_name = data.get("assetName", asset.asset_name)
     asset.asset_description = data.get("assetDescription", asset.asset_description)
-    asset.unit = data.get("unit", asset.unit)
+    asset.unit_id = data.get("unit", asset.unit_id)
     asset.hsn_sac = data.get("hsnSac", asset.hsn_sac)
     asset.gst_percentage = data.get("gstPercentage", asset.gst_percentage)
 
@@ -958,13 +1019,26 @@ def delete_asset(assetId):
 # service.py
 
 def create_unit(data):
+    unitType = data.get("unitType")
+
     unit = Unit(
         unit_name=data.get("unitName"),
         short_name=data.get("shortName"),
-        unit_type=data.get("unitType"),
-        parent_unit_id=data.get("parentUnitId"),
-        parent_unit_multiply_factor=data.get("parentUnitMultiplyFactor"),
-        unit_category=data.get("unitCategory")
+        unit_type=unitType,
+
+        # only for Child unit
+        parent_unit_id=(
+            data.get("parentUnitId")
+            if unitType == "Child" else None
+        ),
+
+        parent_unit_multiply_factor=(
+            data.get("parentUnitMultiplyFactor")
+            if unitType == "Child" else None
+        ),
+
+        # category fixed_code
+        category_code=data.get("categoryId")
     )
 
     if hasattr(g, "current_user"):
@@ -980,28 +1054,45 @@ def create_unit(data):
         [{
             "unitId": unit.id,
             "unitName": unit.unit_name,
-            "shortName": unit.short_name
+            "shortName": unit.short_name,
+            "unitType": unit.unit_type,
+            "categoryId": unit.category_code,
+            "categoryName": unit.category.category_name
         }],
         201
     )
 
 
 def get_all_units():
-    units = Unit.query.order_by(Unit.id.desc()).all()
+    units = Unit.query.order_by(
+        Unit.id.desc()
+    ).all()
 
     data = [{
         "unitId": unit.id,
         "unitName": unit.unit_name,
         "shortName": unit.short_name,
         "unitType": unit.unit_type,
+
         "parentUnitId": unit.parent_unit_id,
-        "parentUnitName": unit.parent_unit.unit_name if unit.parent_unit else None,
+        "parentUnitName": (
+            unit.parent_unit.unit_name
+            if unit.parent_unit else None
+        ),
+
         "parentUnitMultiplyFactor": unit.parent_unit_multiply_factor,
-        "unitCategory": unit.unit_category,
+
+        "categoryId": unit.category_code,
+        "categoryName": unit.category.category_name,
+
         "status": unit.status
     } for unit in units]
 
-    return res("Unit list fetched successfully", data, 200)
+    return res(
+        "Unit list fetched successfully",
+        data,
+        200
+    )
 
 
 def get_unit_by_id(unitId):
@@ -1017,10 +1108,18 @@ def get_unit_by_id(unitId):
             "unitName": unit.unit_name,
             "shortName": unit.short_name,
             "unitType": unit.unit_type,
+
             "parentUnitId": unit.parent_unit_id,
-            "parentUnitName": unit.parent_unit.unit_name if unit.parent_unit else None,
+            "parentUnitName": (
+                unit.parent_unit.unit_name
+                if unit.parent_unit else None
+            ),
+
             "parentUnitMultiplyFactor": unit.parent_unit_multiply_factor,
-            "unitCategory": unit.unit_category,
+
+            "categoryId": unit.category_code,
+            "categoryName": unit.category.category_name,
+
             "status": unit.status
         }],
         200
@@ -1033,15 +1132,37 @@ def update_unit(unitId, data):
     if not unit:
         return res("Unit not found", [], 404)
 
-    unit.unit_name = data.get("unitName", unit.unit_name)
-    unit.short_name = data.get("shortName", unit.short_name)
-    unit.unit_type = data.get("unitType", unit.unit_type)
-    unit.parent_unit_id = data.get("parentUnitId", unit.parent_unit_id)
-    unit.parent_unit_multiply_factor = data.get(
-        "parentUnitMultiplyFactor",
-        unit.parent_unit_multiply_factor
+    unitType = data.get("unitType", unit.unit_type)
+
+    unit.unit_name = data.get(
+        "unitName",
+        unit.unit_name
     )
-    unit.unit_category = data.get("unitCategory", unit.unit_category)
+
+    unit.short_name = data.get(
+        "shortName",
+        unit.short_name
+    )
+
+    unit.unit_type = unitType
+
+    # only for Child
+    unit.parent_unit_id = (
+        data.get("parentUnitId")
+        if unitType == "Child"
+        else None
+    )
+
+    unit.parent_unit_multiply_factor = (
+        data.get("parentUnitMultiplyFactor")
+        if unitType == "Child"
+        else None
+    )
+
+    unit.category_code = data.get(
+        "categoryId",
+        unit.category_code
+    )
 
     db.session.commit()
 
@@ -1049,7 +1170,9 @@ def update_unit(unitId, data):
         "Unit updated successfully",
         [{
             "unitId": unit.id,
-            "unitName": unit.unit_name
+            "unitName": unit.unit_name,
+            "categoryId": unit.category_code,
+            "categoryName": unit.category.category_name
         }],
         200
     )
@@ -1064,4 +1187,8 @@ def delete_unit(unitId):
     db.session.delete(unit)
     db.session.commit()
 
-    return res("Unit deleted successfully", [], 200)
+    return res(
+        "Unit deleted successfully",
+        [],
+        200
+    )
