@@ -880,7 +880,7 @@ def create_asset(data):
         cc_code_id=data.get("ccCodeId"),
         asset_name=data.get("assetName"),
         asset_description=data.get("assetDescription"),
-        unit=data.get("unit"),
+        unit_id=data.get("unit"),
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
     )
@@ -985,7 +985,7 @@ def update_asset(assetId, data):
     asset.cc_code_id = data.get("ccCodeId", asset.cc_code_id)
     asset.asset_name = data.get("assetName", asset.asset_name)
     asset.asset_description = data.get("assetDescription", asset.asset_description)
-    asset.unit_id = data.get("unit", asset.unit)
+    asset.unit_id = data.get("unit", asset.unit_id)
     asset.hsn_sac = data.get("hsnSac", asset.hsn_sac)
     asset.gst_percentage = data.get("gstPercentage", asset.gst_percentage)
 

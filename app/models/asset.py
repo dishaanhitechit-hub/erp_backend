@@ -56,7 +56,7 @@ class Asset(db.Model):
     # ASSET DETAILS
     # ==================================
 
-    unit = db.Column(
+    unit_id = db.Column(
         db.Integer,
         db.ForeignKey("units.id"),
         nullable=True
@@ -104,7 +104,7 @@ class Asset(db.Model):
     )
     unit = db.relationship(
         "Unit",
-        backref="items",
+        backref="assets",
         lazy=True
     )
     # ==================================
