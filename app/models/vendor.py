@@ -127,6 +127,8 @@ class Vendor(db.Model):
 
     vendor_category = db.relationship(
         "CategoryMaster",
+        primaryjoin="Vendor.category_code == CategoryMaster.fixed_code",
+        foreign_keys=[category_code],
         backref="vendors",
         lazy=True
     )
