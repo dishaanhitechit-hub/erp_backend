@@ -876,7 +876,7 @@ def create_asset(data):
 
     asset = Asset(
         asset_code=generate_asset_code(),
-        category_code=data.get("assetCategoryId"),
+        category_code=data.get("itemCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         asset_name=data.get("assetName"),
         asset_description=data.get("assetDescription"),
