@@ -925,7 +925,7 @@ def get_all_assets():
             "assetCode": asset.asset_code,
             "assetName": asset.asset_name,
             "assetDescription": asset.asset_description,
-            "assetCategoryId": asset.category_code,
+            "itemCategoryId": asset.category_code,
             "ccName": (
                 asset.cc_code.cc_name
                 if asset.cc_code else None
@@ -959,7 +959,7 @@ def get_asset_by_id(assetId):
             asset.cc_code.cc_name
             if asset.cc_code else None
         ),
-        "assetCategoryId": asset.category_code,
+        "itemCategoryId": asset.category_code,
         "ccCodeId": asset.cc_code_id,
         "hsnSac": asset.hsn_sac,
         "gstPercentage": asset.gst_percentage,
@@ -981,7 +981,7 @@ def update_asset(assetId, data):
     if not asset:
         return res("Asset not found", [], 404)
 
-    asset.category_code = data.get("assetCategoryId", asset.category_code)
+    asset.category_code = data.get("itemCategoryId", asset.category_code)
     asset.cc_code_id = data.get("ccCodeId", asset.cc_code_id)
     asset.asset_name = data.get("assetName", asset.asset_name)
     asset.asset_description = data.get("assetDescription", asset.asset_description)
