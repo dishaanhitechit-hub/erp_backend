@@ -29,11 +29,11 @@ class Asset(db.Model):
     )  # Auto Generated
 
     # asset category fetched from category_master
-    category_id = db.Column(
-        db.Integer,
-        db.ForeignKey("category_master.id"),
-        nullable=False
-    )
+    # category_id = db.Column(
+    #     db.Integer,
+    #     db.ForeignKey("category_master.id"),
+    #     nullable=False
+    # )
 
     # cc name fetched from cc_codes table
     cc_code_id = db.Column(
