@@ -530,7 +530,7 @@ def create_cc_code(data, createdBy=None):
         cc_code=data.get("ccCode"),
         cc_name=data.get("ccName"),
         group_id=data.get("groupId"),
-        category_code=data.get("categoryCode"),
+        category_code=data.get("categoryId"),
         created_by=createdBy
     )
     try:
@@ -549,8 +549,9 @@ def create_cc_code(data, createdBy=None):
         }]
 
         return res("CC Code created successfully",data,201)
-    except Exception :
+    except Exception as e :
         db.session.rollback()
+        print(e)
         return res("Something went wrong", [], 500)
 
 def get_all_cc_codes(data):

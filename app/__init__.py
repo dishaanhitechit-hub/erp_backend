@@ -28,6 +28,12 @@ def create_app():
     from .modules.master.routes import master_bp
     app.register_blueprint(master_bp, url_prefix="/master")
 
+    from .modules.resources.indent.routes import indent_bp
+    app.register_blueprint(indent_bp, url_prefix="/resource/indent")
+
+    from .modules.resources.enquiry.routes import enquiry_bp
+    app.register_blueprint(enquiry_bp, url_prefix="/resource/enquiry")
+
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
 
