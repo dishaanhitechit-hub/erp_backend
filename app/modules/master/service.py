@@ -182,7 +182,7 @@ def get_all_vendors():
         "corporateAddress": vendor.corporate_address,
 
         "categoryName": (
-            vendor.vendor_category.category_name
+            vendor.category_master.catgory_name
             if vendor.vendor_category else None
         ),
         "categoryId": vendor.category_code,
