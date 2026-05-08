@@ -97,6 +97,13 @@ class Asset(db.Model):
         nullable=False
     )
 
+    category = db.relationship(
+    "CategoryMaster",
+    backref="assets",
+    lazy=True
+)
+
+    
     cc_code = db.relationship(
         "CCCode",
         backref="assets",
