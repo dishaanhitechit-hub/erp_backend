@@ -13,6 +13,7 @@ from app.models.project_role import ProjectUserRole
 from app.models.designation import Designation
 from app.extensions import db
 from app.response import res
+from app.cloudinary_uploader import *
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
@@ -31,8 +32,8 @@ def create_user(request): # Test done & pass
 
 
     # file
-    file = request.files.get("signature")
-
+    # file = request.files.get("signature")
+    signatureFile = request.files.get("signatureFile")
     # role check
     role = Role.query.filter_by(name=role_name).first()
     if not role:
@@ -56,17 +57,15 @@ def create_user(request): # Test done & pass
     user.set_password(password)
     base_url = request.host_url
     # save signature file
-    if file:
-        if not os.path.exists(UPLOAD_FOLDER):
-            os.makedirs(UPLOAD_FOLDER)
 
-        ext = file.filename.split('.')[-1]
-        filename = f"{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
 
-        file.save(filepath)
-
-        user.signature = filename  # store path
+    if signatureFile:
+        user.signature = upload_file_to_cloudinary(
+            file=signatureFile,
+            mainFolder="users",
+            subFolder=user.user_code,
+            fileName="signature"
+        )
 
     db.session.add(user)
     db.session.commit()
@@ -80,7 +79,7 @@ def create_user(request): # Test done & pass
         "whatsapp": user.wp_mobile,
         "role":user.global_role.name if user.global_role else None,
         "status":user.is_active,
-        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+        "signatureUrl": user.signature
 
     }]
     return res(
