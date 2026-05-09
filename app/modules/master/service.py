@@ -1072,6 +1072,7 @@ def create_unit(data):
 
 
 def get_all_units(filters=None):
+
     query = Unit.query
 
     if filters:
@@ -1081,6 +1082,7 @@ def get_all_units(filters=None):
         # ==================================
 
         if filters.get("unitType"):
+
             query = query.filter(
                 Unit.unit_type == filters.get("unitType")
             )
@@ -1090,10 +1092,16 @@ def get_all_units(filters=None):
         # ==================================
 
         if filters.get("categoryId"):
+
             query = query.filter(
                 Unit.category_code == filters.get("categoryId")
             )
-    units = Unit.query.order_by(
+
+    # ==================================
+    # FINAL QUERY
+    # ==================================
+
+    units = query.order_by(
         Unit.id.desc()
     ).all()
 
@@ -1104,17 +1112,22 @@ def get_all_units(filters=None):
         "unitType": unit.unit_type,
 
         "parentUnitId": unit.parent_unit_id,
+
         "parentUnitName": (
             unit.parent_unit.unit_name
             if unit.parent_unit else None
         ),
 
-        "parentUnitMultiplyFactor": unit.parent_unit_multiply_factor,
+        "parentUnitMultiplyFactor":
+            unit.parent_unit_multiply_factor,
 
         "categoryId": unit.category_code,
-        "categoryName": unit.category.category_name,
+
+        "categoryName":
+            unit.category.category_name,
 
         "status": unit.status
+
     } for unit in units]
 
     return res(
