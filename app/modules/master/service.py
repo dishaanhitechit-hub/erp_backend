@@ -1071,7 +1071,28 @@ def create_unit(data):
     )
 
 
-def get_all_units():
+def get_all_units(filters=None):
+    query = Unit.query
+
+    if filters:
+
+        # ==================================
+        # FILTER BY UNIT TYPE
+        # ==================================
+
+        if filters.get("unitType"):
+            query = query.filter(
+                Unit.unit_type == filters.get("unitType")
+            )
+
+        # ==================================
+        # FILTER BY CATEGORY
+        # ==================================
+
+        if filters.get("categoryId"):
+            query = query.filter(
+                Unit.category_code == filters.get("categoryId")
+            )
     units = Unit.query.order_by(
         Unit.id.desc()
     ).all()

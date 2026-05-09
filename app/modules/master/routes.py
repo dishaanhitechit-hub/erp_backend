@@ -227,8 +227,13 @@ def unit_create():
 @login_required
 @require_admin
 def unit_list():
-    return get_all_units()
 
+    filters = {
+        "unitType": request.args.get("unitType"),
+        "categoryId": request.args.get("categoryId")
+    }
+
+    return get_all_units(filters)
 
 @master_bp.route("/unit/<int:unitId>", methods=["GET"])
 @login_required
