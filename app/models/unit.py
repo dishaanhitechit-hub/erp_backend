@@ -39,9 +39,16 @@ class Unit(db.Model):
     # UNIT CATEGORY
     # ==================================
 
-    category_name = db.Column(
-        db.String(100),
+    category_code = db.Column(
+        db.String(50),
+        db.ForeignKey("category_master.fixed_code"),
         nullable=False
+    )
+
+    category = db.relationship(
+        "CategoryMaster",
+        backref="units",
+        lazy=True
     )
     # Example:
     # Weight

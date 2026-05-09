@@ -1033,6 +1033,7 @@ def create_unit(data):
             if unitType == "Child" else None
         ),
 
+
         parent_unit_multiply_factor=(
             data.get("parentUnitMultiplyFactor")
             if unitType == "Child" else None
@@ -1041,7 +1042,13 @@ def create_unit(data):
         # category fixed_code
         category_code=data.get("categoryId")
     )
-
+    if unitType == "Child":
+        if not data.get("parentUnitId"):
+            return res(
+                "Parent Unit required for Child type",
+                [],
+                400
+            )
     if hasattr(g, "current_user"):
         unit.created_by = g.current_user.get("id")
     else:
