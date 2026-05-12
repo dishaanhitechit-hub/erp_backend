@@ -10,8 +10,10 @@ class Config:
     DB_NAME = os.getenv("DB_NAME")
     DB_PORT = os.getenv("DB_PORT")
     JWT_ACCESS_TOKEN_EXPIRES = False
-    SQLALCHEMY_DATABASE_URI = (
-        f"postgresql://postgres:JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe@yamabiko.proxy.rlwy.net:57509/railway"
-    )
+    # SQLALCHEMY_DATABASE_URI = (
+    #     f"postgresql://postgres:JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe@yamabiko.proxy.rlwy.net:57509/railway"
+    # )
+
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
