@@ -11,7 +11,7 @@ class Config:
     DB_PORT = os.getenv("DB_PORT")
     JWT_ACCESS_TOKEN_EXPIRES = False
     SQLALCHEMY_DATABASE_URI = (
-        f"postgresql://postgres:RdhKCuXIPXHDwIMGfTfSfOLPyWjRazSc@hopper.proxy.rlwy.net:18844/railway"
+        f"postgresql://postgres:JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe@yamabiko.proxy.rlwy.net:57509/railway"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
