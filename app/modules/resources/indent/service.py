@@ -50,10 +50,6 @@ def create_indent(data, created_by=None):
 
     try:
 
-        # ==========================================
-        # VALIDATE PROJECT
-        # ==========================================
-
         project = Project.query.filter_by(
             project_code=data.get("projectCode")
         ).first()
@@ -260,12 +256,15 @@ def get_indent_list(filters=None):
 
                 "categoryCode": row.category_code,
 
+                "indentCategoryName": row.category.category_name,
+
                 "priority": row.priority,
 
                 "indentStatus": row.indent_status,
 
                 "orderStatus": row.order_status,
-
+                "indentDate" : row.indent_date,
+                "placedBy" : row.creator.username,
                 "createdAt": row.created_at.strftime(
                     "%Y-%m-%d %H:%M:%S"
                 ) if row.created_at else None

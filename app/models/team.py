@@ -9,7 +9,7 @@ class ProjectTeam(db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"))
     designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"))
 
-    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"))  # "SITE", "HO"
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"))  # "SITE 2", "HO 1"
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 

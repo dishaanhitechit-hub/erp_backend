@@ -13,3 +13,9 @@ from .indent_master import *
 from .enquiry_item import *
 from .enquiry_master import *
 from .enquiry_term import *
+from .project_user_permission import *
+from .permission_action import *
+from .project_designation_permission import *
+from .sub_module import *
+from .main_module import *
+from .feature_page import *

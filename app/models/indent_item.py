@@ -87,7 +87,14 @@ class IndentItem(db.Model):
 
     created_by = db.Column(
         db.Integer,
+        db.ForeignKey("users.id"),
         nullable=True
+    )
+
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by],
+        lazy=True
     )
 
     # ==================================

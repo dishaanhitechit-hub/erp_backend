@@ -341,6 +341,30 @@ def seed_category_master():
 
     print("Category Master seeded successfully")
 
+from app.extensions import db
+from app.models.team import *
+
+
+def seed_fixed_teams():
+
+    teams = [
+        {"id": 1, "name": "HO"},
+        {"id": 2, "name": "Site"},
+    ]
+
+    for item in teams:
+
+        exists = Team.query.get(item["id"])
+
+        if not exists:
+            team = Team(
+                id=item["id"],
+                name=item["name"]
+            )
+
+            db.session.add(team)
+
+    db.session.commit()
 
 
 if __name__ == "__main__":
@@ -348,5 +372,6 @@ if __name__ == "__main__":
     app = create_app()
 
     with app.app_context():
-        seed_category_master()
-        seed_data()
+        # seed_category_master()
+        # seed_data()
+        seed_fixed_teams()
