@@ -11,6 +11,10 @@ from app.models.og_team import Team
 from app.models.team import ProjectTeam
 from app.models.project_role import ProjectUserRole
 from app.models.designation import Designation
+from app.models.project_designation_permission import *
+from app.models.project_user_permission import *
+from app.models.permission_action import *
+from app.models.feature_page import *
 from app.extensions import db
 from app.response import res
 from app.cloudinary_uploader import *
@@ -297,20 +301,59 @@ def get_roles_by_project_code(projectCode):
     return res("Succesfully retrieved project roles", data=data,code=200)
 
 def update_roles_by_project_code(projectCode, data):
-    project = Project.query.filter_by(project_code=projectCode).first()
+
+    project = Project.query.filter_by(
+        project_code=projectCode
+    ).first()
 
     if not project:
-        return res("Project not found", [], 404)
+        return res(
+            "Project not found",
+            [],
+            404
+        )
 
-    role_user_map = data.get("roleUserMap", [])
+    role_user_map = data.get(
+        "roleUserMap",
+        []
+    )
 
     if not role_user_map:
-        return res("roleUserMap is required", [], 400)
+        return res(
+            "roleUserMap is required",
+            [],
+            400
+        )
 
     for item in role_user_map:
-        designation_id = item.get("designationId")
-        team_id = item.get("teamId")
-        user_id = item.get("userId")
+
+        designation_id = item.get(
+            "designationId"
+        )
+
+        team_id = item.get(
+            "teamId"
+        )
+
+        user_id = item.get(
+            "userId"
+        )
+
+        # DEFAULT DESIGNATION PERMISSIONS
+        permissions = item.get(
+            "permissions",
+            {}
+        )
+
+        # USER OVERRIDE
+        user_permissions = item.get(
+            "userPermissions",
+            {}
+        )
+
+        # ==================================================
+        # CREATE / UPDATE PROJECT USER ROLE
+        # ==================================================
 
         role = ProjectUserRole.query.filter_by(
             project_id=project.id,
@@ -318,13 +361,27 @@ def update_roles_by_project_code(projectCode, data):
             team_id=team_id
         ).first()
 
-        if not role:
-            continue
+        if role:
 
-        # update ProjectUserRole
-        role.user_id = user_id
+            role.user_id = user_id
 
-        # update ProjectTeam also
+        else:
+
+            role = ProjectUserRole(
+                project_id=project.id,
+                designation_id=designation_id,
+                team_id=team_id,
+                user_id=user_id
+            )
+
+            db.session.add(role)
+
+            db.session.flush()
+
+        # ==================================================
+        # UPDATE PROJECT TEAM
+        # ==================================================
+
         pt = ProjectTeam.query.filter_by(
             project_id=project.id,
             designation_id=designation_id,
@@ -334,13 +391,179 @@ def update_roles_by_project_code(projectCode, data):
         if pt:
             pt.user_id = user_id
 
+        # ==================================================
+        # DESIGNATION PERMISSIONS
+        # ==================================================
+
+        for permission_key, allowed in permissions.items():
+
+            try:
+
+                page_code, action_name = (
+                    permission_key.split(".")
+                )
+
+            except ValueError:
+                continue
+
+            page = FeaturePage.query.filter_by(
+                page_code=page_code
+            ).first()
+
+            if not page:
+                continue
+
+            action = PermissionAction.query.filter_by(
+                action_name=action_name
+            ).first()
+
+            if not action:
+                continue
+
+            existing_permission = (
+                ProjectDesignationPermission.query
+                .filter_by(
+                    project_id=project.id,
+                    designation_id=designation_id,
+                    page_id=page.id,
+                    action_id=action.id
+                )
+                .first()
+            )
+
+            # ==========================================
+            # NULL => DELETE
+            # ==========================================
+
+            if allowed is None:
+
+                if existing_permission:
+                    db.session.delete(
+                        existing_permission
+                    )
+
+                continue
+
+            # ==========================================
+            # UPDATE EXISTING
+            # ==========================================
+
+            if existing_permission:
+
+                existing_permission.allowed = (
+                    allowed
+                )
+
+            # ==========================================
+            # CREATE NEW
+            # ==========================================
+
+            else:
+
+                permission = (
+                    ProjectDesignationPermission(
+                        project_id=project.id,
+                        designation_id=designation_id,
+                        page_id=page.id,
+                        action_id=action.id,
+                        allowed=allowed
+                    )
+                )
+
+                db.session.add(permission)
+
+        # ==================================================
+        # USER OVERRIDE PERMISSIONS
+        # ==================================================
+
+        for permission_key, allowed in user_permissions.items():
+
+            try:
+
+                page_code, action_name = (
+                    permission_key.split(".")
+                )
+
+            except ValueError:
+                continue
+
+            page = FeaturePage.query.filter_by(
+                page_code=page_code
+            ).first()
+
+            if not page:
+                continue
+
+            action = PermissionAction.query.filter_by(
+                action_name=action_name
+            ).first()
+
+            if not action:
+                continue
+
+            existing_permission = (
+                ProjectUserPermission.query
+                .filter_by(
+                    project_user_role_id=role.id,
+                    page_id=page.id,
+                    action_id=action.id
+                )
+                .first()
+            )
+
+            # ==========================================
+            # NULL => DELETE OVERRIDE
+            # ==========================================
+
+            if allowed is None:
+
+                if existing_permission:
+                    db.session.delete(
+                        existing_permission
+                    )
+
+                continue
+
+            # ==========================================
+            # UPDATE OVERRIDE
+            # ==========================================
+
+            if existing_permission:
+
+                existing_permission.allowed = (
+                    allowed
+                )
+
+            # ==========================================
+            # CREATE OVERRIDE
+            # ==========================================
+
+            else:
+
+                permission = (
+                    ProjectUserPermission(
+                        project_user_role_id=role.id,
+                        page_id=page.id,
+                        action_id=action.id,
+                        allowed=allowed
+                    )
+                )
+
+                db.session.add(permission)
+
     db.session.commit()
-    data=[
+
+    response_data = [
         {
             "projectId": project.id
         }
     ]
-    return res("Roles updated successfully", data, 200)
+
+    return res(
+        "Roles and permissions updated successfully",
+        response_data,
+        200
+    )
 
 
 # Add Designation

@@ -104,7 +104,7 @@ def create_indent(data, created_by=None):
 
             remarks=data.get("remarks"),
 
-            indent_status="Draft",
+            indent_status=data.get("status"),
 
             order_status="Pending",
 
@@ -451,7 +451,7 @@ def update_indent(indent_id, data, updated_by=None):
         # UPDATE MASTER
         # ==========================================
 
-        indent.project_code = data.get("projectCode")
+        # indent.project_code = data.get("projectCode")
 
         indent.category_code = data.get("categoryCode")
 
@@ -472,7 +472,7 @@ def update_indent(indent_id, data, updated_by=None):
         indent.sale_order_no = data.get(
             "saleOrderNo"
         )
-
+        indent.indent_status=data.get("status")
         indent.remarks = data.get("remarks")
 
         indent.updated_by = updated_by
@@ -487,9 +487,9 @@ def update_indent(indent_id, data, updated_by=None):
             indent_id=indent.id
         ).delete()
 
-        # ==========================================
+
         # ADD NEW ITEMS
-        # ==========================================
+
 
         for row in items:
 
@@ -619,9 +619,9 @@ def submit_indent(indent_id, submitted_by=None):
                 400
             )
 
-        # ==========================================
+
         # SUBMIT
-        # ==========================================
+
 
         indent.indent_status = "Submitted"
 
