@@ -550,7 +550,7 @@ def update_roles_by_project_code(projectCode, data):
                     project_id=project.id,
                     designation_id=designation_id,
                     page_id=page.id,
-                    user_id=user_id,
+                    # user_id=user_id,
                     action_id=action.id
                 )
                 .first()
@@ -574,7 +574,7 @@ def update_roles_by_project_code(projectCode, data):
             # ==========================================
 
             if existing_permission:
-
+                existing_permission.user_id = user_id
                 existing_permission.allowed = (
                     allowed
                 )
