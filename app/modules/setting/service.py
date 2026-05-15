@@ -276,20 +276,144 @@ def get_roles_by_project_code(projectCode):
     project_roles = ProjectUserRole.query.filter_by(project_id=project.id).all()
 
 
-    roleUserMap = [
-        {
-            "id": r.id,
-            "userId": r.user_id,
-            "userName": r.user.username if r.user else None,
-            "loginUserName": r.user.login_username if r.user else None,
-            "designationId": r.designation_id,
-            "designationName": r.designation.name if r.designation else None,
-            "teamId": r.team_id,
-            "teamName":r.team.team_type
-        }
-        for r in project_roles
-    ]
+    # roleUserMap = [
+    #     {
+    #         "id": r.id,
+    #         "userId": r.user_id,
+    #         "userName": r.user.username if r.user else None,
+    #         "loginUserName": r.user.login_username if r.user else None,
+    #         "designationId": r.designation_id,
+    #         "designationName": r.designation.name if r.designation else None,
+    #         "teamId": r.team_id,
+    #         "teamName":r.team.team_type
+    #     }
+    #     for r in project_roles
+    # ]
+    roleUserMap = []
 
+    for r in project_roles:
+
+        permissions = {}
+
+        designation_permissions = (
+
+            db.session.query(
+                FeaturePage.page_code,
+                PermissionAction.action_name,
+                ProjectDesignationPermission.allowed
+            )
+
+            .join(
+                FeaturePage,
+                FeaturePage.id ==
+                ProjectDesignationPermission.page_id
+            )
+
+            .join(
+                PermissionAction,
+                PermissionAction.id ==
+                ProjectDesignationPermission.action_id
+            )
+
+            .filter(
+                ProjectDesignationPermission.project_id
+                == project.id,
+
+                ProjectDesignationPermission
+                .designation_id
+                == r.designation_id
+            )
+
+            .all()
+        )
+
+        for p in designation_permissions:
+            key = (
+                f"{p.page_code}."
+                f"{p.action_name}"
+            )
+
+            permissions[key] = (
+                p.allowed
+            )
+
+        user_permissions = {}
+
+        overrides = (
+
+            db.session.query(
+                FeaturePage.page_code,
+                PermissionAction.action_name,
+                ProjectUserPermission.allowed
+            )
+
+            .join(
+                FeaturePage,
+                FeaturePage.id ==
+                ProjectUserPermission.page_id
+            )
+
+            .join(
+                PermissionAction,
+                PermissionAction.id ==
+                ProjectUserPermission.action_id
+            )
+
+            .filter(
+                ProjectUserPermission
+                .project_user_role_id
+                == r.id
+            )
+
+            .all()
+        )
+
+        for p in overrides:
+            key = (
+                f"{p.page_code}."
+                f"{p.action_name}"
+            )
+
+            user_permissions[key] = (
+                p.allowed
+            )
+
+        roleUserMap.append({
+
+            "id": r.id,
+
+            "userId":
+                r.user_id,
+
+            "userName":
+                r.user.username
+                if r.user else None,
+
+            "loginUserName":
+                r.user.login_username
+                if r.user else None,
+
+            "designationId":
+                r.designation_id,
+
+            "designationName":
+                r.designation.name
+                if r.designation
+                else None,
+
+            "teamId":
+                r.team_id,
+
+            "teamName":
+                r.team.team_type,
+
+            "permissions":
+                permissions,
+
+            "userPermissions":
+                user_permissions
+
+        })
 
     data=[ {
         "projectId": project.id,
@@ -947,3 +1071,5 @@ def update_user(userId, request):
     }]
 
     return res("User updated successfully", data, 200)
+
+

@@ -18,7 +18,9 @@ def login_user(loginUserName, password):
         additional_claims={
             "username": user.login_username,
             "role": user.global_role.name if user.global_role else None
+
         }
+        
     )
 
     data = [ {"token" : token ,"id": user.id,

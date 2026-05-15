@@ -34,6 +34,9 @@ def create_app():
     from .modules.resources.enquiry.routes import enquiry_bp
     app.register_blueprint(enquiry_bp, url_prefix="/resource/enquiry")
 
+    from .modules.project.routes import project_bp
+    app.register_blueprint(project_bp, url_prefix="/project")
+
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
 
