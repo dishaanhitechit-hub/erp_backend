@@ -25,6 +25,12 @@ class ProjectDesignationPermission(db.Model):
         nullable=False
     )
 
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
     page_id = db.Column(
         db.Integer,
         db.ForeignKey("feature_pages.id"),
@@ -54,6 +60,9 @@ class ProjectDesignationPermission(db.Model):
         "FeaturePage"
     )
 
+    user = db.relationship(
+        "User"
+    )
     action = db.relationship(
         "PermissionAction"
     )
@@ -63,6 +72,7 @@ class ProjectDesignationPermission(db.Model):
             "project_id",
             "designation_id",
             "page_id",
+            "user_id",
             "action_id",
             name="uq_project_designation_permission"
         ),

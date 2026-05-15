@@ -550,6 +550,7 @@ def update_roles_by_project_code(projectCode, data):
                     project_id=project.id,
                     designation_id=designation_id,
                     page_id=page.id,
+                    user_id=user_id,
                     action_id=action.id
                 )
                 .first()
@@ -589,6 +590,7 @@ def update_roles_by_project_code(projectCode, data):
                         project_id=project.id,
                         designation_id=designation_id,
                         page_id=page.id,
+                        user_id=user_id,
                         action_id=action.id,
                         allowed=allowed
                     )
@@ -668,6 +670,7 @@ def update_roles_by_project_code(projectCode, data):
                     ProjectUserPermission(
                         project_user_role_id=role.id,
                         page_id=page.id,
+
                         action_id=action.id,
                         allowed=allowed
                     )

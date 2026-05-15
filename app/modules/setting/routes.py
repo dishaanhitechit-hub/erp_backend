@@ -76,6 +76,7 @@ def create_project_route():
 
 @setting_bp.route("/delete-role/<int:role_id>", methods=["DELETE"])
 @login_required
+@require_super_admin
 def delete_role_route(role_id):
     result = delete_role(role_id)
 
@@ -87,6 +88,7 @@ def delete_role_route(role_id):
 
 @setting_bp.route("/project-role/<string:projectCode>", methods=["GET", "PUT"])
 @login_required
+@require_super_admin
 def handle_project_roles(projectCode):
 
     if request.method == "GET":
@@ -151,11 +153,13 @@ def get_signature(filename):
 
 @setting_bp.route("/project-list", methods=["GET"])
 @login_required
+@require_super_admin
 def get_project_list_route():
     return  get_all_project()
 
 @setting_bp.route("/user/<int:userId>", methods=["GET", "PUT"])
 @login_required
+@require_super_admin
 def handle_user(userId):
 
     if request.method == "GET":
@@ -167,6 +171,7 @@ def handle_user(userId):
 
 @setting_bp.route("/project/<int:projectId>", methods=["GET", "PUT"])
 @login_required
+@require_super_admin
 def handle_project(projectId):
 
     if request.method == "GET":
