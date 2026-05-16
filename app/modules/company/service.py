@@ -9,7 +9,7 @@ from app.response import res
 from app.cloudinary_uploader import *
 # from flask_login import current_user
 
-UPLOAD_FOLDER = "/mnt/data/uploads/company"
+
 
 def create_company(request):
     data = request.form
@@ -40,29 +40,38 @@ def create_company(request):
     else:
         company.created_by = None
 
-    # ensure folder exists
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
+    # # ensure folder exists
+    # if not os.path.exists(UPLOAD_FOLDER):
+    #     os.makedirs(UPLOAD_FOLDER)
 
     #  PAN file
     pan_file = files.get("panFile")
     if pan_file:
-        ext = pan_file.filename.split('.')[-1]
-        filename = f"pan_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        company.pan_file = upload_file_to_bunny(
+            file=pan_file,
+            mainFolder="company",
+            subFolder="details",
+            fileName="panFile"
+        )
 
-        pan_file.save(filepath)
-        company.pan_file = filename
+    # bankFile = files.get("bankDetailsFile")
+    # if bankFile:
+    #     vendor.bank_details_file = upload_file_to_bunny(
+    #         file=bankFile,
+    #         mainFolder="ledger",
+    #         subFolder=vendor.ledger_code,
+    #         fileName="bank_details"
+    #     )
 
     #  GST file
     gstn_file = files.get("gstnFile")
     if gstn_file:
-        ext = gstn_file.filename.split('.')[-1]
-        filename = f"gst_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-        gstn_file.save(filepath)
-        company.gstn_file = filename
+        company.gstn_file =  upload_file_to_bunny(
+            file=gstn_file,
+            mainFolder="company",
+            subFolder="details",
+            fileName="gstnFile"
+        )
 
     # print(request.json)
 
@@ -74,8 +83,8 @@ def create_company(request):
     data = [{
         "companyId": company.id,
         "companyName": company.company_name,
-        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": company.pan_file if company.pan_file else None,
+        "gstnUrl": company.gstn_file if company.gstn_file else None
     }]
 
     return res("Company created successfully", data)
@@ -102,8 +111,8 @@ def get_company_by_id(company_id, request):
                 "contactNumber": c.contact_number,
                 "whatsappNumber": c.whatsapp_number,
                 "email": c.email,
-                "panUrl": f"{base_url}compny/uploads/company/{c.pan_file}" if c.pan_file else None,
-                "gstnUrl": f"{base_url}compny/uploads/company/{c.gstn_file}" if c.gstn_file else None
+                "panUrl": c.pan_file if c.pan_file else None,
+                "gstnUrl": c.gstn_file if c.gstn_file else None
             }
             for c in companies
         ]
@@ -130,8 +139,8 @@ def get_company_by_id(company_id, request):
         "email": company.email,
 
         #  file URLs
-        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": company.pan_file if company.pan_file else None,
+        "gstnUrl": company.gstn_file if company.gstn_file else None
     }]
 
     return res("Company details fetched successfully", data)
@@ -164,51 +173,36 @@ def update_company(company_id, request):
     company.whatsapp_number = data.get("whatsappNumber", company.whatsapp_number)
     company.email = data.get("email", company.email)
 
-    # ensure folder exists
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
+
 
     #  PAN FILE UPDATE
     pan_file = files.get("panFile")
     if pan_file:
-        # delete old file
-        if company.pan_file:
-            old_path = os.path.join(UPLOAD_FOLDER, company.pan_file)
-            if os.path.exists(old_path):
-                os.remove(old_path)
-
-        ext = pan_file.filename.split('.')[-1]
-        filename = f"pan_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-        pan_file.save(filepath)
-        company.pan_file = filename
-
+            company.pan_file = upload_file_to_bunny(
+                file=pan_file,
+                mainFolder="company",
+                subFolder="details",
+                fileName="panFile"
+            )
     # GST FILE UPDATE
     gstn_file = files.get("gstnFile")
     if gstn_file:
-        # delete old file
-        if company.gstn_file:
-            old_path = os.path.join(UPLOAD_FOLDER, company.gstn_file)
-            if os.path.exists(old_path):
-                os.remove(old_path)
-
-        ext = gstn_file.filename.split('.')[-1]
-        filename = f"gst_{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-        gstn_file.save(filepath)
-        company.gstn_file = filename
+        company.gstn_file = upload_file_to_bunny(
+            file=gstn_file,
+            mainFolder="company",
+            subFolder="details",
+            fileName="gstnFile"
+        )
 
     db.session.commit()
 
-    base_url = request.host_url
+
 
     data = [{
         "companyId": company.id,
         "companyName": company.company_name,
-        "panUrl": f"{base_url}compny/uploads/company/{company.pan_file}" if company.pan_file else None,
-        "gstnUrl": f"{base_url}compny/uploads/company/{company.gstn_file}" if company.gstn_file else None
+        "panUrl": company.pan_file if company.pan_file else None,
+        "gstnUrl": company.gstn_file if company.gstn_file else None
     }]
 
     return res("Company updated successfully", data)

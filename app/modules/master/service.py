@@ -109,7 +109,7 @@ def create_vendor(request):
         os.makedirs(UPLOAD_FOLDER)
 
     tradeFile = files.get("tradeLicenceFile")
-    vendor.trade_licence_file = upload_file_to_cloudinary(
+    vendor.trade_licence_file = upload_file_to_bunny(
         file=tradeFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -117,7 +117,7 @@ def create_vendor(request):
     )
 
     panFile = files.get("panFile")
-    vendor.pan_file = upload_file_to_cloudinary(
+    vendor.pan_file = upload_file_to_bunny(
         file=panFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -125,7 +125,7 @@ def create_vendor(request):
     )
 
     gstnFile = files.get("gstnFile")
-    vendor.gstn_file = upload_file_to_cloudinary(
+    vendor.gstn_file = upload_file_to_bunny(
         file=gstnFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -133,7 +133,7 @@ def create_vendor(request):
     )
 
     bankFile = files.get("bankDetailsFile")
-    vendor.bank_details_file = upload_file_to_cloudinary(
+    vendor.bank_details_file = upload_file_to_bunny(
         file=bankFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -299,7 +299,7 @@ def update_vendor(vendorId, request):
 
     tradeFile = files.get("tradeLicenceFile")
     if tradeFile:
-        vendor.trade_licence_file = upload_file_to_cloudinary(
+        vendor.trade_licence_file = upload_file_to_bunny(
         file=tradeFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -308,7 +308,7 @@ def update_vendor(vendorId, request):
 
     panFile = files.get("panFile")
     if panFile:
-        vendor.pan_file = upload_file_to_cloudinary(
+        vendor.pan_file = upload_file_to_bunny(
         file=panFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -317,7 +317,7 @@ def update_vendor(vendorId, request):
 
     gstnFile = files.get("gstnFile")
     if gstnFile:
-        vendor.gstn_file = upload_file_to_cloudinary(
+        vendor.gstn_file = upload_file_to_bunny(
         file=gstnFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
@@ -326,7 +326,7 @@ def update_vendor(vendorId, request):
 
     bankFile = files.get("bankDetailsFile")
     if bankFile:
-        vendor.bank_details_file = upload_file_to_cloudinary(
+        vendor.bank_details_file = upload_file_to_bunny(
         file=bankFile,
         mainFolder="ledger",
         subFolder=vendor.ledger_code,
