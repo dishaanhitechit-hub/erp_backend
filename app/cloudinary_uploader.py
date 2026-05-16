@@ -62,7 +62,7 @@
 
 import requests
 
-from cloudinary_config import *
+from .cloudinary_config import *
 
 
 def upload_file_to_bunny(

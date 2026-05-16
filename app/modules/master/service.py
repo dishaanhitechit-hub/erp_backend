@@ -14,7 +14,6 @@ from app.extensions import db
 from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
 
-UPLOAD_FOLDER = "/uploads/vendor"
 
 
 # Vendor Code generator
@@ -105,8 +104,7 @@ def create_vendor(request):
     else:
         vendor.created_by = None
 
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
+
 
     tradeFile = files.get("tradeLicenceFile")
     vendor.trade_licence_file = upload_file_to_bunny(
