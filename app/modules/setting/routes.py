@@ -153,7 +153,7 @@ def get_signature(filename):
 
 @setting_bp.route("/project-list", methods=["GET"])
 @login_required
-@require_super_admin
+# @require_super_admin
 def get_project_list_route():
     return  get_all_project()
 
