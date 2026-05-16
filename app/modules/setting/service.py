@@ -64,7 +64,7 @@ def create_user(request): # Test done & pass
 
 
     if signatureFile:
-        user.signature = upload_file_to_cloudinary(
+        user.signature = upload_file_to_bunny(
             file=signatureFile,
             mainFolder="users",
             subFolder=user.user_code,
