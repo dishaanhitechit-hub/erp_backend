@@ -393,7 +393,7 @@ def create_item(data):
     try:
         db.session.add(item)
         db.session.commit()
-
+        db.session.refresh(item)
         return res(
             "Item created successfully",
             [{
