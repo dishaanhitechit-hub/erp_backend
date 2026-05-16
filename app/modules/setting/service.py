@@ -488,6 +488,7 @@ def update_roles_by_project_code(projectCode, data):
         if role:
 
             role.user_id = user_id
+            db.session.flush()
 
         else:
 
