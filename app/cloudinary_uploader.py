@@ -112,10 +112,8 @@ def upload_file_to_bunny(
         )
 
         if response.status_code in [200, 201]:
-
             return (
-                f"{BunnyConfig.CDN_URL}/"
-                f"{bunny_path}"
+                f"{BunnyConfig.BASE_URL}/{bunny_path}"
             )
 
         print(response.text)
