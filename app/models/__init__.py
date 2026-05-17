@@ -19,3 +19,6 @@ from .project_designation_permission import *
 from .sub_module import *
 from .main_module import *
 from .feature_page import *
+from .approval_path import (ApprovalPath,
+    ApprovalHistory,
+    ModuleMaster)

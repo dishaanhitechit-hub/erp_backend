@@ -18,6 +18,8 @@ from app.models.feature_page import *
 from app.extensions import db
 from app.response import res
 from app.cloudinary_uploader import *
+from app.extensions import db
+from app.models.approval_path import ApprovalPath
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
@@ -767,20 +769,43 @@ def add_designation_to_project(request):
 
 
 #  Get All Users
-def get_all_users(): #Test done & pass
-    users = User.query.filter_by(is_active=True).all()
-    data = [{ "id": u.id,
+def get_all_users(projectCode=None):  # Test done & pass
+
+    query = User.query.filter(
+        User.is_active == True
+    )
+
+    if projectCode:
+
+        query = (
+            query
+            .join(
+                ProjectUserRole,
+                ProjectUserRole.user_id == User.id
+            )
+            .join(
+                Project,
+                Project.id == ProjectUserRole.project_id
+            )
+            .filter(
+                Project.project_code == projectCode
+            )
+            .distinct()
+        )
+
+    users = query.all()
+
+    data = [{
+        "id": u.id,
         "userName": u.username,
         "empCode": u.emp_code,
         "loginUserName": u.login_username,
-        "email" : u.email,
+        "email": u.email,
         "mobile": u.mobile,
         "whatsapp": u.wp_mobile,
-        "role":u.global_role.name if u.global_role else None,
-        "status":u.is_active,
-        } for u in users]
-
-    return  data
+        "role": u.global_role.name if u.global_role else None,
+        "status": u.is_active
+    } for u in users]
 
 
 
@@ -1075,5 +1100,146 @@ def update_user(userId, request):
     }]
 
     return res("User updated successfully", data, 200)
+
+
+
+
+
+
+
+def create_approval_path(data):
+
+    try:
+
+        project_code = data.get("projectCode")
+        module_code = data.get("moduleCode")
+
+        creator_users = data.get(
+            "creatorUsers", []
+        )
+
+        approver_users = data.get(
+            "approverUsers", []
+        )
+
+        if not project_code:
+            return res(
+                "Project code required",
+                [],
+                400
+            )
+
+        if not module_code:
+            return res(
+                "Module code required",
+                [],
+                400
+            )
+
+
+        # ---------------------
+        # Creator users
+        # ---------------------
+
+        for item in creator_users:
+
+            user_id = item.get(
+                "userId"
+            )
+
+            exists = ApprovalPath.query.filter_by(
+
+                project_code=project_code,
+                module_code=module_code,
+                user_id=user_id,
+                path_type="CREATOR"
+
+            ).first()
+
+
+            if not exists:
+
+                db.session.add(
+
+                    ApprovalPath(
+
+                        project_code=project_code,
+                        module_code=module_code,
+
+                        user_id=user_id,
+
+                        level_no=0,
+
+                        path_type="CREATOR"
+                    )
+                )
+
+
+        # ---------------------
+        # Approval users
+        # ---------------------
+
+        for item in approver_users:
+
+            user_id=item.get(
+                "userId"
+            )
+
+            level_no=item.get(
+                "level"
+            )
+
+            exists=ApprovalPath.query.filter_by(
+
+                project_code=project_code,
+                module_code=module_code,
+
+                user_id=user_id,
+
+                level_no=level_no,
+
+                path_type="APPROVER"
+
+            ).first()
+
+
+            if not exists:
+
+                db.session.add(
+
+                    ApprovalPath(
+
+                        project_code=project_code,
+                        module_code=module_code,
+
+                        user_id=user_id,
+
+                        level_no=level_no,
+
+                        path_type="APPROVER"
+
+                    )
+                )
+
+
+        db.session.commit()
+
+        return res(
+            "Approval path created successfully",
+            [],
+            201
+        )
+
+
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
 
 

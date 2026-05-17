@@ -7,7 +7,7 @@ from flask import send_from_directory
 from app.middleware.role_middleware import require_super_admin
 from .service import ( create_user,create_project,
                        # assign_role,
-                       delete_role,
+                       delete_role,create_approval_path,
                        get_roles_by_project_code,
                        get_all_users,get_all_project,
                     delete_project_designation,add_designation_to_project,get_user_by_id,update_user,get_project_by_id,update_project,update_roles_by_project_code)
@@ -142,9 +142,21 @@ def delete_project_designation_route():
 
 @setting_bp.route("/users", methods=["GET"])
 @login_required
-@require_super_admin
-def get_users_route():
-    return res("Users fetched", get_all_users(),200)
+def users():
+
+    project_code = request.args.get(
+        "projectCode"
+    )
+
+    data = get_all_users(
+        project_code
+    )
+
+    return res(
+        "Users fetched",
+        data,
+        200
+    )
 
 
 @setting_bp.route("/uploads/signatures/<filename>")
@@ -181,6 +193,15 @@ def handle_project(projectId):
         data = request.get_json()
         return update_project(projectId, data)
 
+
+@setting_bp.route("/approval-path", methods=["POST"] )
+@login_required
+@require_super_admin
+def create_approval():
+
+    data = request.get_json()
+
+    return create_approval_path(data)
 
 
 
