@@ -1112,125 +1112,150 @@ def create_approval_path(data):
 
     try:
 
-        project_code = data.get("projectCode")
-        module_code = data.get("moduleCode")
-
-        creator_users = data.get(
-            "creatorUsers", []
+        project_code = data.get(
+            "projectCode"
         )
 
-        approver_users = data.get(
-            "approverUsers", []
+        modules = data.get(
+            "modules", []
         )
+
 
         if not project_code:
+
             return res(
                 "Project code required",
                 [],
                 400
             )
 
-        if not module_code:
+
+        if not modules:
+
             return res(
-                "Module code required",
+                "Modules required",
                 [],
                 400
             )
 
 
-        # ---------------------
-        # Creator users
-        # ---------------------
+        for module in modules:
 
-        for item in creator_users:
-
-            user_id = item.get(
-                "userId"
+            module_code = module.get(
+                "moduleCode"
             )
 
-            exists = ApprovalPath.query.filter_by(
+            creator_users = module.get(
+                "creatorUsers", []
+            )
 
-                project_code=project_code,
-                module_code=module_code,
-                user_id=user_id,
-                path_type="CREATOR"
-
-            ).first()
+            approver_users = module.get(
+                "approverUsers", []
+            )
 
 
-            if not exists:
+            if not module_code:
 
-                db.session.add(
+                continue
 
-                    ApprovalPath(
 
-                        project_code=project_code,
-                        module_code=module_code,
+            # ---------------------
+            # creator
+            # ---------------------
 
-                        user_id=user_id,
+            for item in creator_users:
 
-                        level_no=0,
+                user_id = item.get(
+                    "userId"
+                )
 
-                        path_type="CREATOR"
+                exists = ApprovalPath.query.filter_by(
+
+                    project_code=project_code,
+                    module_code=module_code,
+                    user_id=user_id,
+                    path_type="CREATOR"
+
+                ).first()
+
+
+                if not exists:
+
+                    db.session.add(
+
+                        ApprovalPath(
+
+                            project_code=project_code,
+                            module_code=module_code,
+
+                            user_id=user_id,
+
+                            level_no=0,
+
+                            path_type="CREATOR"
+
+                        )
+
                     )
+
+
+            # ---------------------
+            # approvers optional
+            # ---------------------
+
+            for item in approver_users:
+
+                user_id=item.get(
+                    "userId"
+                )
+
+                level_no=item.get(
+                    "level"
                 )
 
 
-        # ---------------------
-        # Approval users
-        # ---------------------
+                exists=ApprovalPath.query.filter_by(
 
-        for item in approver_users:
+                    project_code=project_code,
+                    module_code=module_code,
 
-            user_id=item.get(
-                "userId"
-            )
+                    user_id=user_id,
 
-            level_no=item.get(
-                "level"
-            )
+                    level_no=level_no,
 
-            exists=ApprovalPath.query.filter_by(
+                    path_type="APPROVER"
 
-                project_code=project_code,
-                module_code=module_code,
-
-                user_id=user_id,
-
-                level_no=level_no,
-
-                path_type="APPROVER"
-
-            ).first()
+                ).first()
 
 
-            if not exists:
+                if not exists:
 
-                db.session.add(
+                    db.session.add(
 
-                    ApprovalPath(
+                        ApprovalPath(
 
-                        project_code=project_code,
-                        module_code=module_code,
+                            project_code=project_code,
+                            module_code=module_code,
 
-                        user_id=user_id,
+                            user_id=user_id,
 
-                        level_no=level_no,
+                            level_no=level_no,
 
-                        path_type="APPROVER"
+                            path_type="APPROVER"
+
+                        )
 
                     )
-                )
 
 
         db.session.commit()
 
+
         return res(
-            "Approval path created successfully",
+            "Approval paths created successfully",
             [],
             201
         )
-
 
 
     except Exception as e:
@@ -1242,5 +1267,3 @@ def create_approval_path(data):
             [],
             500
         )
-
-
