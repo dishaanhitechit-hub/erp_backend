@@ -1016,7 +1016,7 @@ def get_user_by_id(userId):
     if not user:
         return res("User not found",[], code=200)
 
-    base_url = request.host_url
+    # base_url = request.host_url
     data =[{
         "id": user.id,
         "username": user.username,
@@ -1028,7 +1028,7 @@ def get_user_by_id(userId):
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
         "password": "",
-        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+        "signatureUrl": user.signature
 
     }]
 
