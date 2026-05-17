@@ -806,6 +806,7 @@ def get_all_users(projectCode=None):  # Test done & pass
         "role": u.global_role.name if u.global_role else None,
         "status": u.is_active
     } for u in users]
+    return data
 
 
 

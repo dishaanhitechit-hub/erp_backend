@@ -564,10 +564,10 @@ def get_all_cc_codes(data):
     # category filter (always)
     # -------------------------
 
-    query = query.filter(
-        CCCode.category_code == categoryCode
-    )
-
+    if categoryCode:
+        query = query.filter(
+            CCCode.category_code == categoryCode
+        )
 
     # -------------------------
     # extra filter
