@@ -400,7 +400,7 @@ def create_item(data):
                 "itemName": item.item_name,
                 "ccCodeId": item.cc_code_id,
                 "itemDisplayCode": (
-                    f"{item.cc_code.cc_code}_{item.item_code}"
+                    f"{item.cc_code.cc_code}{item.item_code}"
                     if item.cc_code else None
                 )
             }],
@@ -434,7 +434,7 @@ def get_all_items():
             "hsnSac": item.hsn_sac,
             "gstPercentage": item.gst_percentage,
             "itemCategoryName": item.category.category_name,
-            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
+            "itemDisplayCode": f"{item.cc_code.cc_code}{item.item_code}" if item.cc_code else None
         })
 
     return res("Item list fetched successfully", data, 200)
@@ -461,7 +461,7 @@ def get_item_by_id(itemId):
         "hsnSac": item.hsn_sac,
         "gstPercentage": item.gst_percentage,
         "itemCategoryName": item.category.category_name,
-        "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
+        "itemDisplayCode": f"{item.cc_code.cc_code}{item.item_code}" if item.cc_code else None
     }]
 
     return res("Item fetched successfully", data, 200)
@@ -491,7 +491,7 @@ def update_item(itemId, data):
             "itemId": item.id,
             "itemCode": item.item_code,
             "itemName": item.item_name,
-            "itemDisplayCode": f"{item.cc_code.cc_code}_{item.item_code}" if item.cc_code else None
+            "itemDisplayCode": f"{item.cc_code.cc_code}{item.item_code}" if item.cc_code else None
         }],
         200
     )
@@ -900,7 +900,7 @@ def create_asset(data):
                 "assetName": asset.asset_name,
                 "ccCodeId": asset.cc_code_id,
                 "assetDisplayCode": (
-                    f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                    f"{asset.cc_code.cc_code}{asset.asset_code}"
                     if asset.cc_code else None
                 )
             }],
@@ -933,7 +933,7 @@ def get_all_assets():
             "gstPercentage": asset.gst_percentage,
             "assetCategoryName": asset.category.category_name,
             "assetDisplayCode": (
-                f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                f"{asset.cc_code.cc_code}{asset.asset_code}"
                 if asset.cc_code else None
             )
         })
@@ -963,7 +963,7 @@ def get_asset_by_id(assetId):
         "gstPercentage": asset.gst_percentage,
         "assetCategoryName": asset.category.category_name,
         "assetDisplayCode": (
-            f"{asset.cc_code.cc_code}_{asset.asset_code}"
+            f"{asset.cc_code.cc_code}{asset.asset_code}"
             if asset.cc_code else None
         )
     }]
@@ -996,7 +996,7 @@ def update_asset(assetId, data):
             "assetCode": asset.asset_code,
             "assetName": asset.asset_name,
             "assetDisplayCode": (
-                f"{asset.cc_code.cc_code}_{asset.asset_code}"
+                f"{asset.cc_code.cc_code}{asset.asset_code}"
                 if asset.cc_code else None
             )
         }],
