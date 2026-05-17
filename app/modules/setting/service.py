@@ -1174,6 +1174,7 @@ def create_approval_path(data):
                     project_code=project_code,
                     module_code=module_code,
                     user_id=user_id,
+                    level_no=0,
                     path_type="CREATOR"
 
                 ).first()
