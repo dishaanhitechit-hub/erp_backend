@@ -553,49 +553,107 @@ def create_cc_code(data, createdBy=None):
         return res("Something went wrong", [], 500)
 
 def get_all_cc_codes(data):
-    categoryCode = data.get("categoryId") if data else None
-    search = data.get("search", "").strip() if data else ""
+
+    categoryCode = data.get("categoryId")
+    search = data.get("search", "").strip()
+    key = data.get("key")
 
     query = CCCode.query
 
-    # filter by category fixed_code if sent
-    if categoryCode:
-        query = query.filter_by(
-            category_code=categoryCode
-        )
+    # -------------------------
+    # category filter (always)
+    # -------------------------
 
-    # search by cc code or cc name
-    if search:
-        query = query.filter(
-            db.or_(
-                CCCode.cc_code.ilike(f"%{search}%"),
-                CCCode.cc_name.ilike(f"%{search}%")
+    query = query.filter(
+        CCCode.category_code == categoryCode
+    )
+
+
+    # -------------------------
+    # extra filter
+    # -------------------------
+
+    if key == "asset":
+
+        query = (
+            query
+            .join(GroupMaster)
+            .filter(
+                GroupMaster.group_name=="Fixed Asset"
             )
         )
 
-    ccCodes = query.order_by(
+
+    elif key == "item":
+
+        query = (
+            query
+            .join(GroupMaster)
+            .filter(
+                GroupMaster.group_name.in_([
+                    "Direct Expenses",
+                    "Indirect Expenses"
+                ])
+            )
+        )
+
+
+    # -------------------------
+    # search
+    # -------------------------
+
+    if search:
+
+        query=query.filter(
+
+            db.or_(
+
+                CCCode.cc_code.ilike(
+                    f"%{search}%"
+                ),
+
+                CCCode.cc_name.ilike(
+                    f"%{search}%"
+                )
+
+            )
+        )
+
+
+    ccCodes=query.order_by(
         CCCode.id.desc()
     ).all()
 
-    data = []
+
+    data=[]
 
     for cc in ccCodes:
+
         data.append({
-            "ccId": cc.id,
-            "ccCode": cc.cc_code,
-            "ccName": cc.cc_name,
-            "ccGroupId": cc.group_id,
-            "ccCategoryId": cc.category_code,   # fixed_code
-            "ccCategoryName": cc.category.category_name if cc.category else None,
-            "ccGroupName": cc.group.group_name if cc.group else None
+
+            "ccId":cc.id,
+            "ccCode":cc.cc_code,
+            "ccName":cc.cc_name,
+
+            "ccGroupId":cc.group_id,
+
+            "ccCategoryId":cc.category_code,
+
+            "ccCategoryName":
+            cc.category.category_name
+            if cc.category else None,
+
+            "ccGroupName":
+            cc.group.group_name
+            if cc.group else None
+
         })
 
     return res(
         "CC Code list fetched successfully",
-       data,
+        data,
         200
     )
-
 
 def get_cc_code_by_id(ccId):
     cc = CCCode.query.get(ccId)
