@@ -20,6 +20,7 @@ from app.response import res
 from app.cloudinary_uploader import *
 from app.extensions import db
 from app.models.approval_path import ApprovalPath
+from collections import defaultdict
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
@@ -1262,6 +1263,131 @@ def create_approval_path(data):
     except Exception as e:
 
         db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+
+
+
+
+def get_approval_paths(projectCode):
+
+    try:
+
+        if not projectCode:
+
+            return res(
+                "Project code required",
+                [],
+                400
+            )
+
+
+        rows = (
+            ApprovalPath.query
+            .filter_by(
+                project_code=projectCode
+            )
+            .order_by(
+                ApprovalPath.module_code,
+                ApprovalPath.level_no
+            )
+            .all()
+        )
+
+
+        module_map = defaultdict(
+
+            lambda: {
+
+                "moduleCode": None,
+                "moduleName": None,
+
+                "creatorUsers": [],
+                "approverUsers": []
+
+            }
+
+        )
+
+
+        for row in rows:
+
+            item = module_map[
+                row.module_code
+            ]
+
+            item["moduleCode"] = row.module_code
+
+            item["moduleName"] = (
+                row.module.module_name
+                if row.module
+                else None
+            )
+
+
+            if row.path_type=="CREATOR":
+
+                item[
+                    "creatorUsers"
+                ].append({
+
+                    "userId":
+                    row.user_id,
+
+                    "userName":
+                    row.user.username
+                    if row.user
+                    else None
+
+                })
+
+
+            elif row.path_type=="APPROVER":
+
+                item[
+                    "approverUsers"
+                ].append({
+
+                    "userId":
+                    row.user_id,
+
+                    "userName":
+                    row.user.username
+                    if row.user
+                    else None,
+
+                    "level":
+                    row.level_no
+
+                })
+
+
+        data = {
+
+            "projectCode":
+            projectCode,
+
+            "modules":
+            list(
+                module_map.values()
+            )
+
+        }
+
+
+        return res(
+            "Approval path fetched successfully",
+            [data],
+            200
+        )
+
+
+    except Exception as e:
 
         return res(
             str(e),
