@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import datetime,date
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
@@ -7,9 +7,11 @@ from app.response import res
 from app.models.project import Project
 from app.models.category_group import CategoryMaster
 from app.models.item import Item
+from app.modules.work_flow import *
 
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
+from app.models.approval_path import *
 
 
 
@@ -80,33 +82,55 @@ def create_indent(data, created_by=None):
 
         # CREATE MASTER
 
-
         indent = IndentMaster(
+
             indent_no=generate_indent_no(
                 data.get("projectCode")
             ),
 
-            project_code=data.get("projectCode"),
+            project_code=data.get(
+                "projectCode"
+            ),
 
-            category_code=data.get("categoryCode"),
+            category_code=data.get(
+                "categoryCode"
+            ),
 
-            indent_date=datetime.utcnow(),
+            indent_date=date.today(),
 
-            priority=data.get("priority"),
+            priority=data.get(
+                "priority"
+            ),
 
-            required_within=data.get("requiredWithin"),
+            required_within=data.get(
+                "requiredWithin"
+            ),
 
-            indent_placed_by=data.get("indentPlacedBy"),
+            indent_placed_by=data.get(
+                "indentPlacedBy"
+            ),
 
-            site_reg_serial_no=data.get("siteRegSerialNo"),
+            site_reg_serial_no=data.get(
+                "siteRegSerialNo"
+            ),
 
-            sale_order_no=data.get("saleOrderNo"),
+            sale_order_no=data.get(
+                "saleOrderNo"
+            ),
 
-            remarks=data.get("remarks"),
-
-            indent_status=data.get("status"),
+            remarks=data.get(
+                "remarks"
+            ),
 
             order_status="Pending",
+
+            # workflow
+
+            workflow_status="Draft",
+
+            current_level=0,
+
+            locked=False,
 
             created_by=created_by
         )
@@ -191,7 +215,7 @@ def create_indent(data, created_by=None):
                 "indentId": indent.id,
                 "indentNo": indent.indent_no
             },
-            201
+            200
         )
 
     except SQLAlchemyError as e:
@@ -226,7 +250,7 @@ def get_indent_list(filters=None):
 
             if filters.get("status"):
                 query = query.filter(
-                    IndentMaster.indent_status ==
+                    IndentMaster.workflow_status ==
                     filters.get("status")
                 )
 
@@ -260,11 +284,11 @@ def get_indent_list(filters=None):
 
                 "priority": row.priority,
 
-                "indentStatus": row.indent_status,
+                "indentStatus": row.workflow_status,
 
                 "orderStatus": row.order_status,
                 "indentDate" : row.indent_date,
-                "placedBy" : row.creator.username,
+                "placedBy" : row.creator.username if row.creator else None,
                 "createdAt": row.created_at.strftime(
                     "%Y-%m-%d %H:%M:%S"
                 ) if row.created_at else None
@@ -339,9 +363,24 @@ def get_indent_details(indent_id):
 
             "remarks": indent.remarks,
 
-            "indentStatus": indent.indent_status,
+            "indentStatus": indent.workflow_status,
 
-            "items": item_rows
+            "items": item_rows,
+            "currentLevel": indent.current_level,
+
+            "locked": indent.locked,
+            "submittedAt":
+                str(indent.submitted_at)
+                if indent.submitted_at
+                else None,
+            "finalApprovedAt":
+                str(indent.final_approved_at)
+                if indent.final_approved_at
+                else None,
+            "rejectedAt":
+                str(indent.rejected_at)
+                if indent.rejected_at
+                else None,
         }
 
         return res(
@@ -409,9 +448,9 @@ def update_indent(indent_id, data, updated_by=None):
         # ALLOW ONLY DRAFT EDIT
         # ==========================================
 
-        if indent.indent_status != "Draft":
+        if indent.locked:
             return res(
-                "Only draft indent can be edited",
+                "Indent cannot be edited",
                 [],
                 400
             )
@@ -472,16 +511,15 @@ def update_indent(indent_id, data, updated_by=None):
         indent.sale_order_no = data.get(
             "saleOrderNo"
         )
-        indent.indent_status=data.get("status")
+        # indent.indent_status=data.get("status")
         indent.remarks = data.get("remarks")
 
         indent.updated_by = updated_by
 
         indent.updated_at = datetime.utcnow()
 
-        # ==========================================
+
         # DELETE OLD ITEMS
-        # ==========================================
 
         IndentItem.query.filter_by(
             indent_id=indent.id
@@ -507,9 +545,9 @@ def update_indent(indent_id, data, updated_by=None):
                     400
                 )
 
-            # ======================================
+
             # CATEGORY MATCH VALIDATION
-            # ======================================
+
 
             if item.category_code != data.get(
                 "categoryCode"
@@ -525,9 +563,9 @@ def update_indent(indent_id, data, updated_by=None):
                     400
                 )
 
-            # ======================================
+
             # QTY VALIDATION
-            # ======================================
+
 
             qty = row.get("qty")
 
@@ -559,6 +597,9 @@ def update_indent(indent_id, data, updated_by=None):
 
             db.session.add(indent_item)
 
+        if indent.workflow_status == "Reback":
+            indent.correction_sent_at = None
+
         db.session.commit()
 
         return res(
@@ -586,20 +627,32 @@ def update_indent(indent_id, data, updated_by=None):
 # SUBMIT INDENT
 
 
-def submit_indent(indent_id, submitted_by=None):
+def submit_indent(
+        indent_id,
+        submitted_by=None
+):
 
     try:
 
-        indent = IndentMaster.query.get(indent_id)
+        indent = IndentMaster.query.get(
+            indent_id
+        )
 
         if not indent:
-            return res("Indent not found", [], 404)
+            return res(
+                "Indent not found",
+                [],
+                404
+            )
 
         # ==========================================
         # ALREADY SUBMITTED
         # ==========================================
 
-        if indent.indent_status != "Draft":
+        if indent.workflow_status not in [
+            "Draft",
+            "Reback"
+        ]:
 
             return res(
                 "Indent already submitted",
@@ -619,24 +672,116 @@ def submit_indent(indent_id, submitted_by=None):
                 400
             )
 
+        # ==========================================
+        # RESTART AFTER REBACK
+        # ==========================================
 
-        # SUBMIT
+        if indent.workflow_status == "Reback":
+
+            indent.current_level = 0
+
+        # ==========================================
+        # FIND FIRST APPROVER
+        # ==========================================
+
+        first_level = get_first_approver(
+
+            indent.project_code,
+
+            "INDENT"
+        )
+
+        # ==========================================
+        # NO APPROVER
+        # AUTO APPROVE
+        # ==========================================
+
+        if not first_level:
+
+            indent.workflow_status = (
+                "Approved"
+            )
+
+            indent.locked = True
+
+            indent.approved_by = (
+                submitted_by
+            )
+
+            indent.submitted_at = (
+                datetime.utcnow() )
+
+            indent.final_approved_at = (
+                datetime.utcnow()
+            )
+
+        else:
+
+            # ======================================
+            # START APPROVAL FLOW
+            # ======================================
+
+            indent.workflow_status = (
+                f"Pending_L"
+                f"{first_level.level_no}"
+            )
+
+            indent.current_level = (
+                first_level.level_no
+            )
+
+            indent.locked = True
+
+            indent.submitted_at = (
+                datetime.utcnow()
+            )
 
 
-        indent.indent_status = "Submitted"
+        # HISTORY
+        #
 
-        indent.updated_by = submitted_by
+        create_history(
 
-        indent.updated_at = datetime.utcnow()
+            project_code=
+            indent.project_code,
+
+            module_code=
+            "INDENT",
+
+            record_id=
+            indent.id,
+
+            level_no=
+            indent.current_level,
+
+            action=
+            "SUBMIT",
+
+            action_by=
+            submitted_by
+        )
+
+        indent.updated_by = (
+            submitted_by
+        )
+
+        indent.updated_at = (
+            datetime.utcnow()
+        )
 
         db.session.commit()
 
         return res(
             "Indent submitted successfully",
             {
-                "indentId": indent.id,
-                "indentNo": indent.indent_no,
-                "status": indent.indent_status
+                "indentId":
+                    indent.id,
+
+                "indentNo":
+                    indent.indent_no,
+
+                "workflowStatus":
+                    indent.workflow_status
             },
             200
         )
@@ -645,14 +790,21 @@ def submit_indent(indent_id, submitted_by=None):
 
         db.session.rollback()
 
-        return res(str(e), [], 500)
+        return res(
+            str(e),
+            [],
+            500
+        )
 
     except Exception as e:
 
         db.session.rollback()
 
-        return res(str(e), [], 500)
-
+        return res(
+            str(e),
+            [],
+            500
+        )
 
 # =========================================================
 # DELETE DRAFT INDENT
@@ -671,10 +823,9 @@ def delete_indent(indent_id):
         # ALLOW ONLY DRAFT DELETE
         # ==========================================
 
-        if indent.indent_status != "Draft":
-
+        if indent.locked:
             return res(
-                "Only draft indent can be deleted",
+                "Only editable indent can be deleted",
                 [],
                 400
             )
@@ -712,3 +863,616 @@ def delete_indent(indent_id):
         db.session.rollback()
 
         return res(str(e), [], 500)
+
+
+
+def approve_indent(
+        indent_id,
+        approved_by=None,
+        comments=None
+):
+
+    try:
+
+        indent = IndentMaster.query.get(
+            indent_id
+        )
+
+        if not indent:
+
+            return res(
+                "Indent not found",
+                [],
+                404
+            )
+
+        # ==========================================
+        # ONLY PENDING CAN APPROVE
+        # ==========================================
+
+        if not indent.workflow_status.startswith(
+            "Pending"
+        ):
+
+            return res(
+                "Indent not pending",
+                [],
+                400
+            )
+
+        # ==========================================
+        # CHECK CURRENT APPROVER
+        # ==========================================
+
+        allowed = is_current_approver(
+
+            indent.project_code,
+
+            "INDENT",
+
+            indent.current_level,
+
+            approved_by
+        )
+
+        if not allowed:
+
+            return res(
+                "You are not current approver",
+                [],
+                403
+            )
+
+        # ==========================================
+        # FIND NEXT LEVEL
+        # ==========================================
+
+        next_level = get_next_approver(
+
+            indent.project_code,
+
+            "INDENT",
+
+            indent.current_level
+        )
+
+        # ==========================================
+        # NEXT LEVEL EXISTS
+        # ==========================================
+
+        if next_level:
+
+            create_history(
+
+                project_code=
+                indent.project_code,
+
+                module_code=
+                "INDENT",
+
+                record_id=
+                indent.id,
+
+                level_no=
+                indent.current_level,
+
+                action=
+                "APPROVE",
+
+                action_by=
+                approved_by,
+
+                comments=
+                comments
+            )
+
+            indent.current_level = (
+                next_level.level_no
+            )
+
+            indent.workflow_status = (
+
+                f"Pending_L"
+                f"{next_level.level_no}"
+
+            )
+
+        else:
+
+            # ======================================
+            # FINAL APPROVE
+            # ======================================
+
+            create_history(
+
+                project_code=
+                indent.project_code,
+
+                module_code=
+                "INDENT",
+
+                record_id=
+                indent.id,
+
+                level_no=
+                indent.current_level,
+
+                action=
+                "FINAL_APPROVE",
+
+                action_by=
+                approved_by,
+
+                comments=
+                comments
+            )
+
+            indent.workflow_status = (
+                "Approved"
+            )
+
+            indent.locked = True
+
+            indent.approved_by = (
+                approved_by
+            )
+
+            indent.final_approved_at = (
+                datetime.utcnow()
+            )
+
+        indent.updated_by = (
+            approved_by
+        )
+
+        indent.updated_at = (
+            datetime.utcnow()
+        )
+
+        db.session.commit()
+
+        return res(
+
+            "Indent approved successfully",
+
+            {
+
+                "indentId":
+                indent.id,
+
+                "workflowStatus":
+                indent.workflow_status,
+
+                "currentLevel":
+                indent.current_level
+
+            },
+
+            200
+        )
+
+    except SQLAlchemyError as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+
+def reback_indent(
+        indent_id,
+        reback_by=None,
+        comments=None
+):
+
+    try:
+
+        indent = IndentMaster.query.get(
+            indent_id
+        )
+
+        if not indent:
+
+            return res(
+                "Indent not found",
+                [],
+                404
+            )
+
+        # ==========================================
+        # ONLY PENDING
+        # ==========================================
+
+        if not indent.workflow_status.startswith(
+            "Pending"
+        ):
+
+            return res(
+                "Indent not pending",
+                [],
+                400
+            )
+
+        # ==========================================
+        # COMMENT REQUIRED
+        # ==========================================
+
+        if not comments:
+
+            return res(
+                "Comments required",
+                [],
+                400
+            )
+
+        # ==========================================
+        # CURRENT APPROVER CHECK
+        # ==========================================
+
+        allowed = is_current_approver(
+
+            indent.project_code,
+
+            "INDENT",
+
+            indent.current_level,
+
+            reback_by
+        )
+
+        if not allowed:
+
+            return res(
+                "You are not current approver",
+                [],
+                403
+            )
+
+        # ==========================================
+        # UPDATE STATUS
+        # ==========================================
+
+        indent.workflow_status = (
+            "Reback"
+        )
+
+        indent.locked = False
+
+        indent.correction_sent_at = (
+            datetime.utcnow()
+        )
+
+        indent.updated_by = (
+            reback_by
+        )
+
+        indent.updated_at = (
+            datetime.utcnow()
+        )
+
+        # ==========================================
+        # HISTORY
+        # ==========================================
+
+        create_history(
+
+            project_code=
+            indent.project_code,
+
+            module_code=
+            "INDENT",
+
+            record_id=
+            indent.id,
+
+            level_no=
+            indent.current_level,
+
+            action=
+            "REBACK",
+
+            action_by=
+            reback_by,
+
+            comments=
+            comments
+        )
+
+        db.session.commit()
+
+        return res(
+
+            "Indent sent for correction",
+
+            {
+
+                "indentId":
+                indent.id,
+
+                "workflowStatus":
+                indent.workflow_status
+
+            },
+
+            200
+        )
+
+    except SQLAlchemyError as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+
+def reject_indent(
+        indent_id,
+        rejected_by=None,
+        comments=None
+):
+
+    try:
+
+        indent = IndentMaster.query.get(
+            indent_id
+        )
+
+        if not indent:
+
+            return res(
+                "Indent not found",
+                [],
+                404
+            )
+
+        # ==========================================
+        # ONLY PENDING
+        # ==========================================
+
+        if not indent.workflow_status.startswith(
+            "Pending"
+        ):
+
+            return res(
+                "Indent not pending",
+                [],
+                400
+            )
+
+        # ==========================================
+        # COMMENT REQUIRED
+        # ==========================================
+
+        if not comments:
+
+            return res(
+                "Comments required",
+                [],
+                400
+            )
+
+        # ==========================================
+        # CURRENT APPROVER CHECK
+        # ==========================================
+
+        allowed = is_current_approver(
+
+            indent.project_code,
+
+            "INDENT",
+
+            indent.current_level,
+
+            rejected_by
+        )
+
+        if not allowed:
+
+            return res(
+                "You are not current approver",
+                [],
+                403
+            )
+
+        # ==========================================
+        # REJECT
+        # ==========================================
+
+        indent.workflow_status = (
+            "Rejected"
+        )
+
+        indent.locked = True
+
+        indent.rejected_at = (
+            datetime.utcnow()
+        )
+
+        indent.rejected_by = (
+            rejected_by
+        )
+
+        indent.status = (
+            "Inactive"
+        )
+
+        indent.updated_by = (
+            rejected_by
+        )
+
+        indent.updated_at = (
+            datetime.utcnow()
+        )
+
+        # ==========================================
+        # HISTORY
+        # ==========================================
+
+        create_history(
+
+            project_code=
+            indent.project_code,
+
+            module_code=
+            "INDENT",
+
+            record_id=
+            indent.id,
+
+            level_no=
+            indent.current_level,
+
+            action=
+            "REJECT",
+
+            action_by=
+            rejected_by,
+
+            comments=
+            comments
+        )
+
+        db.session.add(
+            indent
+        )
+
+        db.session.commit()
+
+        return res(
+
+            "Indent rejected successfully",
+
+            {
+
+                "indentId":
+                indent.id,
+
+                "workflowStatus":
+                indent.workflow_status
+
+            },
+
+            200
+        )
+
+    except SQLAlchemyError as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+
+def get_indent_history(
+        indent_id
+):
+
+    try:
+
+        indent = IndentMaster.query.get(
+            indent_id
+        )
+
+        if not indent:
+
+            return res(
+                "Indent not found",
+                [],
+                404
+            )
+
+        rows = get_history(
+
+            "INDENT",
+
+            indent.id
+        )
+
+        data=[]
+
+        for row in rows:
+
+            data.append({
+
+                "id":
+                row.id,
+
+                "action":
+                row.action,
+
+                "level":
+                row.level_no,
+
+                "comments":
+                row.comments,
+
+                "actionBy":
+                (
+                    row.user.username
+                    if row.user
+                    else None
+                ),
+
+                "createdAt":
+                row.created_at.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                if row.created_at
+                else None
+            })
+
+        return res(
+
+            "Indent history fetched successfully",
+
+            data,
+
+            200
+        )
+
+    except Exception as e:
+
+        return res(
+            str(e),
+            [],
+            500
+        )

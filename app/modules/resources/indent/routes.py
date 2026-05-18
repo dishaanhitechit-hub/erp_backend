@@ -6,6 +6,7 @@ from app.middleware.auth_middleware import login_required
 
 from app.middleware.role_middleware import require_super_admin,require_admin
 from app.modules.resources.indent.service import *
+
 indent_bp = Blueprint( "indent",__name__)
 
 @indent_bp.route("/items-by-category", methods=["GET"])
@@ -91,7 +92,14 @@ def update(indent_id):
     return update_indent(
         indent_id=indent_id,
         data=request.get_json(),
-        updated_by=None
+        updated_by=(
+            g.current_user.get("id")
+            if hasattr(
+                g,
+                "current_user"
+            )
+            else None
+        )
     )
 
 
@@ -125,3 +133,128 @@ def delete(indent_id):
 
     return delete_indent(indent_id)
 
+# =========================================================
+# APPROVE INDENT
+# =========================================================
+
+@indent_bp.route(
+    "/approve/<int:indent_id>",
+    methods=["POST"]
+)
+@login_required
+def approve(indent_id):
+
+    data = request.get_json() or {}
+
+    approved_by = (
+        g.current_user.get("id")
+        if hasattr(
+            g,
+            "current_user"
+        )
+        else None
+    )
+
+    return approve_indent(
+
+        indent_id=
+        indent_id,
+
+        approved_by=
+        approved_by,
+
+        comments=
+        data.get(
+            "comments"
+        )
+    )
+
+
+# =========================================================
+# REBACK INDENT
+# =========================================================
+
+@indent_bp.route(
+    "/reback/<int:indent_id>",
+    methods=["POST"]
+)
+@login_required
+def reback(indent_id):
+
+    data = request.get_json() or {}
+
+    reback_by = (
+        g.current_user.get("id")
+        if hasattr(
+            g,
+            "current_user"
+        )
+        else None
+    )
+
+    return reback_indent(
+
+        indent_id=
+        indent_id,
+
+        reback_by=
+        reback_by,
+
+        comments=
+        data.get(
+            "comments"
+        )
+    )
+
+
+# =========================================================
+# REJECT INDENT
+# =========================================================
+
+@indent_bp.route(
+    "/reject/<int:indent_id>",
+    methods=["POST"]
+)
+@login_required
+def reject(indent_id):
+
+    data = request.get_json() or {}
+
+    rejected_by = (
+        g.current_user.get("id")
+        if hasattr(
+            g,
+            "current_user"
+        )
+        else None
+    )
+
+    return reject_indent(
+
+        indent_id=
+        indent_id,
+
+        rejected_by=
+        rejected_by,
+
+        comments=
+        data.get(
+            "comments"
+        )
+    )
+
+
+# =========================================================
+# INDENT HISTORY
+# =========================================================
+
+@indent_bp.route(
+    "/history/<int:indent_id>",
+    methods=["GET"]
+)
+@login_required
+def history(indent_id):
+
+    return get_indent_history(
+        indent_id
+    )
