@@ -18,31 +18,66 @@ from app.models.approval_path import *
 # GENERATE INDENT NUMBER
 
 
-def generate_indent_no(project_code):
+def generate_indent_no(
+        project_code
+):
 
-    today = datetime.now().strftime("%Y%m")
+    today = datetime.now().strftime(
+        "%Y%m"
+    )
 
     last_indent = (
-        IndentMaster.query
-        .filter(
-            IndentMaster.project_code == project_code
+
+        db.session.query(
+
+            IndentMaster.indent_no
+
         )
-        .order_by(IndentMaster.id.desc())
+
+        .filter(
+
+            IndentMaster.project_code ==
+            project_code
+
+        )
+
+        .order_by(
+
+            IndentMaster.id.desc()
+
+        )
+
         .first()
+
     )
 
     if last_indent:
+
         try:
-            last_serial = int(last_indent.indent_no.split("-")[-1])
+
+            last_serial = int(
+
+                last_indent[0]
+
+                .split("-")[-1]
+
+            )
+
         except:
+
             last_serial = 0
+
     else:
+
         last_serial = 0
 
-    new_serial = str(last_serial + 1).zfill(4)
+    new_serial = str(
 
-    return f"IND-{project_code}-{today}-{new_serial}"
+        last_serial + 1
 
+    ).zfill(4)
+
+    return ( f"IND-" f"{project_code}-" f"{today}-" f"{new_serial}" )
 
 
 # CREATE INDENT
@@ -511,7 +546,7 @@ def update_indent(indent_id, data, updated_by=None):
         indent.sale_order_no = data.get(
             "saleOrderNo"
         )
-        # indent.indent_status=data.get("status")
+
         indent.remarks = data.get("remarks")
 
         indent.updated_by = updated_by
