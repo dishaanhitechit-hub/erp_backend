@@ -484,180 +484,115 @@ def update_indent(indent_id, data, updated_by=None):
         # ==========================================
 
         if indent.locked:
-            return res(
-                "Indent cannot be edited",
-                [],
-                400
-            )
+            return res("Indent cannot be edited", [], 400)
 
         # ==========================================
-        # VALIDATE PROJECT
+        # REMARKS REQUIRED
         # ==========================================
 
-        project = Project.query.filter_by(
-            project_code=data.get("projectCode")
-        ).first()
+        remarks = data.get("remarks")
 
-        if not project:
-            return res("Invalid project code", [], 400)
+        if not remarks:
+            return res("Remarks required", [], 400)
 
-        # ==========================================
-        # VALIDATE CATEGORY
-        # ==========================================
-
-        category = CategoryMaster.query.filter_by(
-            fixed_code=data.get("categoryCode")
-        ).first()
-
-        if not category:
-            return res("Invalid category code", [], 400)
+        indent.remarks = remarks
 
         # ==========================================
-        # VALIDATE ITEMS
+        # CATEGORY CHANGE OPTIONAL
         # ==========================================
 
-        items = data.get("items", [])
+        if "categoryCode" in data:
 
-        if not items:
-            return res("Indent items required", [], 400)
+            category = CategoryMaster.query.filter_by(fixed_code=data.get("categoryCode")).first()
+
+            if not category:
+                return res("Invalid category code", [], 400)
+
+            indent.category_code = data.get("categoryCode")
+
+        category_code = indent.category_code
 
         # ==========================================
-        # UPDATE MASTER
+        # UPDATE OPTIONAL FIELDS
         # ==========================================
 
-        # indent.project_code = data.get("projectCode")
+        if "priority" in data:
+            indent.priority = data["priority"]
 
-        indent.category_code = data.get("categoryCode")
+        if "requiredWithin" in data:
+            indent.required_within = data["requiredWithin"]
 
-        indent.priority = data.get("priority")
+        if "indentPlacedBy" in data:
+            indent.indent_placed_by = data["indentPlacedBy"]
 
-        indent.required_within = data.get(
-            "requiredWithin"
-        )
+        if "siteRegSerialNo" in data:
+            indent.site_reg_serial_no = data["siteRegSerialNo"]
 
-        indent.indent_placed_by = data.get(
-            "indentPlacedBy"
-        )
+        if "saleOrderNo" in data:
+            indent.sale_order_no = data["saleOrderNo"]
 
-        indent.site_reg_serial_no = data.get(
-            "siteRegSerialNo"
-        )
+        # ==========================================
+        # UPDATE ITEMS ONLY IF SENT
+        # ==========================================
 
-        indent.sale_order_no = data.get(
-            "saleOrderNo"
-        )
+        items = data.get("items")
 
-        indent.remarks = data.get("remarks")
+        if items is not None:
 
-        indent.updated_by = updated_by
+            IndentItem.query.filter_by(indent_id=indent.id).delete()
 
-        indent.updated_at = datetime.utcnow()
+            for row in items:
 
+                item = Item.query.filter_by(item_code=row.get("itemCode")).first()
 
-        # DELETE OLD ITEMS
+                if not item:
+                    db.session.rollback()
+                    return res(f"Invalid item code: {row.get('itemCode')}", [], 400)
 
-        IndentItem.query.filter_by(
-            indent_id=indent.id
-        ).delete()
+                if item.category_code != category_code:
+                    db.session.rollback()
+                    return res(f"Item {item.item_code} does not belong to category {category_code}", [], 400)
 
+                qty = row.get("qty")
 
-        # ADD NEW ITEMS
+                if not qty or float(qty) <= 0:
+                    return res(f"Invalid qty for item {item.item_code}", [], 400)
 
-
-        for row in items:
-
-            item = Item.query.filter_by(
-                item_code=row.get("itemCode")
-            ).first()
-
-            if not item:
-                db.session.rollback()
-
-                return res(
-                    f"Invalid item code : "
-                    f"{row.get('itemCode')}",
-                    [],
-                    400
+                indent_item = IndentItem(
+                    indent_id=indent.id,
+                    item_code=item.item_code,
+                    qty=qty,
+                    location=row.get("location"),
+                    note=row.get("note"),
+                    created_by=updated_by
                 )
 
+                db.session.add(indent_item)
 
-            # CATEGORY MATCH VALIDATION
-
-
-            if item.category_code != data.get(
-                "categoryCode"
-            ):
-
-                db.session.rollback()
-
-                return res(
-                    f"Item {item.item_code} "
-                    f"does not belong to category "
-                    f"{data.get('categoryCode')}",
-                    [],
-                    400
-                )
-
-
-            # QTY VALIDATION
-
-
-            qty = row.get("qty")
-
-            if not qty or float(qty) <= 0:
-
-                db.session.rollback()
-
-                return res(
-                    f"Invalid qty for item "
-                    f"{item.item_code}",
-                    [],
-                    400
-                )
-
-            indent_item = IndentItem(
-
-                indent_id=indent.id,
-
-                item_code=item.item_code,
-
-                qty=qty,
-
-                location=row.get("location"),
-
-                note=row.get("note"),
-
-                created_by=updated_by
-            )
-
-            db.session.add(indent_item)
+        # ==========================================
 
         if indent.workflow_status == "Reback":
             indent.correction_sent_at = None
 
+        indent.updated_by = updated_by
+        indent.updated_at = datetime.utcnow()
+
         db.session.commit()
 
-        return res(
-            "Indent updated successfully",
-            {
-                "indentId": indent.id,
-                "indentNo": indent.indent_no
-            },
-            200
-        )
+        return res("Indent updated successfully", {
+            "indentId": indent.id,
+            "indentNo": indent.indent_no
+        }, 200)
 
     except SQLAlchemyError as e:
 
         db.session.rollback()
-
         return res(str(e), [], 500)
 
     except Exception as e:
 
         db.session.rollback()
-
         return res(str(e), [], 500)
-
 
 # SUBMIT INDENT
 
@@ -781,7 +716,7 @@ def submit_indent(
             indent.project_code,
 
             module_code=
-            "INDENT",
+            "indent",
 
             record_id=
             indent.id,
