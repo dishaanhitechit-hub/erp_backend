@@ -5,6 +5,7 @@ from datetime import datetime
 
 
 class IndentMaster(db.Model):
+
     __tablename__ = "indent_master"
 
     # ==================================
@@ -29,14 +30,18 @@ class IndentMaster(db.Model):
     # FK → projects.project_code
     project_code = db.Column(
         db.String(50),
-        db.ForeignKey("projects.project_code"),
+        db.ForeignKey(
+            "projects.project_code"
+        ),
         nullable=False
     )
 
     # FK → category_master.fixed_code
     category_code = db.Column(
         db.String(50),
-        db.ForeignKey("category_master.fixed_code"),
+        db.ForeignKey(
+            "category_master.fixed_code"
+        ),
         nullable=False
     )
 
@@ -46,51 +51,107 @@ class IndentMaster(db.Model):
     )
 
     priority = db.Column(
-        db.String(30),
-        nullable=True
+        db.String(30)
     )
 
     required_within = db.Column(
-        db.Date,
-        nullable=True
+        db.Date
     )
 
     indent_placed_by = db.Column(
-        db.String(150),
-        nullable=True
+        db.String(150)
     )
 
     site_reg_serial_no = db.Column(
-        db.String(150),
-        nullable=True
+        db.String(150)
     )
 
     sale_order_no = db.Column(
-        db.String(150),
-        nullable=True
+        db.String(150)
     )
 
     remarks = db.Column(
-        db.Text,
-        nullable=True
+        db.Text
     )
 
     # ==================================
-    # STATUS
+    # BUSINESS STATUS
     # ==================================
-
-    indent_status = db.Column(
-        db.String(30),
-        default="Draft"
-    )
-    # Draft
-    # Submitted
-    # Approved
-    # Rejected
 
     order_status = db.Column(
         db.String(30),
         default="Pending"
+    )
+
+    # ==================================
+    # WORKFLOW STATUS
+    # ==================================
+
+    workflow_status = db.Column(
+        db.String(30),
+        default="Draft"
+    )
+
+    # Draft
+    # Pending_L1
+    # Pending_L2
+    # Approved
+    # Reback
+    # Rejected
+
+    current_level = db.Column(
+        db.Integer,
+        default=0
+    )
+
+    locked = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    # ==================================
+    # WORKFLOW DATES
+    # ==================================
+
+    submitted_at = db.Column(
+        db.DateTime
+    )
+
+    final_approved_at = db.Column(
+        db.DateTime
+    )
+
+    rejected_at = db.Column(
+        db.DateTime
+    )
+
+    correction_sent_at = db.Column(
+        db.DateTime
+    )
+
+    # ==================================
+    # USER REFERENCES
+    # ==================================
+
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id"
+        )
+    )
+
+    approved_by = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id"
+        )
+    )
+
+    rejected_by = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id"
+        )
     )
 
     # ==================================
@@ -107,6 +168,21 @@ class IndentMaster(db.Model):
         "CategoryMaster",
         backref="indents",
         lazy=True
+    )
+
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by]
+    )
+
+    approver = db.relationship(
+        "User",
+        foreign_keys=[approved_by]
+    )
+
+    rejector = db.relationship(
+        "User",
+        foreign_keys=[rejected_by]
     )
 
     indent_items = db.relationship(
@@ -136,14 +212,13 @@ class IndentMaster(db.Model):
         onupdate=datetime.utcnow
     )
 
-    created_by = db.Column(
-        db.Integer,
-        nullable=True
-    )
-
     # ==================================
     # STRING
     # ==================================
 
     def __repr__(self):
-        return f"<IndentMaster {self.indent_no}>"
+
+        return (
+            f"<IndentMaster "
+            f"{self.indent_no}>"
+        )

@@ -75,7 +75,44 @@ class EnquiryMaster(db.Model):
         db.String(20),
         default="Active"
     )
+    workflow_status = db.Column(
+        db.String(30),
+        default="Draft"
+    )
 
+    current_level = db.Column(
+        db.Integer,
+        default=0
+    )
+
+    locked = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    submitted_at = db.Column(
+        db.DateTime
+    )
+
+    final_approved_at = db.Column(
+        db.DateTime
+    )
+
+    rejected_at = db.Column(
+        db.DateTime
+    )
+
+    correction_sent_at = db.Column(
+        db.DateTime
+    )
+
+    approved_by = db.Column(
+        db.Integer
+    )
+
+    rejected_by = db.Column(
+        db.Integer
+    )
     # =====================================================
     # AUDIT FIELDS
     # =====================================================
