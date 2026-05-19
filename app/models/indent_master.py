@@ -153,7 +153,9 @@ class IndentMaster(db.Model):
             "users.id"
         )
     )
-
+    supporting_file = db.Column(
+        db.Text
+    )
     # ==================================
     # RELATIONSHIPS
     # ==================================

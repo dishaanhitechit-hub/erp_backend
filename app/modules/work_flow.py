@@ -224,6 +224,10 @@ def is_current_approver(
         .first()
 
     )
+    print(
+        "approver result:",
+        approver
+    )
 
     return True if approver else False
 

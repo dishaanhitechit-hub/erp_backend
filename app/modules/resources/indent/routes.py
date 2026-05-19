@@ -1,6 +1,6 @@
 
 from flask import Blueprint, request
-
+import json
 from flask import g
 from app.middleware.auth_middleware import login_required
 
@@ -28,7 +28,22 @@ def items_by_category():
 @login_required
 def create():
 
-    data = request.get_json()
+
+    data = dict(
+        request.form
+    )
+
+    items = json.loads(
+
+        data.get(
+            "items",
+            "[]"
+        )
+    )
+
+    data["items"] = items
+
+    files = request.files
 
     if not data:
         return {
@@ -44,6 +59,7 @@ def create():
 
     return create_indent(
         data=data,
+        files=files,
         created_by=created_by
     )
 
@@ -89,17 +105,19 @@ def indent_details(indent_id):
 @login_required
 def update(indent_id):
 
+    data = dict(request.form)
+
+    items = json.loads(data.get("items", "null"))
+
+    data["items"] = items
+
+    files = request.files
+
     return update_indent(
         indent_id=indent_id,
-        data=request.get_json(),
-        updated_by=(
-            g.current_user.get("id")
-            if hasattr(
-                g,
-                "current_user"
-            )
-            else None
-        )
+        data=data,
+        files=files,
+        updated_by=g.current_user.get("id") if hasattr(g, "current_user") else None
     )
 
 
@@ -143,7 +161,15 @@ def delete(indent_id):
 )
 @login_required
 def approve(indent_id):
+    print(
+        g.current_user
+    )
 
+    print(
+        type(
+            g.current_user
+        )
+    )
     data = request.get_json() or {}
 
     approved_by = (

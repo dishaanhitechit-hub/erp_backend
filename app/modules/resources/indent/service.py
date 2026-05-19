@@ -12,6 +12,7 @@ from app.modules.work_flow import *
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
 from app.models.approval_path import *
+from app.cloudinary_uploader import *
 
 
 
@@ -83,7 +84,7 @@ def generate_indent_no(
 # CREATE INDENT
 
 
-def create_indent(data, created_by=None):
+def create_indent(data,files=None, created_by=None):
 
     try:
 
@@ -114,7 +115,34 @@ def create_indent(data, created_by=None):
         if not items:
             return res("Indent items required", [], 400)
 
+        supporting_file = None
 
+        indent_file = files.get(
+            "indentFile"
+        )
+
+        if indent_file:
+            supporting_file = (
+
+                upload_file_to_bunny(
+
+                    file=
+                    indent_file,
+
+                    mainFolder=
+                    "indent",
+
+                    subFolder=
+                    data.get(
+                        "projectCode"
+                    ),
+
+                    fileName=
+                    "support"
+
+                )
+
+            )
         # CREATE MASTER
 
         indent = IndentMaster(
@@ -122,7 +150,7 @@ def create_indent(data, created_by=None):
             indent_no=generate_indent_no(
                 data.get("projectCode")
             ),
-
+            supporting_file= supporting_file,
             project_code=data.get(
                 "projectCode"
             ),
@@ -402,7 +430,7 @@ def get_indent_details(indent_id):
 
             "items": item_rows,
             "currentLevel": indent.current_level,
-
+            "indentFiles":indent.supporting_file,
             "locked": indent.locked,
             "submittedAt":
                 str(indent.submitted_at)
@@ -470,7 +498,7 @@ def get_items_by_category(category_code):
 
         return res(str(e), [], 500)
 
-def update_indent(indent_id, data, updated_by=None):
+def update_indent(indent_id, data, files=None, updated_by=None):
 
     try:
 
@@ -531,6 +559,36 @@ def update_indent(indent_id, data, updated_by=None):
         if "saleOrderNo" in data:
             indent.sale_order_no = data["saleOrderNo"]
 
+        # ==========================================
+        # UPDATE FILE OPTIONAL
+        # ==========================================
+
+        if files:
+
+            indent_file = files.get(
+                "indentFile"
+            )
+
+            if indent_file:
+                indent.supporting_file = (
+
+                    upload_file_to_bunny(
+
+                        file=
+                        indent_file,
+
+                        mainFolder=
+                        "indent",
+
+                        subFolder=
+                        indent.project_code,
+
+                        fileName=
+                        "support"
+
+                    )
+
+                )
         # ==========================================
         # UPDATE ITEMS ONLY IF SENT
         # ==========================================
@@ -658,7 +716,7 @@ def submit_indent(
 
             indent.project_code,
 
-            "INDENT"
+            "indent"
         )
 
         # ==========================================
@@ -878,13 +936,37 @@ def approve_indent(
 
             indent.project_code,
 
-            "INDENT",
+            "indent",
 
             indent.current_level,
 
             approved_by
         )
+        print(
+            "project:",
+            indent.project_code
+        )
 
+        print(
+            "module:",
+            "indent"
+        )
+
+        print(
+            "level:",
+            indent.current_level,
+            type(
+                indent.current_level
+            )
+        )
+
+        print(
+            "approved_by:",
+            approved_by,
+            type(
+                approved_by
+            )
+        )
         if not allowed:
 
             return res(
@@ -901,7 +983,7 @@ def approve_indent(
 
             indent.project_code,
 
-            "INDENT",
+            "indent",
 
             indent.current_level
         )
@@ -918,7 +1000,7 @@ def approve_indent(
                 indent.project_code,
 
                 module_code=
-                "INDENT",
+                "indent",
 
                 record_id=
                 indent.id,
@@ -959,7 +1041,7 @@ def approve_indent(
                 indent.project_code,
 
                 module_code=
-                "INDENT",
+                "indent",
 
                 record_id=
                 indent.id,
