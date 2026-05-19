@@ -121,8 +121,13 @@ def create_indent(data,files=None, created_by=None):
             "indentFile"
         )
 
-        if indent_file:
-            supporting_file = (
+        if not indent_file:
+            return res(
+                "Indent file is required",
+                [],
+                400
+            )
+        supporting_file = (
 
                 upload_file_to_bunny(
 
@@ -416,7 +421,7 @@ def get_indent_details(indent_id):
             "projectCode": indent.project_code,
 
             "categoryCode": indent.category_code,
-            "indentDate": indent.indent_date,
+            "indentDate": str(indent.indent_date) if indent.indent_date else None,
             "priority": indent.priority,
             "siteRegSerialNo":indent.site_reg_serial_no,
             "saleOrderNo":indent.sale_order_no,
