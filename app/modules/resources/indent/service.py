@@ -416,9 +416,10 @@ def get_indent_details(indent_id):
             "projectCode": indent.project_code,
 
             "categoryCode": indent.category_code,
-
+            "indentDate": indent.indent_date,
             "priority": indent.priority,
-
+            "siteRegSerialNo":indent.site_serial_no,
+            "saleOrderNo":indent.sale_order_no,
             "requiredWithin": str(indent.required_within)
             if indent.required_within else None,
 
@@ -430,7 +431,7 @@ def get_indent_details(indent_id):
 
             "items": item_rows,
             "currentLevel": indent.current_level,
-            "indentFiles":indent.supporting_file,
+            "indentFile":indent.supporting_file,
             "locked": indent.locked,
             "submittedAt":
                 str(indent.submitted_at)
