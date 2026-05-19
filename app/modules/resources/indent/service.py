@@ -159,7 +159,7 @@ def create_indent(data,files=None, created_by=None):
                 "categoryCode"
             ),
 
-            indent_date=date.today(),
+            indent_date=date.get("indentDate"),
 
             priority=data.get(
                 "priority"
@@ -418,7 +418,7 @@ def get_indent_details(indent_id):
             "categoryCode": indent.category_code,
             "indentDate": indent.indent_date,
             "priority": indent.priority,
-            "siteRegSerialNo":indent.site_serial_no,
+            "siteRegSerialNo":indent.site_reg_serial_no,
             "saleOrderNo":indent.sale_order_no,
             "requiredWithin": str(indent.required_within)
             if indent.required_within else None,
