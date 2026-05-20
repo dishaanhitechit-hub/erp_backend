@@ -3,7 +3,7 @@
 import os
 import uuid
 from flask import g
-from pandas.io.pytables import Term
+# from pandas.io.pytables import Term
 
 from app.response import res
 from app.models.vendor import Vendor
@@ -1349,7 +1349,7 @@ def term_edit(termId, data):
     return res("Term edited successfully", data, 200)
 
 def get_all_terms():
-    terms = Term.query.order_by(TermConditions.id.desc()).all()
+    terms = TermConditions.query.order_by(TermConditions.id.desc()).all()
     data=[]
     for t in terms:
         data.append({
@@ -1362,7 +1362,7 @@ def get_all_terms():
     return res("All terms fetched successfully", data, 200)
 
 def get_term_by_id(termId):
-    term=Term.query.get(termId)
+    term=TermConditions.query.get(termId)
 
     if not term:
         return res("Term not found", [], 404)
