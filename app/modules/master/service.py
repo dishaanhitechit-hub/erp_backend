@@ -3,6 +3,8 @@
 import os
 import uuid
 from flask import g
+from pandas.io.pytables import Term
+
 from app.response import res
 from app.models.vendor import Vendor
 from app.models.item import Item
@@ -10,6 +12,7 @@ from app.models.asset import *
 from app.models.cc_code import *
 from app.models.unit import *
 from app.models.category_group import *
+from app.models.term_conditions import *
 from app.extensions import db
 from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
@@ -1290,3 +1293,85 @@ def delete_unit(unitId):
         [],
         200
     )
+
+# _____________________________
+#
+#       TERM_CONDITION
+#
+# ______________________________
+
+def create_term(data,created=None):
+    term=TermConditions(
+        header=data.get("header"),
+        sub_header=data.get("sub_header"),
+        term_description=data.get("termDescription")
+
+    )
+    if hasattr(g, "current_user"):
+        term.created_by = g.current_user.get("id")
+    else:
+        term.created_by = None
+
+    db.session.add(term)
+    db.session.commit()
+    data=[
+        {
+            "termId": term.id,
+            "header": term.header,
+            "sub_header": term.sub_header,
+            "term_description": term.term_description
+        }
+    ]
+
+    return res("Term created successfully", data, 200)
+
+def term_edit(termId, data):
+    term=TermConditions.query.get(termId)
+
+    if not term:
+        return res("Term not found", [], 404)
+
+    term.header = data.get("header",term.header)
+    term.sub_header = data.get("sub_header",term.sub_header)
+    term.term_description = data.get("term_description",term.term_description)
+
+    db.session.commit()
+
+    data=[
+        {
+            "termId": term.id,
+            "header": term.header,
+            "sub_header": term.sub_header,
+            "term_description": term.term_description
+        }
+    ]
+
+    return res("Term edited successfully", data, 200)
+
+def get_all_terms():
+    terms = Term.query.order_by(TermConditions.id.desc()).all()
+    data=[]
+    for t in terms:
+        data.append({
+            "termId": t.id,
+            "header": t.header,
+            "sub_header": t.sub_header,
+            "term_description": t.term_description
+        })
+
+    return res("All terms fetched successfully", data, 200)
+
+def get_term_by_id(termId):
+    term=Term.query.get(termId)
+
+    if not term:
+        return res("Term not found", [], 404)
+    data=[{
+        "termId": term.id,
+        "header": term.header,
+        "sub_header": term.sub_header,
+        "term_description": term.term_description
+
+    }]
+
+    return res("Term fetched successfully", data, 200)

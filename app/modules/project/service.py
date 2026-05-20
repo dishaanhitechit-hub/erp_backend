@@ -27,13 +27,19 @@ def enter_project(
         user_id
     )
 
-    permissions=(
+    permissions = {
+
+        key: value
+
+        for key, value in
+
         get_user_permissions(
             project.id,
             user.id
-        )
-    )
+        ).items()
 
+        if value is True
+    }
     token=create_access_token(
 
         identity=str(

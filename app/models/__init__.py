@@ -22,3 +22,4 @@ from .feature_page import *
 from .approval_path import (ApprovalPath,
     ApprovalHistory,
     ModuleMaster)
+from .term_conditions import *

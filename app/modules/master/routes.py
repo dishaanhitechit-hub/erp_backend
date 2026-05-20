@@ -255,3 +255,27 @@ def unit_update(unitId):
 def unit_delete(unitId):
     return delete_unit(unitId)
 
+@master_bp.route("/term/create", methods=["POST"])
+@login_required
+@require_admin
+def term_create():
+    return create_term(request.json)
+
+@master_bp.route("/term/list", methods=["GET"])
+@login_required
+@require_admin
+def term_list():
+    return get_all_terms()
+
+@master_bp.route("/term/update/<int:termId>", methods=["PUT"])
+@login_required
+@require_admin
+def term_update(termId):
+    return term_edit(termId, request.json)
+
+@master_bp.route("/term/<int:termId>", methods=["GET"])
+@login_required
+@require_admin
+def term_detail(termId):
+    return get_term_by_id(termId)
+
