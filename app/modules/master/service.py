@@ -1375,3 +1375,19 @@ def get_term_by_id(termId):
     }]
 
     return res("Term fetched successfully", data, 200)
+
+
+def delete_term(termId):
+    term = TermConditions.query.get(termId)
+
+    if not term:
+        return res("Term not found", [], 404)
+
+    db.session.delete(term)
+    db.session.commit()
+
+    return res(
+        "Term deleted successfully",
+        [],
+        200
+    )

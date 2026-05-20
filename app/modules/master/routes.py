@@ -279,3 +279,10 @@ def term_update(termId):
 def term_detail(termId):
     return get_term_by_id(termId)
 
+
+@master_bp.route("/term/delete/<int:termId>", methods=["DELETE"])
+@login_required
+@require_admin
+def term_delete(termId):
+    return delete_term(termId)
+
