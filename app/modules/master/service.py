@@ -1295,9 +1295,9 @@ def delete_unit(unitId):
     )
 
 # _____________________________
-#
+
 #       TERM_CONDITION
-#
+
 # ______________________________
 
 def create_term(data,created=None):

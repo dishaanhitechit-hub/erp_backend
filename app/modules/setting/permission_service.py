@@ -3,7 +3,11 @@ from app.models.project_designation_permission import ProjectDesignationPermissi
 from app.models.project_user_permission import ProjectUserPermission
 from app.models.feature_page import FeaturePage
 from app.models.permission_action import PermissionAction
+from app.models.user import User
+from app.models.project import Project
 from app.extensions import db
+from app.response import res
+
 
 
 def get_user_permissions(
@@ -64,7 +68,18 @@ def get_user_permissions(
             f"{p.action_name}"
         )
 
-        permission_map[key]=p.allowed
+        # print(
+        #     "Designation:",
+        #     key,
+        #     p.allowed
+        # )
+
+        permission_map[key] = (
+                permission_map.get(
+                    key,
+                    False
+                ) or p.allowed
+        )
 
     user_permissions=(
 
@@ -102,6 +117,19 @@ def get_user_permissions(
             f"{p.action_name}"
         )
 
-        permission_map[key]=p.allowed
+        # print(
+        #     "User:",
+        #     key,
+        #     p.allowed
+        # )
+
+        permission_map[key] = (
+                permission_map.get(
+                    key,
+                    False
+                ) or p.allowed
+        )
 
     return permission_map
+
+

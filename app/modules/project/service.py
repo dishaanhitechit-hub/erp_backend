@@ -27,6 +27,23 @@ def enter_project(
         user_id
     )
 
+    raw_permissions = get_user_permissions(
+        project.id,
+        user.id
+    )
+
+    print(
+        "RAW:",
+        raw_permissions
+    )
+
+    for k, v in raw_permissions.items():
+        print(
+            k,
+            v,
+            type(v)
+        )
+
     permissions = {
 
         key: value

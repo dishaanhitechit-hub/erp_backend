@@ -20,6 +20,7 @@ from app.response import res
 from app.cloudinary_uploader import *
 from app.extensions import db
 from app.models.approval_path import ApprovalPath
+from app.modules.setting.permission_service import get_user_permissions
 from collections import defaultdict
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
@@ -1386,6 +1387,144 @@ def get_approval_paths(projectCode):
             200
         )
 
+
+    except Exception as e:
+
+        return res(
+            str(e),
+            [],
+            500
+        )
+
+def get_edit_users(
+        project_code
+):
+
+    try:
+
+        project=Project.query.filter_by(
+            project_code=project_code
+        ).first()
+
+        if not project:
+
+            return res(
+                "Project not found",
+                [],
+                404
+            )
+
+        pages=[
+
+            "indent",
+            "enquiry",
+            "order",
+            "goods_received_note",
+            "goods_issue_note",
+            "labour_id",
+            "dlr_entry",
+            "dlr_report",
+            "log_sheet",
+            "machinery_stock_summary",
+            "monthly_rent",
+            "billing_by_grn",
+            "billing_by_srn",
+            "indent_allocation",
+            "asset_id",
+            "asset_report",
+            "order_boq",
+            "budget_costing",
+            "monthly_planning",
+            "daily_progress_report",
+            "reconciliation",
+            "certified_bill",
+            "hold_amend_pending",
+            "work_in_progress",
+            "drawing_register",
+            "bbs_register",
+            "concrete_register",
+            "hindrance_register",
+            "sale",
+            "purchases",
+            "receipt",
+            "payment",
+            "contra",
+            "debit_note",
+            "credit_note",
+            "journal"
+        ]
+
+        result={}
+
+        users=(
+
+            User.query
+
+            .join(
+                ProjectUserRole,
+                ProjectUserRole.user_id
+                ==User.id
+            )
+
+            .filter(
+                ProjectUserRole.project_id
+                ==project.id
+            )
+
+            .distinct()
+
+            .all()
+        )
+
+        all_permissions = {}
+
+        for user in users:
+            all_permissions[
+                user.id
+            ] = get_user_permissions(
+                project.id,
+                user.id
+            )
+
+        for page in pages:
+
+            permission_key = (
+                f"{page}.EDIT"
+            )
+
+            result[
+                permission_key
+            ] = []
+
+            for user in users:
+
+                permissions = all_permissions.get(
+                    user.id,
+                    {}
+                )
+
+                if permissions.get(
+                        permission_key,
+                        False
+                ):
+                    result[
+                        permission_key
+                    ].append({
+
+                        "id":
+                            user.id,
+
+                        "userName":
+                            user.username,
+
+                        "userDisplayName":
+                            user.login_username
+                    })
+
+        return res(
+            "success",
+            result
+        )
 
     except Exception as e:
 

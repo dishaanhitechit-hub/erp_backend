@@ -9,8 +9,10 @@ from .service import ( create_user,create_project,
                        # assign_role,
                        delete_role,create_approval_path,get_approval_paths,
                        get_roles_by_project_code,
-                       get_all_users,get_all_project,
+                       get_all_users,get_all_project,get_edit_users,
                     delete_project_designation,add_designation_to_project,get_user_by_id,update_user,get_project_by_id,update_project,update_roles_by_project_code)
+
+
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -218,5 +220,16 @@ def approval_path_list():
     )
 
     return get_approval_paths(
+        project_code
+    )
+
+@setting_bp.route( "/edit-users", methods=["GET"])
+@login_required
+@require_super_admin
+def edit_users_route():
+    project_code = request.args.get(
+        "projectCode"
+    )
+    return get_edit_users(
         project_code
     )
