@@ -7,7 +7,7 @@ from app.models.user import User
 from app.models.project import Project
 from app.extensions import db
 from app.response import res
-
+from app.models.approval_path import ApprovalPath
 
 
 def get_user_permissions(
@@ -129,7 +129,29 @@ def get_user_permissions(
                     False
                 ) or p.allowed
         )
+    approval_permissions = (
 
+            ApprovalPath.query.filter_by(
+                project_code=(
+                    Project.query.get(
+                        project_id
+                    ).project_code
+                ),
+                user_id=user_id,
+                path_type="APPROVER"
+            ).all()
+
+        )
+
+    for p in approval_permissions:
+            key = (
+                f"{p.module_code}."
+                f"APPROVER"
+            )
+
+            permission_map[
+                key
+            ] = True
     return permission_map
 
 

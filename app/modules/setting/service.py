@@ -568,23 +568,73 @@ def update_roles_by_project_code(projectCode, data):
 
             if allowed is None:
 
-                if existing_permission:
-                    db.session.delete(
-                        existing_permission
-                    )
+                if allowed is False:
 
-                continue
+                    if existing_permission:
+                        db.session.delete(
+                            existing_permission
+                        )
+
+                    # ==========================================
+                    # REMOVE CREATOR IF EDIT REMOVED
+                    # ==========================================
+
+                    if action_name == "EDIT":
+
+                        approval = ApprovalPath.query.filter_by(
+
+                            project_code=project.project_code,
+
+                            module_code=page_code,
+
+                            user_id=user_id,
+
+                            path_type="CREATOR"
+
+                        ).first()
+
+                        if approval:
+                            db.session.delete(
+                                approval
+                            )
+
+                    continue
 
             # ===================== ADD THIS HERE =====================
 
             if allowed is False:
 
-                if existing_permission:
-                    db.session.delete(
-                        existing_permission
-                    )
+                if allowed is False:
 
-                continue
+                    if existing_permission:
+                        db.session.delete(
+                            existing_permission
+                        )
+
+                    # ==========================================
+                    # REMOVE CREATOR IF EDIT REMOVED
+                    # ==========================================
+
+                    if action_name == "EDIT":
+
+                        approval = ApprovalPath.query.filter_by(
+
+                            project_code=project.project_code,
+
+                            module_code=page_code,
+
+                            user_id=user_id,
+
+                            path_type="CREATOR"
+
+                        ).first()
+
+                        if approval:
+                            db.session.delete(
+                                approval
+                            )
+
+                    continue
 
             # ==========================================
             # UPDATE EXISTING
@@ -661,23 +711,73 @@ def update_roles_by_project_code(projectCode, data):
 
             if allowed is None:
 
-                if existing_permission:
-                    db.session.delete(
-                        existing_permission
-                    )
+                if allowed is False:
 
-                continue
+                    if existing_permission:
+                        db.session.delete(
+                            existing_permission
+                        )
+
+                    # ==========================================
+                    # REMOVE CREATOR IF EDIT REMOVED
+                    # ==========================================
+
+                    if action_name == "EDIT":
+
+                        approval = ApprovalPath.query.filter_by(
+
+                            project_code=project.project_code,
+
+                            module_code=page_code,
+
+                            user_id=user_id,
+
+                            path_type="CREATOR"
+
+                        ).first()
+
+                        if approval:
+                            db.session.delete(
+                                approval
+                            )
+
+                    continue
 
             # ===================== ADD THIS HERE =====================
 
             if allowed is False:
 
-                if existing_permission:
-                    db.session.delete(
-                        existing_permission
-                    )
+                if allowed is False:
 
-                continue
+                    if existing_permission:
+                        db.session.delete(
+                            existing_permission
+                        )
+
+                    # ==========================================
+                    # REMOVE CREATOR IF EDIT REMOVED
+                    # ==========================================
+
+                    if action_name == "EDIT":
+
+                        approval = ApprovalPath.query.filter_by(
+
+                            project_code=project.project_code,
+
+                            module_code=page_code,
+
+                            user_id=user_id,
+
+                            path_type="CREATOR"
+
+                        ).first()
+
+                        if approval:
+                            db.session.delete(
+                                approval
+                            )
+
+                    continue
 
             # ==========================================
             # UPDATE OVERRIDE
