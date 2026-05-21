@@ -568,8 +568,6 @@ def update_roles_by_project_code(projectCode, data):
 
             if allowed is None:
 
-                if allowed is False:
-
                     if existing_permission:
                         db.session.delete(
                             existing_permission
@@ -603,8 +601,6 @@ def update_roles_by_project_code(projectCode, data):
             # ===================== ADD THIS HERE =====================
 
             if allowed is False:
-
-                if allowed is False:
 
                     if existing_permission:
                         db.session.delete(
@@ -710,9 +706,6 @@ def update_roles_by_project_code(projectCode, data):
             # ==========================================
 
             if allowed is None:
-
-                if allowed is False:
-
                     if existing_permission:
                         db.session.delete(
                             existing_permission
@@ -746,8 +739,6 @@ def update_roles_by_project_code(projectCode, data):
             # ===================== ADD THIS HERE =====================
 
             if allowed is False:
-
-                if allowed is False:
 
                     if existing_permission:
                         db.session.delete(
