@@ -185,7 +185,7 @@ def handle_user(userId):
 
 @setting_bp.route("/project/<int:projectId>", methods=["GET", "PUT"])
 @login_required
-@require_super_admin
+# @require_super_admin
 def handle_project(projectId):
 
     if request.method == "GET":
