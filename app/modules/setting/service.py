@@ -324,6 +324,10 @@ def get_roles_by_project_code(projectCode):
                 == project.id,
 
                 ProjectDesignationPermission
+                .team_id
+                == r.team_id,
+                
+                ProjectDesignationPermission
                 .designation_id
                 == r.designation_id
             )
