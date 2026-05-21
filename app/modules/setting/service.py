@@ -326,7 +326,7 @@ def get_roles_by_project_code(projectCode):
                 ProjectDesignationPermission
                 .team_id
                 == r.team_id,
-                
+
                 ProjectDesignationPermission
                 .designation_id
                 == r.designation_id
@@ -1521,7 +1521,7 @@ def get_edit_users(
 
     try:
 
-        project=Project.query.filter_by(
+        project = Project.query.filter_by(
             project_code=project_code
         ).first()
 
@@ -1532,6 +1532,70 @@ def get_edit_users(
                 [],
                 404
             )
+
+        result = {}
+
+        roles = (
+
+            ProjectUserRole.query
+
+            .filter(
+                ProjectUserRole.project_id
+                == project.id
+            )
+
+            .all()
+        )
+
+        permissions = (
+
+            db.session.query(
+
+                ProjectDesignationPermission.designation_id,
+
+                ProjectDesignationPermission.team_id,
+
+                FeaturePage.page_code
+
+            )
+
+            .join(
+                FeaturePage,
+                FeaturePage.id
+                ==
+                ProjectDesignationPermission.page_id
+            )
+
+            .join(
+                PermissionAction,
+                PermissionAction.id
+                ==
+                ProjectDesignationPermission.action_id
+            )
+
+            .filter(
+
+                ProjectDesignationPermission.project_id
+                == project.id,
+
+                PermissionAction.action_name
+                == "EDIT"
+
+            )
+
+            .all()
+        )
+
+        permission_map = {
+
+            (
+                p.designation_id,
+                p.team_id,
+                p.page_code
+            ): True
+
+            for p in permissions
+        }
 
         pages=[
 
@@ -1573,71 +1637,39 @@ def get_edit_users(
             "journal"
         ]
 
-        result={}
-
-        users=(
-
-            User.query
-
-            .join(
-                ProjectUserRole,
-                ProjectUserRole.user_id
-                ==User.id
-            )
-
-            .filter(
-                ProjectUserRole.project_id
-                ==project.id
-            )
-
-            .distinct()
-
-            .all()
-        )
-
-        all_permissions = {}
-
-        for user in users:
-            all_permissions[
-                user.id
-            ] = get_user_permissions(
-                project.id,
-                user.id
-            )
-
         for page in pages:
 
-            permission_key = (
-                f"{page}.EDIT"
-            )
+            key=f"{page}.EDIT"
 
-            result[
-                permission_key
-            ] = []
+            result[key]=[]
 
-            for user in users:
+            for role in roles:
 
-                permissions = all_permissions.get(
-                    user.id,
-                    {}
-                )
+                if not role.user:
 
-                if permissions.get(
-                        permission_key,
-                        False
+                    continue
+
+                if permission_map.get(
+
+                    (
+                        role.designation_id,
+                        role.team_id,
+                        page
+                    ),
+
+                    False
                 ):
-                    result[
-                        permission_key
-                    ].append({
+
+                    result[key].append({
 
                         "id":
-                            user.id,
+                        role.user.id,
 
                         "userName":
-                            user.username,
+                        role.user.username,
 
                         "userDisplayName":
-                            user.login_username
+                        role.user.login_username
                     })
 
         return res(
