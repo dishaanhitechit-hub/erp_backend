@@ -25,9 +25,16 @@ class ProjectDesignationPermission(db.Model):
         nullable=False
     )
 
+
     user_id = db.Column(
         db.Integer,
         db.ForeignKey("users.id"),
+        nullable=True
+    )
+
+    team_id = db.Column(
+        db.Integer,
+        db.ForeignKey("teams.id"),
         nullable=True
     )
 
@@ -67,6 +74,10 @@ class ProjectDesignationPermission(db.Model):
         "PermissionAction"
     )
 
+    team = db.relationship(
+        "Team"
+    )
+
     __table_args__ = (
         db.UniqueConstraint(
             "project_id",
@@ -74,6 +85,7 @@ class ProjectDesignationPermission(db.Model):
             "page_id",
             "user_id",
             "action_id",
+            "team_id",
             name="uq_project_designation_permission"
         ),
     )

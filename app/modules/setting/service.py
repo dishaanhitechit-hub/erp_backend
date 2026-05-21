@@ -555,6 +555,7 @@ def update_roles_by_project_code(projectCode, data):
                     project_id=project.id,
                     designation_id=designation_id,
                     page_id=page.id,
+                    team_id=team_id,
                     # user_id=user_id,
                     action_id=action.id
                 )
@@ -566,6 +567,17 @@ def update_roles_by_project_code(projectCode, data):
             # ==========================================
 
             if allowed is None:
+
+                if existing_permission:
+                    db.session.delete(
+                        existing_permission
+                    )
+
+                continue
+
+            # ===================== ADD THIS HERE =====================
+
+            if allowed is False:
 
                 if existing_permission:
                     db.session.delete(
@@ -596,6 +608,7 @@ def update_roles_by_project_code(projectCode, data):
                         designation_id=designation_id,
                         page_id=page.id,
                         user_id=user_id,
+                        team_id=team_id,
                         action_id=action.id,
                         allowed=allowed
                     )
@@ -647,6 +660,17 @@ def update_roles_by_project_code(projectCode, data):
             # ==========================================
 
             if allowed is None:
+
+                if existing_permission:
+                    db.session.delete(
+                        existing_permission
+                    )
+
+                continue
+
+            # ===================== ADD THIS HERE =====================
+
+            if allowed is False:
 
                 if existing_permission:
                     db.session.delete(
