@@ -25,14 +25,14 @@ def vendor_create():
 
 @master_bp.route("/ledger/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def vendor_list():
     return get_all_vendors()
 
 
 @master_bp.route("/ledger/<int:vendorId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def vendor_detail(vendorId):
     return get_vendor_by_id(vendorId)
 
@@ -64,14 +64,14 @@ def item_create():
 
 @master_bp.route("/item/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def item_list():
     return get_all_items()
 
 
 @master_bp.route("/item/<int:itemId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def item_detail(itemId):
     return get_item_by_id(itemId)
 
@@ -104,7 +104,7 @@ def cc_code_create():
 
 @master_bp.route("/cc-code/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def cc_code_list():
     data = request.args.to_dict() if request.args else {}
     return get_all_cc_codes(data)
@@ -112,7 +112,7 @@ def cc_code_list():
 
 @master_bp.route("/cc-code/<int:ccId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def cc_code_detail(ccId):
     return get_cc_code_by_id(ccId)
 
@@ -140,7 +140,7 @@ def group_create():
 
 @master_bp.route("/group/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def group_list():
     return get_all_groups()
 
@@ -166,7 +166,7 @@ def category_create():
 
 @master_bp.route("/category/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def category_list():
     data = request.args.to_dict() if request.args else {}
     return get_all_categories(data)
@@ -190,14 +190,14 @@ def asset_create():
 
 @master_bp.route("/asset/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def asset_list():
     return get_all_assets()
 
 
 @master_bp.route("/asset/<int:assetId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def asset_detail(assetId):
     return get_asset_by_id(assetId)
 
@@ -225,7 +225,7 @@ def unit_create():
 
 @master_bp.route("/unit/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def unit_list():
 
     filters = {
@@ -237,7 +237,7 @@ def unit_list():
 
 @master_bp.route("/unit/<int:unitId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def unit_detail(unitId):
     return get_unit_by_id(unitId)
 
@@ -263,7 +263,7 @@ def term_create():
 
 @master_bp.route("/term/list", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def term_list():
     return get_all_terms()
 
@@ -275,7 +275,7 @@ def term_update(termId):
 
 @master_bp.route("/term/<int:termId>", methods=["GET"])
 @login_required
-@require_admin
+# @require_admin
 def term_detail(termId):
     return get_term_by_id(termId)
 
