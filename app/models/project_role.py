@@ -23,4 +23,13 @@ class ProjectUserRole(db.Model):
             'user_id', 'project_id', 'designation_id', 'team_id',
             name='unique_user_project_team_role'
         ),
+        db.Index(
+
+            "idx_role_lookup",
+
+            "project_id",
+            "designation_id",
+            "team_id",
+            "user_id"
+        ),
     )

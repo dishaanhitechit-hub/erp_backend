@@ -88,4 +88,23 @@ class ProjectDesignationPermission(db.Model):
             "team_id",
             name="uq_project_designation_permission"
         ),
+        db.Index(
+
+            "idx_permission_lookup",
+
+            "project_id",
+            "designation_id",
+            "team_id",
+            "page_id",
+            "action_id"
+        ),
+
+        db.Index(
+
+            "idx_permission_project",
+
+            "project_id"
+        ),
+
     )
+    

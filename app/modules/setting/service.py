@@ -1238,8 +1238,8 @@ def create_approval_path(data):
         )
 
         modules = data.get(
-            "modules", []
-        )
+            "modules"
+        ) or []
 
 
         if not project_code:
@@ -1266,12 +1266,16 @@ def create_approval_path(data):
                 "moduleCode"
             )
 
-            creator_users = module.get(
-                "creatorUsers", []
+            creator_users = (
+                module.get(
+                    "creatorUsers"
+                ) or []
             )
 
-            approver_users = module.get(
-                "approverUsers", []
+            approver_users = (
+                module.get(
+                    "approverUsers"
+                ) or []
             )
 
 
@@ -1280,9 +1284,23 @@ def create_approval_path(data):
                 continue
 
 
-            # ---------------------
-            # creator
-            # ---------------------
+            # delete old mappings
+            ApprovalPath.query.filter(
+
+                ApprovalPath.project_code
+                == project_code,
+
+                ApprovalPath.module_code
+                == module_code
+
+            ).delete(
+                synchronize_session=False
+            )
+
+
+            # ------------------
+            # creators
+            # ------------------
 
             for item in creator_users:
 
@@ -1290,93 +1308,90 @@ def create_approval_path(data):
                     "userId"
                 )
 
-                exists = ApprovalPath.query.filter_by(
+                if not user_id:
 
-                    project_code=project_code,
-                    module_code=module_code,
-                    user_id=user_id,
-                    level_no=0,
-                    path_type="CREATOR"
-
-                ).first()
+                    continue
 
 
-                if not exists:
+                db.session.add(
 
-                    db.session.add(
+                    ApprovalPath(
 
-                        ApprovalPath(
+                        project_code=
+                        project_code,
 
-                            project_code=project_code,
-                            module_code=module_code,
+                        module_code=
+                        module_code,
 
-                            user_id=user_id,
+                        user_id=
+                        user_id,
 
-                            level_no=0,
+                        level_no=0,
 
-                            path_type="CREATOR"
-
-                        )
+                        path_type=
+                        "CREATOR"
 
                     )
 
+                )
 
-            # ---------------------
-            # approvers optional
-            # ---------------------
+
+            # ------------------
+            # approvers
+            # ------------------
 
             for item in approver_users:
 
-                user_id=item.get(
+                user_id = item.get(
                     "userId"
                 )
 
-                level_no=item.get(
+                level_no = item.get(
                     "level"
                 )
 
 
-                exists=ApprovalPath.query.filter_by(
+                if (
+                    not user_id
+                    or
+                    level_no is None
+                ):
 
-                    project_code=project_code,
-                    module_code=module_code,
-
-                    user_id=user_id,
-
-                    level_no=level_no,
-
-                    path_type="APPROVER"
-
-                ).first()
+                    continue
 
 
-                if not exists:
+                db.session.add(
 
-                    db.session.add(
+                    ApprovalPath(
 
-                        ApprovalPath(
+                        project_code=
+                        project_code,
 
-                            project_code=project_code,
-                            module_code=module_code,
+                        module_code=
+                        module_code,
 
-                            user_id=user_id,
+                        user_id=
+                        user_id,
 
-                            level_no=level_no,
+                        level_no=
+                        level_no,
 
-                            path_type="APPROVER"
-
-                        )
+                        path_type=
+                        "APPROVER"
 
                     )
+
+                )
 
 
         db.session.commit()
 
 
-        return res(
-            "Approval paths created successfully",
-            [],
-            201
+        # return in your existing
+        # [data] format
+
+        return get_approval_paths(
+            project_code
         )
 
 
@@ -1389,7 +1404,6 @@ def create_approval_path(data):
             [],
             500
         )
-
 
 
 
@@ -1537,11 +1551,33 @@ def get_edit_users(
 
         roles = (
 
-            ProjectUserRole.query
+            db.session.query(
+
+                ProjectUserRole,
+
+                User.id,
+
+                User.username,
+
+                User.login_username
+
+            )
+
+            .join(
+
+                User,
+
+                User.id
+                ==
+                ProjectUserRole.user_id
+
+            )
 
             .filter(
+
                 ProjectUserRole.project_id
                 == project.id
+
             )
 
             .all()
@@ -1638,38 +1674,34 @@ def get_edit_users(
         ]
 
         for page in pages:
+            result[f"{page}.EDIT"] = []
 
-            key=f"{page}.EDIT"
+        for role, user_id, username, login_username in roles:
 
-            result[key]=[]
+            for designation_id, team_id, page in permission_map.keys():
 
-            for role in roles:
+                if (
 
-                if not role.user:
+                        designation_id
+                        == role.designation_id
 
-                    continue
+                        and
 
-                if permission_map.get(
-
-                    (
-                        role.designation_id,
-                        role.team_id,
-                        page
-                    ),
-
-                    False
+                        team_id
+                        == role.team_id
                 ):
-
-                    result[key].append({
+                    result[
+                        f"{page}.EDIT"
+                    ].append({
 
                         "id":
-                        role.user.id,
+                            user_id,
 
                         "userName":
-                        role.user.username,
+                            username,
 
                         "userDisplayName":
-                        role.user.login_username
+                            login_username
                     })
 
         return res(

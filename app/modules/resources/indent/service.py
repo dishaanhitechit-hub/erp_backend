@@ -1480,7 +1480,7 @@ def get_indent_history(
 
         rows = get_history(
 
-            "INDENT",
+            "indent",
 
             indent.id
         )
