@@ -1184,7 +1184,7 @@ def reback_indent(
 
             indent.project_code,
 
-            "INDENT",
+            "indent",
 
             indent.current_level,
 
@@ -1231,7 +1231,7 @@ def reback_indent(
             indent.project_code,
 
             module_code=
-            "INDENT",
+            "indent",
 
             record_id=
             indent.id,
@@ -1343,7 +1343,7 @@ def reject_indent(
 
             indent.project_code,
 
-            "INDENT",
+            "indent",
 
             indent.current_level,
 
@@ -1398,7 +1398,7 @@ def reject_indent(
             indent.project_code,
 
             module_code=
-            "INDENT",
+            "indent",
 
             record_id=
             indent.id,
