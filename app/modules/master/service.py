@@ -1304,7 +1304,8 @@ def create_term(data,created=None):
     term=TermConditions(
         header=data.get("header"),
         sub_header=data.get("sub_header"),
-        term_description=data.get("termDescription")
+        term_description=data.get("termDescription"),
+        category=data.get("category")
 
     )
     if hasattr(g, "current_user"):
@@ -1319,7 +1320,8 @@ def create_term(data,created=None):
             "termId": term.id,
             "header": term.header,
             "sub_header": term.sub_header,
-            "term_description": term.term_description
+            "term_description": term.term_description,
+            "category": term.category
         }
     ]
 
@@ -1332,6 +1334,7 @@ def term_edit(termId, data):
         return res("Term not found", [], 404)
 
     term.header = data.get("header",term.header)
+    term.category=data.get("category",term.category)
     term.sub_header = data.get("sub_header",term.sub_header)
     term.term_description = data.get("term_description",term.term_description)
 
@@ -1355,6 +1358,7 @@ def get_all_terms():
         data.append({
             "termId": t.id,
             "header": t.header,
+            "category":t.category,
             "sub_header": t.sub_header,
             "term_description": t.term_description
         })
@@ -1369,6 +1373,7 @@ def get_term_by_id(termId):
     data=[{
         "termId": term.id,
         "header": term.header,
+        "category": term.category,
         "sub_header": term.sub_header,
         "term_description": term.term_description
 
