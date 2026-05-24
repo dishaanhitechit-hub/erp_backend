@@ -146,6 +146,16 @@ class IndentMaster(db.Model):
             "users.id"
         )
     )
+    submitted_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id")
+    )
+
+    submitted_user = db.relationship(
+        "User",
+        foreign_keys=[submitted_by]
+    )
+
 
     rejected_by = db.Column(
         db.Integer,

@@ -798,6 +798,7 @@ def submit_indent(
         indent.updated_by = (
             submitted_by
         )
+        indent.submitted_by = (submitted_by)
 
         indent.updated_at = (
             datetime.utcnow()

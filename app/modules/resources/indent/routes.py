@@ -132,9 +132,11 @@ def update(indent_id):
 @login_required
 def submit(indent_id):
 
+    submitted_by = g.current_user.get("id") if hasattr(g, "current_user") else None
+
     return submit_indent(
         indent_id=indent_id,
-        submitted_by=None
+        submitted_by=submitted_by
     )
 
 
