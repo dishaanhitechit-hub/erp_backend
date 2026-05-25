@@ -33,6 +33,8 @@ def create_app():
 
     from .modules.resources.enquiry.routes import enquiry_bp
     app.register_blueprint(enquiry_bp, url_prefix="/resource/enquiry")
+    from .modules.resources.order.routes import order_bp
+    app.register_blueprint(order_bp, url_prefix="/resource/order")
 
     from .modules.project.routes import project_bp
     app.register_blueprint(project_bp, url_prefix="/project")

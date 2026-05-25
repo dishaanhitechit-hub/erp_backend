@@ -1,126 +1,318 @@
-# OrderMaster
+# app/models/order_master.py
+
 from app.extensions import db
 from datetime import datetime
 
 
-
 class OrderMaster(db.Model):
-    __tablename__ = 'order_master'
 
-    id = db.Column(db.Integer, primary_key=True)
-    order_no = db.Column(db.String(50), unique=True, nullable=False)
-    order_date = db.Column(db.DateTime)
-    order_validity = db.Column(db.Date)
+    __tablename__="order_master"
 
-    indent_id = db.Column(db.Integer, db.ForeignKey('indent_master.id'))
-    project_code = db.Column(db.String(50))
-    category_code = db.Column(db.String(50))
-    sub_category_code = db.Column(db.String(50))
+    id=db.Column(
+        db.Integer,
+        primary_key=True
+    )
 
-    party_name = db.Column(db.String(200))
-    party_address = db.Column(db.Text)
-    party_gstn = db.Column(db.String(50))
-    site = db.Column(db.String(200))
-    billing_address = db.Column(db.Text)
-    shipping_address = db.Column(db.Text)
-    order_message = db.Column(db.Text)
-    quotation_file = db.Column(db.String(500))
+    order_no=db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False
+    )
 
-    basic_amount = db.Column(db.Numeric(15, 2))
-    gst_amount = db.Column(db.Numeric(15, 2))
-    total_amount = db.Column(db.Numeric(15, 2))
+    project_code=db.Column(
+        db.String(50),
+        db.ForeignKey(
+            "projects.project_code"
+        ),
+        nullable=False
+    )
 
-    igst_selected = db.Column(db.Boolean, default=False)
-    cgst_selected = db.Column(db.Boolean, default=False)
-    sgst_selected = db.Column(db.Boolean, default=False)
-    igst_amount = db.Column(db.Numeric(15, 2))
-    cgst_amount = db.Column(db.Numeric(15, 2))
-    sgst_amount = db.Column(db.Numeric(15, 2))
+    sub_code=db.Column(
+        db.String(50),
+        db.ForeignKey(
+            "category_master.fixed_code"
+        ),
+        nullable=False
+    )
 
-    order_status = db.Column(db.String(50))  # Draft, Submitted, Verified, Approved
-    booked_status = db.Column(db.String(50))  # Pending, Booked
+    category_code=db.Column(
+        db.String(50),
+        nullable=True
+    )
 
-    created_by = db.Column(db.Integer)
-    updated_by = db.Column(db.Integer)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime)
+    vendor_id=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "vendors.id"
+        ),
+        nullable=True
+    )
 
-    # Relationships
-    order_items = db.relationship('OrderItem', backref='order', lazy=True)
-    order_cost_centers = db.relationship('OrderCostCenter', backref='order', lazy=True)
-    order_terms = db.relationship('OrderTerm', backref='order', lazy=True)
-    order_approvals = db.relationship('OrderApproval', backref='order', lazy=True)
+    order_date=db.Column(
+        db.Date,
+        nullable=False
+    )
+
+    validity_date=db.Column(
+        db.Date
+    )
+
+    billing_address=db.Column(
+        db.Text
+    )
+
+    shipping_address=db.Column(
+        db.Text
+    )
+
+    order_message=db.Column(
+        db.Text
+    )
+
+    supporting_file=db.Column(
+        db.Text
+    )
+
+    basic_amount=db.Column(
+        db.Numeric(14,2),
+        default=0
+    )
+
+    gst_amount=db.Column(
+        db.Numeric(14,2),
+        default=0
+    )
+
+    total_amount=db.Column(
+        db.Numeric(14,2),
+        default=0
+    )
+
+    workflow_status=db.Column(
+        db.String(30),
+        default="Draft"
+    )
+
+    status=db.Column(
+        db.String(30),
+        default="Active"
+    )
+    supporting_file = db.Column(
+        db.Text
+    )
+    created_by=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id"
+        )
+    )
+
+    created_at=db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    updated_at=db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
 
 
-# OrderItem
+    project=db.relationship(
+        "Project",
+        backref="orders"
+    )
+
+    items=db.relationship(
+        "OrderItem",
+        backref="order",
+        cascade="all,delete-orphan"
+    )
+
+    creator=db.relationship(
+        "User"
+    )
+
+# app/models/order_item.py
+
+from app.extensions import db
+from datetime import datetime
+
+
 class OrderItem(db.Model):
-    __tablename__ = 'order_item'
 
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order_master.id'))
-    indent_item_id = db.Column(db.Integer, db.ForeignKey('indent_item.id'))
-    item_code = db.Column(db.String(50))
+    __tablename__="order_items"
 
-    indent_qty = db.Column(db.Numeric(15, 3))
-    order_qty = db.Column(db.Numeric(15, 3))
-    rate = db.Column(db.Numeric(15, 2))
-    amount = db.Column(db.Numeric(15, 2))
-    gst_percentage = db.Column(db.Numeric(5, 2))
-    gst_amount = db.Column(db.Numeric(15, 2))
+    id=db.Column(
+        db.Integer,
+        primary_key=True
+    )
 
-    location = db.Column(db.String(200))
-    note = db.Column(db.Text)
+    order_id=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "order_master.id"
+        ),
+        nullable=False
+    )
 
-    created_by = db.Column(db.Integer)
+    indent_item_id=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "indent_items.id"
+        ),
+        nullable=False
+    )
 
-    # Relationships
-    item = db.relationship('Item', foreign_keys=[item_code],
-                           primaryjoin="OrderItem.item_code==Item.item_code")
+    item_code=db.Column(
+        db.String(50),
+        db.ForeignKey(
+            "items.item_code"
+        )
+    )
+
+    note=db.Column(
+        db.Text
+    )
+
+    unit=db.Column(
+        db.String(50)
+    )
+
+    qty=db.Column(
+        db.Numeric(12,2)
+    )
+
+    amend_qty=db.Column(
+        db.Numeric(12,2),
+        default=0
+    )
+
+    used_qty=db.Column(
+        db.Numeric(12,2),
+        default=0
+    )
+
+    balance_qty=db.Column(
+        db.Numeric(12,2),
+        default=0
+    )
+
+    rate=db.Column(
+        db.Numeric(12,2)
+    )
+
+    amount=db.Column(
+        db.Numeric(14,2)
+    )
+
+    gst_percent=db.Column(
+        db.Numeric(5,2)
+    )
+
+    gst_amount=db.Column(
+        db.Numeric(14,2)
+    )
+
+    location=db.Column(
+        db.String(150)
+    )
+
+    item_status=db.Column(
+        db.String(30),
+        default="Pending"
+    )
+
+    created_at=db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
 
 
-# OrderCostCenter
-class OrderCostCenter(db.Model):
-    __tablename__ = 'order_cost_center'
+    item=db.relationship(
+        "Item"
+    )
 
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order_master.id'))
-    cc_code = db.Column(db.String(50))
-    cc_name = db.Column(db.String(200))
-    basic_amount = db.Column(db.Numeric(15, 2))
-    created_by = db.Column(db.Integer)
+    indent_item=db.relationship(
+        "IndentItem"
+    )
 
+# app/models/order_terms_condition.py
 
-# OrderTerm
-class OrderTerm(db.Model):
-    __tablename__ = 'order_term'
-
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order_master.id'))
-    header = db.Column(db.String(200))
-    sub_header = db.Column(db.String(200))
-    description = db.Column(db.Text)
-    created_by = db.Column(db.Integer)
+from app.extensions import db
+from datetime import datetime
 
 
-# OrderApproval
-class OrderApproval(db.Model):
-    __tablename__ = 'order_approval'
+class OrderTermsCondition(db.Model):
 
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order_master.id'))
-    action = db.Column(db.String(50))  # Created, Verified, Approved
-    user_name = db.Column(db.String(200))
-    status = db.Column(db.String(50))  # Submit, Pending, Rejected
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __tablename__="order_terms_conditions"
+
+    id=db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    order_id=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "order_master.id"
+        ),
+        nullable=False
+    )
+
+    term_id=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "term_conditions.id"
+        ),
+        nullable=False
+    )
+
+    # optional if user edits after selecting
+    custom_description=db.Column(
+        db.Text
+    )
+
+    sequence_no=db.Column(
+        db.Integer,
+        default=1
+    )
+
+    status=db.Column(
+        db.String(30),
+        default="Active"
+    )
+
+    created_by=db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id"
+        )
+    )
+
+    created_at=db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
 
 
-# TermsMaster (for pre-defined T&C)
-class TermsMaster(db.Model):
-    __tablename__ = 'terms_master'
+    order=db.relationship(
+        "OrderMaster",
+        backref=db.backref(
+            "terms_conditions",
+            cascade="all,delete-orphan"
+        )
+    )
 
-    id = db.Column(db.Integer, primary_key=True)
-    mark_id = db.Column(db.String(50))  # GST-1, Payment-1, etc.
-    header = db.Column(db.String(200))
-    sub_header = db.Column(db.String(200))
-    description = db.Column(db.Text)
-    status = db.Column(db.String(50))  # Active, Inactive
+
+    term=db.relationship(
+        "TermConditions",
+        lazy=True
+    )
+
+
+    creator=db.relationship(
+        "User",
+        foreign_keys=[created_by]
+    )
