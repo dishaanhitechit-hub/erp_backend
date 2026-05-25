@@ -2,7 +2,7 @@ from datetime import datetime
 from app.response import res
 from app.extensions import db
 from app.modules.work_flow import *
-from  models import IndentMaster
+from  models.indent_master import IndentMaster
 from models.orderMaster import OrderMaster
 
 MODEL_MAP={
