@@ -48,7 +48,7 @@ class OrderMaster(db.Model):
         nullable=True
     )
     booked_amount=db.Column(
-        db.Numeri(14,4),
+        db.Numeric(14,4),
         nullable=False,
         default=0
     )
