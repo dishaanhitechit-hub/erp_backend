@@ -137,8 +137,9 @@ class OrderMaster(db.Model):
     creator=db.relationship(
         "User"
     )
-    vendor=db.relationship(
-
+    vendor = db.relationship(
+        "Vendor",
+        backref="orders"
     )
 # app/models/order_item.py
 
