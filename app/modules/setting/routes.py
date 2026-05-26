@@ -113,25 +113,55 @@ def add_designation_route():
     return add_designation_to_project(request)
 
 
-@setting_bp.route("/delete-project-designation", methods=["DELETE"])
+@setting_bp.route(
+    "/delete-project-designation",
+    methods=["DELETE"]
+)
 @login_required
 @require_super_admin
 def delete_project_designation_route():
+
     data = request.get_json()
 
     if not data:
-        return res("No data provided", code=400)
 
-    result = delete_project_designation(
-        ProjectId=data.get("ProjectId"),
-        TeamId=data.get("TeamId"),
-        DesignationId=data.get("DesignationId")
+        return res(
+            "No data provided",
+            code=400
+        )
+
+    projectId = data.get(
+        "ProjectId"
     )
 
-    if "error" in result:
-        return res(result["error"], code=400)
+    teamId = data.get(
+        "TeamId"
+    )
 
-    return res("Designation removed from project", result)
+    designationId = data.get(
+        "DesignationId"
+    )
+
+    if not all([
+        projectId,
+        teamId,
+        designationId
+    ]):
+
+        return res(
+            "ProjectId, TeamId and DesignationId required",
+            code=400
+        )
+
+    return delete_project_designation(
+
+        projectId=projectId,
+
+        teamId=teamId,
+
+        designationId=designationId
+
+    )
 
 
 # @setting_bp.route("/designations", methods=["GET"])

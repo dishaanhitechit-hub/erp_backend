@@ -240,33 +240,68 @@ def delete_role(roleId):
 
 
 # Delete Designation
-def delete_project_designation(projectId, teamId, designationId):
+def delete_project_designation(
+        projectId,
+        teamId,
+        designationId
+):
 
-    # delete from ProjectTeam
-    pt = ProjectTeam.query.filter_by(
-        project_id=projectId,
-        designation_id=designationId,
-        team_id=teamId
-    ).first()
+    try:
 
-    if not pt:
-        return res("Designation not found in this project", code=404)
+        pt = ProjectTeam.query.filter_by(
 
-    db.session.delete(pt)
+            project_id=projectId,
+            designation_id=designationId,
+            team_id=teamId
 
-    # also delete from ProjectUserRole
-    pur = ProjectUserRole.query.filter_by(
-        project_id=projectId,
-        designation_id=designationId,
-        team_id=teamId
-    ).all()
+        ).first()
 
-    for row in pur:
-        db.session.delete(row)
+        if not pt:
 
-    db.session.commit()
+            return res(
+                "Designation not found in this project",
+                code=404
+            )
 
-    return res("Designation removed from project")
+
+        ProjectDesignationPermission.query.filter_by(
+
+            project_id=projectId,
+            designation_id=designationId,
+            team_id=teamId
+
+        ).delete(
+            synchronize_session=False
+        )
+
+
+        ProjectUserRole.query.filter_by(
+
+            project_id=projectId,
+            designation_id=designationId,
+            team_id=teamId
+
+        ).delete(
+            synchronize_session=False
+        )
+
+
+        db.session.delete(pt)
+
+        db.session.commit()
+
+        return res(
+            "Designation removed from project"
+        )
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        return res(
+            str(e),
+            code=500
+        )
 
 # Get Roles by Project
 def get_roles_by_project_code(projectCode):
