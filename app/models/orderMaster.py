@@ -47,7 +47,11 @@ class OrderMaster(db.Model):
         ),
         nullable=True
     )
-
+    booked_amount=db.Column(
+        db.Numeri(14,4),
+        nullable=False,
+        default=0
+    )
     order_date=db.Column(
         db.Date,
         nullable=False
@@ -133,7 +137,9 @@ class OrderMaster(db.Model):
     creator=db.relationship(
         "User"
     )
+    vendor=db.relationship(
 
+    )
 # app/models/order_item.py
 
 from app.extensions import db

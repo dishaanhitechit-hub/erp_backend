@@ -26,18 +26,18 @@ def generate_ledger_code():
     ).first()
 
     if not last_vendor:
-        return "3000001"
-
-    last_code = last_vendor.ledger_code
+        return "260001"
 
     try:
-        last_number = int(last_code[1:])
+        last_number = int(
+            last_vendor.ledger_code
+        )
     except:
-        last_number = 0
+        last_number = 260000
 
     new_number = last_number + 1
 
-    return f"3{new_number:06d}"
+    return str(new_number)
 
 def generate_item_code():
     last_item = Item.query.order_by(

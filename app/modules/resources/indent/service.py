@@ -19,66 +19,32 @@ from app.cloudinary_uploader import *
 # GENERATE INDENT NUMBER
 
 
-def generate_indent_no(
-        project_code
-):
-
-    today = datetime.now().strftime(
-        "%Y%m"
-    )
+def generate_indent_no(project_code):
 
     last_indent = (
-
         db.session.query(
-
             IndentMaster.indent_no
-
         )
-
         .filter(
-
-            IndentMaster.project_code ==
-            project_code
-
+            IndentMaster.project_code == project_code
         )
-
         .order_by(
-
             IndentMaster.id.desc()
-
         )
-
         .first()
-
     )
 
     if last_indent:
-
         try:
-
             last_serial = int(
-
                 last_indent[0]
-
-                .split("-")[-1]
-
             )
-
         except:
-
-            last_serial = 0
-
+            last_serial = 350000
     else:
+        last_serial = 350000
 
-        last_serial = 0
-
-    new_serial = str(
-
-        last_serial + 1
-
-    ).zfill(4)
-
-    return ( f"IND-" f"{project_code}-" f"{today}-" f"{new_serial}" )
+    return str(last_serial + 1)
 
 
 # CREATE INDENT
