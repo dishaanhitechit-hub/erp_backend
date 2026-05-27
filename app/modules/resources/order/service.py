@@ -18,8 +18,7 @@ from app.models.term_conditions import *
 from app.models.unit import Unit
 import json
 
-
-
+from models import Vendor
 
 
 def get_cc_code_summary(order_id):
@@ -1008,6 +1007,8 @@ def get_order_list(
 
                 "orderNo":
                 row.order_no,
+
+                "partyName":row.vendor.ledger_name,
 
                 "projectCode":
                 row.project_code,
