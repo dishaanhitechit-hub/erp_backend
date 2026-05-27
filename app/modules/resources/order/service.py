@@ -18,7 +18,7 @@ from app.models.term_conditions import *
 from app.models.unit import Unit
 import json
 
-from models import Vendor
+from app.models.vendor import *
 
 
 def get_cc_code_summary(order_id):
