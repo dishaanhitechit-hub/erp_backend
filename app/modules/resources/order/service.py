@@ -16,7 +16,7 @@ from app.cloudinary_uploader import *
 from app.modules.work_flow import *
 from app.models.term_conditions import *
 from app.models.unit import Unit
-
+import json
 
 
 
@@ -164,15 +164,22 @@ files=None,
 
     try:
 
-        items=data.get(
+        items = data.get(
             "items",
             []
         )
 
-        terms=data.get(
+        terms = data.get(
             "terms",
             []
         )
+
+        if isinstance(items, str):
+            items = json.loads(items)
+
+        if isinstance(terms, str):
+            terms = json.loads(terms)
+
 
         if not items:
 
