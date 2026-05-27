@@ -15,7 +15,7 @@ from app.response import res
 from app.cloudinary_uploader import *
 from app.modules.work_flow import *
 from app.models.term_conditions import *
-
+from app.models.unit import Unit
 
 
 
@@ -243,7 +243,9 @@ files=None,
             validity_date=data.get(
                 "validityDate"
             ),
-            quotation_no_date=data.get("quotationNoDate"),
+            quotation_no=data.get("quotationNo"),
+            quotation_date=data.get("quotationDate"),
+
             billing_address=data.get(
                 "billingAddress"
             ),
@@ -521,8 +523,7 @@ def get_indent_pending_qty_list(
 
         result=[]
 
-
-        rows=(
+        rows = (
 
             db.session.query(
 
@@ -536,90 +537,108 @@ def get_indent_pending_qty_list(
 
                 Item.item_name,
 
+                Unit.unit_name.label(
+                    "item_unit"
+                ),
+
                 IndentItem.qty.label(
                     "indent_qty"
                 ),
 
-                IndentItem.location
+                IndentItem.location,
+
+                func.coalesce(
+
+                    func.sum(
+                        OrderItem.qty
+                    ),
+
+                    0
+
+                ).label(
+                    "used_qty"
+                )
 
             )
 
             .join(
-
                 IndentItem,
-
-                IndentMaster.id==
+                IndentMaster.id ==
                 IndentItem.indent_id
             )
 
             .join(
-
                 Item,
-
-                Item.item_code==
+                Item.item_code ==
                 IndentItem.item_code
+            )
+
+            .outerjoin(
+                Unit,
+                Unit.id ==
+                Item.unit_id
+            )
+
+            .outerjoin(
+                OrderItem,
+
+                OrderItem.indent_item_id ==
+                IndentItem.id
             )
 
             .filter(
 
-                IndentMaster.project_code==
+                IndentMaster.project_code ==
                 project_code,
 
-                IndentMaster.category_code==
+                IndentMaster.category_code ==
                 sub_code,
 
-                IndentMaster.workflow_status==
+                IndentMaster.workflow_status ==
                 "Approved"
 
             )
 
+            .group_by(
+
+                IndentMaster.indent_no,
+
+                IndentItem.id,
+
+                IndentItem.item_code,
+
+                Item.item_name,
+
+                Unit.unit_name,
+
+                IndentItem.qty,
+
+                IndentItem.location
+            )
+
             .all()
+
 
         )
 
-
         for row in rows:
 
-            used_qty=(
+            used_qty = float(
+                row.used_qty
+            )
 
-                db.session.query(
+            balance_qty = (
 
-                    func.coalesce(
-
-                        func.sum(
-                            OrderItem.qty
-                        ),
-
-                        0
+                    float(
+                        row.indent_qty
                     )
 
-                )
+                    -
 
-                .filter(
-
-                    OrderItem.indent_item_id==
-                    row.indent_item_id
-
-                )
-
-                .scalar()
-
-            )
-
-
-            balance_qty=(
-                float(
-                    row.indent_qty
-                )
-                -
-                float(
                     used_qty
-                )
             )
 
-
-            if balance_qty<=0:
-
+            if balance_qty <= 0:
                 continue
 
 
@@ -636,7 +655,8 @@ def get_indent_pending_qty_list(
 
                 "itemName":
                 row.item_name,
-
+                "itemUnit":
+                row.item_unit,
                 "indentQty":
                 float(
                     row.indent_qty
@@ -827,7 +847,8 @@ def get_order_details(
             "orderMessage":
             order.order_message,
             "bookedAmount":order.booked_amount,
-            "quotationNoDate":order. quotation_no_date,
+            "quotationNo":order. quotation_no_date,
+            "quotationDate":order.quotation_date,
             "basicAmount":
             float(
                 order.basic_amount
@@ -1804,7 +1825,9 @@ def edit_order(order_id, data, user_id, files=None):
         order.billing_address = data.get("billingAddress", order.billing_address)
         order.shipping_address = data.get("shippingAddress", order.shipping_address)
         order.order_message = data.get("orderMessage",order.order_message)
-        order.quotation_no_date = data.get("quotationNoDate", order.quotation_no_date)
+        order.quotation_no = data.get("quotationNo", order.quotation_no)
+        order.quotation_date=data.get("quotationDate",order.quotation_date)
+
 
         # ── file update ───────────────────────────────────────
         if files:

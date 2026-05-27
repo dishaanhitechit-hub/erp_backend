@@ -56,9 +56,12 @@ class OrderMaster(db.Model):
         db.Date,
         nullable=False
     )
-    quotation_no_date=db.Column(db.String(60),
+    quotation_no=db.Column(db.String(60),
                              nullable=False,
                                 default="1")
+    quotation_date=db.Column(
+        db.Date,
+    )
     validity_date=db.Column(
         db.Date
     )
