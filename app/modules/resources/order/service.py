@@ -1,7 +1,7 @@
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
-
+import time
 from datetime import datetime,date
 from app.models.orderMaster import OrderMaster
 from app.models.orderMaster  import OrderItem
@@ -140,6 +140,7 @@ def create_order(
         user_id,
 files=None,
 ):
+    start = time.time()
     allowed = is_creator(
 
         data.get(
@@ -204,6 +205,7 @@ files=None,
                 400
             )
 
+        print("Before upload:", time.time() - start)
         supporting_file = (
 
             upload_file_to_bunny(
