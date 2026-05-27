@@ -181,8 +181,29 @@ class OrderMaster(db.Model):
         cascade="all,delete-orphan"
     )
 
-    creator=db.relationship(
-        "User"
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by]
+    )
+
+    approver = db.relationship(
+        "User",
+        foreign_keys=[approved_by]
+    )
+
+    submitter = db.relationship(
+        "User",
+        foreign_keys=[submitted_by]
+    )
+
+    rejector = db.relationship(
+        "User",
+        foreign_keys=[rejected_by]
+    )
+
+    updater = db.relationship(
+        "User",
+        foreign_keys=[updated_by]
     )
     vendor = db.relationship(
         "Vendor",
