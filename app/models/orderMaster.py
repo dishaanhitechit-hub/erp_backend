@@ -56,7 +56,9 @@ class OrderMaster(db.Model):
         db.Date,
         nullable=False
     )
-
+    quotation_no_date=db.Column(db.String(60),
+                             nullable=False,
+                                default="1")
     validity_date=db.Column(
         db.Date
     )
@@ -122,6 +124,51 @@ class OrderMaster(db.Model):
         onupdate=datetime.utcnow
     )
 
+    approved_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id")
+    )
+
+    submitted_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id")
+    )
+
+    rejected_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id")
+    )
+
+    submitted_at = db.Column(
+        db.DateTime
+    )
+
+    final_approved_at = db.Column(
+        db.DateTime
+    )
+
+    rejected_at = db.Column(
+        db.DateTime
+    )
+
+    correction_sent_at = db.Column(
+        db.DateTime
+    )
+
+    updated_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id")
+    )
+
+    current_level = db.Column(
+        db.Integer,
+        default=0
+    )
+
+    locked = db.Column(
+        db.Boolean,
+        default=False
+    )
 
     project=db.relationship(
         "Project",

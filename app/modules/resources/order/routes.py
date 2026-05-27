@@ -7,10 +7,12 @@ from app.modules.resources.order.service import (
     get_order_details,
     get_order_list,
     submit_order,
+    approve_order,
     reback_order,
     reject_order,
     delete_order,
-    get_order_history
+    get_order_history,
+    edit_order
 )
 
 order_bp = Blueprint( "order",__name__)
@@ -152,6 +154,33 @@ def api_submit_order(
 
 
 # ==========================================
+# APPROVE
+# ==========================================
+
+@order_bp.route(
+    "/approve/<int:order_id>",
+    methods=["POST"]
+)
+@jwt_required()
+def api_approve_order(
+        order_id
+):
+
+    user_id = get_jwt_identity()
+
+    data = request.json or {}
+
+    return approve_order(
+
+        order_id=order_id,
+
+        approved_by=user_id,
+
+        comments=data.get("comments")
+    )
+
+
+# ==========================================
 # REBACK
 # ==========================================
 
@@ -242,4 +271,31 @@ def api_order_history(
 
     return get_order_history(
         order_id
+    )
+
+
+@order_bp.route(
+    "/edit/<int:order_id>",
+    methods=["PUT"]
+)
+@jwt_required()
+def api_edit_order(
+        order_id
+):
+
+    user_id = get_jwt_identity()
+
+    data = dict(
+        request.form
+    )
+
+    return edit_order(
+
+        order_id=order_id,
+
+        data=data,
+
+        user_id=user_id,
+
+        files=request.files
     )
