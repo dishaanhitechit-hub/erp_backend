@@ -838,7 +838,7 @@ def get_order_details(
 
             "attachedQuota": order.supporting_file ,
             "subCategoryCode":order.sub_code,
-            "category": order.category,
+            "categoryCode": order.category_code,
             "vendorId":order.vendor_id,
 
             "orderDate":
@@ -858,7 +858,7 @@ def get_order_details(
             "orderMessage":
             order.order_message,
             "bookedAmount":order.booked_amount,
-            "quotationNo":order. quotation_no_date,
+            "quotationNo":order. quotation_no,
             "quotationDate":order.quotation_date,
             "basicAmount":
             float(
