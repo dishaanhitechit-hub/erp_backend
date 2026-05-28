@@ -411,8 +411,7 @@ files=None,
                 item_code=
                 indent_item.item_code,
 
-                note=
-                indent_item.note,
+                custom_note= row.get("note") or indent_item.note,
 
                 qty=
                 requested_qty,
@@ -1852,7 +1851,7 @@ def edit_order(order_id, data, user_id, files=None):
                 order.supporting_file = upload_file_to_bunny(
                     file=order_file,
                     mainFolder="order",
-                    subFolder=order.project_code,
+                    subFolder=order.order_id,
                     fileName="support"
                 )
 
@@ -1912,7 +1911,7 @@ def edit_order(order_id, data, user_id, files=None):
                 order_id=order.id,
                 indent_item_id=indent_item.id,
                 item_code=indent_item.item_code,
-                note=indent_item.note,
+                custom_note=row.get("note") or indent_item.note,
                 qty=qty,
                 balance_qty=remaining_qty - qty,
                 location=indent_item.location,

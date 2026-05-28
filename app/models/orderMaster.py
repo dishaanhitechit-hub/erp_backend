@@ -249,10 +249,8 @@ class OrderItem(db.Model):
             "items.item_code"
         )
     )
-    item_unit=db.Column(
-        db.String(50),
-    )
-    note=db.Column(
+
+    custom_note=db.Column(
         db.Text
     )
     qty=db.Column(
