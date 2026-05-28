@@ -205,6 +205,7 @@ files=None,
                 400
             )
 
+        xtemp=generate_order_no()
         print("Before upload:", time.time() - start)
         supporting_file = (
 
@@ -218,7 +219,7 @@ files=None,
 
                 subFolder=
                 data.get(
-                    "projectCode"
+                    "xtemp"
                 ),
 
                 fileName=
@@ -230,7 +231,7 @@ files=None,
 
         order=OrderMaster(
 
-            order_no=generate_order_no(),
+            order_no=xtemp,
 
             project_code=data.get(
                 "projectCode"
@@ -1865,6 +1866,11 @@ def edit_order(order_id, data, user_id, files=None):
         total_basic = 0
         total_gst = 0
 
+        if isinstance(items, str):
+            items = json.loads(items)
+
+
+
         for row in items:
 
             indent_item_id = row.get("indentItemId")
@@ -1920,7 +1926,12 @@ def edit_order(order_id, data, user_id, files=None):
             total_gst += gst_amount
 
         # ── rebuild terms ─────────────────────────────────────
-        for idx, row in enumerate(data.get("terms", []), start=1):
+        terms = data.get("terms", [])
+
+        if isinstance(terms, str):
+            terms = json.loads(terms)
+
+        for idx, row in enumerate(terms, start=1):
 
             term = TermConditions.query.get(row.get("termId"))
             if not term:
