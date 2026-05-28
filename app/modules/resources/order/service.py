@@ -418,7 +418,6 @@ files=None,
 
                 balance_qty=
                 remaining_qty-requested_qty,
-
                 location=
                 indent_item.location,
 
@@ -745,6 +744,9 @@ def get_order_details(
 
                 "itemCode":
                 item.item_code,
+
+                "itemUnit":
+                item.item.unit.unit_name ,
 
                 "itemName":
                 item.item.item_name

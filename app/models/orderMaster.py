@@ -249,15 +249,12 @@ class OrderItem(db.Model):
             "items.item_code"
         )
     )
-
+    item_unit=db.Column(
+        db.String(50),
+    )
     note=db.Column(
         db.Text
     )
-
-    unit=db.Column(
-        db.String(50)
-    )
-
     qty=db.Column(
         db.Numeric(12,2)
     )
