@@ -753,8 +753,8 @@ def get_order_details(
                 if item.item
                 else None,
 
-                "note":
-                item.note,
+                "note":item.custom_note ,
+
 
                 "qty":
                 float(item.qty),
