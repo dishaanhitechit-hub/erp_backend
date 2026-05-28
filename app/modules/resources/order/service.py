@@ -552,7 +552,7 @@ def get_indent_pending_qty_list(
                 IndentItem.qty.label(
                     "indent_qty"
                 ),
-
+                IndentItem.note,
                 IndentItem.location,
 
                 func.coalesce(
@@ -660,6 +660,9 @@ def get_indent_pending_qty_list(
 
                 "itemCode":
                 row.item_code,
+
+                "note":
+                row.note,
 
                 "itemName":
                 row.item_name,
