@@ -1553,7 +1553,7 @@ def get_indent_history(
 # Path to the Word template (relative to project root)
 _INDENT_TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "asset/indent.docx"
+    "../../../../../asset/indent.docx"
 )
 
 
