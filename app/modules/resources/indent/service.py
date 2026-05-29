@@ -1800,12 +1800,15 @@ def generate_indent_document(indent_id) -> tuple:
         #                    Add to Railway nixpacks / Dockerfile:
         #                    apt-get install -y libreoffice
         #
-        try:
+        import platform
+
+        if platform.system() == "Windows":
+
             from docx2pdf import convert as docx2pdf_convert
             docx2pdf_convert(docx_path, pdf_path)
 
-        except ImportError:
-            # Fallback: LibreOffice headless (Linux / Railway)
+        else:
+
             subprocess.run(
                 [
                     "libreoffice",
