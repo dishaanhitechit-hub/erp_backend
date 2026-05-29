@@ -1551,11 +1551,15 @@ def get_indent_history(
 # =========================================================
 
 # Path to the Word template (relative to project root)
-_INDENT_TEMPLATE_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../../../../../asset/indent.docx"
+_INDENT_TEMPLATE_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../../../../../asset/indent.docx"
+    )
 )
 
+print("TEMPLATE =", _INDENT_TEMPLATE_PATH)
+print("EXISTS =", os.path.exists(_INDENT_TEMPLATE_PATH))
 
 class _FileWrapper:
     """
