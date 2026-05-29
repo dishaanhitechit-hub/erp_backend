@@ -1557,7 +1557,12 @@ _INDENT_TEMPLATE_PATH = os.path.abspath(
         "../../../../asset/indent.docx"
     )
 )
+print("APP ROOT:", os.listdir("/app"))
 
+if os.path.exists("/app/asset"):
+    print("ASSET CONTENTS:", os.listdir("/app/asset"))
+else:
+    print("/app/asset folder does not exist")
 print("TEMPLATE =", _INDENT_TEMPLATE_PATH)
 print("EXISTS =", os.path.exists(_INDENT_TEMPLATE_PATH))
 print("__file__ =", __file__)
