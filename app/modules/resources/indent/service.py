@@ -1554,7 +1554,7 @@ def get_indent_history(
 _INDENT_TEMPLATE_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../../../../../asset/indent.docx"
+        "../../../../asset/indent.docx"
     )
 )
 
