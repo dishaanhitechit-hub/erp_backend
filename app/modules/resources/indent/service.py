@@ -1560,6 +1560,8 @@ _INDENT_TEMPLATE_PATH = os.path.abspath(
 
 print("TEMPLATE =", _INDENT_TEMPLATE_PATH)
 print("EXISTS =", os.path.exists(_INDENT_TEMPLATE_PATH))
+print("__file__ =", __file__)
+print("DIR =", os.path.dirname(os.path.abspath(__file__)))
 
 class _FileWrapper:
     """
