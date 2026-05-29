@@ -81,6 +81,8 @@ def create_indent(data,files=None, created_by=None):
         if not items:
             return res("Indent items required", [], 400)
 
+        xtem= generate_indent_no(
+                data.get("projectCode"))
         supporting_file = None
 
         indent_file = files.get(
@@ -105,7 +107,7 @@ def create_indent(data,files=None, created_by=None):
 
                     subFolder=
                     data.get(
-                        "projectCode"
+                        " xtem"
                     ),
 
                     fileName=
@@ -118,9 +120,7 @@ def create_indent(data,files=None, created_by=None):
 
         indent = IndentMaster(
 
-            indent_no=generate_indent_no(
-                data.get("projectCode")
-            ),
+            indent_no= xtem,
             supporting_file= supporting_file,
             project_code=data.get(
                 "projectCode"
@@ -553,7 +553,7 @@ def update_indent(indent_id, data, files=None, updated_by=None):
                         "indent",
 
                         subFolder=
-                        indent.project_code,
+                        indent.indent_no,
 
                         fileName=
                         "support"
