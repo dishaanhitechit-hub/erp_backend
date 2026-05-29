@@ -1553,7 +1553,7 @@ def get_indent_history(
 # Path to the Word template (relative to project root)
 _INDENT_TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "../../../../asset/indent.docx"
+    "asset/indent.docx"
 )
 
 
@@ -1831,8 +1831,9 @@ def generate_indent_document(indent_id) -> tuple:
             data=pdf_bytes,
             filename=f"indent_{indent_no_safe}.pdf"
         )
-
+        print("PDF SIZE:", len(pdf_bytes))
         print (file_wrapper)
+
         cdn_url = upload_file_to_bunny(
             file=file_wrapper,
             mainFolder="indent_docs",
@@ -1840,10 +1841,12 @@ def generate_indent_document(indent_id) -> tuple:
             fileName=f"indent_{indent_no_safe}"
         )
 
+
+
         if not cdn_url:
             return res(
                 "PDF generated but upload to CDN failed",
-                [],
+                {},
                 500
             )
 
