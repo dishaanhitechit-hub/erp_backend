@@ -106,9 +106,8 @@ def create_indent(data,files=None, created_by=None):
                     "indent",
 
                     subFolder=
-                    data.get(
-                        " xtem"
-                    ),
+                    xtem
+                    ,
 
                     fileName=
                     "support"
