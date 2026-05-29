@@ -1,4 +1,9 @@
 
+import os
+import io
+import tempfile
+import subprocess
+
 from datetime import datetime,date
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -81,6 +86,10 @@ def create_indent(data,files=None, created_by=None):
         if not items:
             return res("Indent items required", [], 400)
 
+
+        xtemp=generate_indent_no(
+                data.get("projectCode")
+            )
         supporting_file = None
 
         indent_file = files.get(
@@ -104,9 +113,7 @@ def create_indent(data,files=None, created_by=None):
                     "indent",
 
                     subFolder=
-                    data.get(
-                        "projectCode"
-                    ),
+                   xtemp,
 
                     fileName=
                     "support"
@@ -118,9 +125,7 @@ def create_indent(data,files=None, created_by=None):
 
         indent = IndentMaster(
 
-            indent_no=generate_indent_no(
-                data.get("projectCode")
-            ),
+            indent_no=xtemp,
             supporting_file= supporting_file,
             project_code=data.get(
                 "projectCode"
@@ -553,7 +558,7 @@ def update_indent(indent_id, data, files=None, updated_by=None):
                         "indent",
 
                         subFolder=
-                        indent.project_code,
+                        indent.indent_no ,
 
                         fileName=
                         "support"
@@ -1501,3 +1506,360 @@ def get_indent_history(
             [],
             500
         )
+
+
+# =========================================================
+# GENERATE INDENT DOCUMENT  (fills Indent.docx template)
+# =========================================================
+#
+# Requirements:
+#   pip install docxtpl
+#
+# Template setup (one-time):
+#   Open  asset/Indent.docx  in Word and replace every
+#   hardcoded placeholder value with the Jinja2 tags shown
+#   in the context dict below.  For the items table add a
+#   {% for row in items %} / {% endfor %} loop row.
+#
+#   Key tags to place inside the .docx:
+#
+#   Header block
+#   ─────────────────────────────────────────────────────
+#   {{site_code}}           ← Site Code cell
+#   {{indent_no}}           ← Indent No cell
+#   {{project_name}}        ← Project Name cell
+#   {{indent_date}}         ← Indent Date cell
+#   {{customer_name}}       ← Customer Name cell
+#   {{required_date}}       ← Required Date cell
+#   {{sale_order_no}}       ← Sale Order No cell
+#   {{indent_category}}     ← Indent Category cell
+#
+#   Items table (one template row, wrapped in for-loop)
+#   ─────────────────────────────────────────────────────
+#   {% for row in items %}
+#   {{row.sl_no}}  {{row.item_code}}  {{row.item_name}}
+#   {{row.specification}}  {{row.unit}}  {{row.qty}}
+#   {{row.location}}
+#   {% endfor %}
+#
+#   Signature block
+#   ─────────────────────────────────────────────────────
+#   {{indent_placed_by}}
+#   {{created_by}}   {{created_at}}
+#   {{verified_by}}  {{verified_at}}
+#   {{approved_by}}  {{approved_at}}
+# =========================================================
+
+# Path to the Word template (relative to project root)
+_INDENT_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../../../../asset/indent.docx"
+)
+
+
+class _FileWrapper:
+    """
+    Wraps a bytes payload so upload_file_to_bunny()
+    can call  .filename  and  .read()  on it, exactly
+    as it would on a Werkzeug FileStorage object.
+    """
+
+    def __init__(self, data: bytes, filename: str):
+        self.filename = filename
+        self._data = data
+
+    def read(self) -> bytes:
+        return self._data
+
+
+def _add_cell_borders(cell) -> None:
+    """Apply thin black borders to all 4 sides of a python-docx table cell."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    tc    = cell._tc
+    tcPr  = tc.get_or_add_tcPr()
+    tcBdr = OxmlElement("w:tcBorders")
+    for side in ("top", "left", "bottom", "right"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"),   "single")
+        el.set(qn("w:sz"),    "4")
+        el.set(qn("w:color"), "000000")
+        tcBdr.append(el)
+    tcPr.append(tcBdr)
+
+
+def _fmt_dt(dt_str: str | None, fmt: str = "%d-%b-%Y") -> str:
+    """Format a datetime/date string for display, e.g. '07-May-2026'."""
+    if not dt_str:
+        return "—"
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(dt_str, pattern).strftime(fmt)
+        except ValueError:
+            pass
+    return dt_str  # fallback: return as-is
+
+
+def generate_indent_document(indent_id) -> tuple:
+    """
+    Generates a filled Indent DOCX from  asset/Indent.docx,
+    uploads it to Bunny CDN, and returns the public URL.
+
+    Usage (in a route / controller):
+        response, status = generate_indent_document(indent_id)
+
+    Returns:
+        res("...", {"documentUrl": "<cdn_url>"}, 200)  on success
+        res("...", [], 4xx/5xx)                        on failure
+    """
+    try:
+        from docxtpl import DocxTemplate
+
+        # ── 1. Indent details ────────────────────────────────────
+        detail_payload, detail_code = get_indent_details(indent_id)
+
+        if detail_code != 200:
+            return res(
+                detail_payload.get("message", "Indent not found"),
+                [],
+                detail_code
+            )
+
+        detail = detail_payload["data"]
+
+        # ── 2. Indent workflow history ───────────────────────────
+        history_payload, history_code = get_indent_history(indent_id)
+
+        history = (
+            history_payload["data"]
+            if history_code == 200
+            else []
+        )
+
+        # ── 3. Project info (name + customer) ───────────────────
+        project = Project.query.filter_by(
+            project_code=detail.get("projectCode")
+        ).first()
+
+        project_name  = project.project_name  if project else "—"
+        customer_name = project.client_name   if project else "—"
+
+        # ── 4. Signature data from workflow history ──────────────
+        #
+        # History actions produced by the workflow:
+        #   SUBMIT        → who submitted (created_by in the doc)
+        #   APPROVE       → intermediate approver  (Verified By)
+        #   FINAL_APPROVE → last approver           (Approved By)
+        #   REBACK        → correction              (skip)
+        #   REJECT        → rejection               (skip)
+
+        created_by  = "—";  created_at  = "—"
+        verified_by = "—";  verified_at = "—"
+        approved_by = "—";  approved_at = "—"
+
+        for h in history:
+
+            action = (h.get("action") or "").upper()
+
+            actor = h.get("actionBy") or "—"
+            ts    = _fmt_dt(
+                h.get("createdAt"),
+                fmt="%d-%b-%Y; %H:%M"
+            )
+
+            if action == "SUBMIT":
+                created_by = actor
+                created_at = ts
+
+            elif action == "APPROVE":
+                # First (intermediate) approval = Verified By
+                if verified_by == "—":
+                    verified_by = actor
+                    verified_at = ts
+
+            elif action == "FINAL_APPROVE":
+                approved_by = actor
+                approved_at = ts
+
+        # ── 5. Items rows ────────────────────────────────────────
+        items = []
+
+        for idx, row in enumerate(detail.get("items", []), start=1):
+            items.append({
+                "sl_no":         idx,
+                "item_code":     row.get("itemCode")  or "—",
+                "item_name":     row.get("itemName")  or "—",
+                "specification": row.get("note")      or "—",
+                "unit":          row.get("unit")      or "—",
+                "qty":           row.get("qty")       or 0,
+                "location":      row.get("location")  or "—",
+            })
+
+        # ── 6. Build Jinja2 context (no items — added via python-docx below) ──
+        context = {
+
+            # Header
+            "site_code":       detail.get("siteRegSerialNo") or "—",
+            "indent_no":       detail.get("indentNo")        or "—",
+            "project_name":    project_name,
+            "indent_date":     _fmt_dt(detail.get("indentDate")),
+            "customer_name":   customer_name,
+            "required_date":   _fmt_dt(detail.get("requiredWithin")),
+            "sale_order_no":   detail.get("saleOrderNo")     or "—",
+            "indent_category": detail.get("categoryCode")    or "—",
+
+            # Signature block
+            "indent_placed_by": detail.get("indentPlacedBy") or "—",
+            "created_by":       created_by,
+            "created_at":       created_at,
+            "verified_by":      verified_by,
+            "verified_at":      verified_at,
+            "approved_by":      approved_by,
+            "approved_at":      approved_at,
+        }
+
+        # ── 7. Render template with docxtpl ─────────────────────
+        tpl = DocxTemplate(_INDENT_TEMPLATE_PATH)
+        tpl.render(context)
+
+        indent_no_safe = (
+            str(detail.get("indentNo", indent_id))
+            .replace("/", "_")
+            .replace(" ", "_")
+        )
+
+        # Save rendered DOCX to a temp file
+        tmp_dir   = tempfile.mkdtemp()
+        docx_path = os.path.join(tmp_dir, f"indent_{indent_no_safe}.docx")
+        pdf_path  = os.path.join(tmp_dir, f"indent_{indent_no_safe}.pdf")
+
+        tpl.save(docx_path)
+
+        # ── 7b. Add items rows via python-docx ──────────────────
+        #
+        #   The items table is the 3rd table in the document (index 2):
+        #   [0] banner  [1] info-header  [2] items  [3] signature
+        #
+        from docx import Document as _DocxDoc
+        from docx.shared import Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        _doc = _DocxDoc(docx_path)
+        itbl = _doc.tables[2]   # items table
+
+        _COL_ALIGN = [
+            WD_ALIGN_PARAGRAPH.CENTER,  # Sl No
+            WD_ALIGN_PARAGRAPH.CENTER,  # Item Code
+            WD_ALIGN_PARAGRAPH.LEFT,    # Item Name
+            WD_ALIGN_PARAGRAPH.LEFT,    # Specification (note)
+            WD_ALIGN_PARAGRAPH.CENTER,  # Unit
+            WD_ALIGN_PARAGRAPH.CENTER,  # Qty
+            WD_ALIGN_PARAGRAPH.LEFT,    # Location
+        ]
+
+        for item in items:
+            row_data = [
+                str(item["sl_no"]),
+                str(item["item_code"]),
+                str(item["item_name"]),
+                str(item["specification"]),   # ← note field
+                str(item["unit"]),
+                str(item["qty"]),
+                str(item["location"]),
+            ]
+            new_row = itbl.add_row()
+            for cell, text, align in zip(new_row.cells, row_data, _COL_ALIGN):
+                para = cell.paragraphs[0]
+                para.clear()
+                run  = para.add_run(text)
+                run.font.name = "Arial"
+                run.font.size = Pt(9)
+                para.alignment = align
+                _add_cell_borders(cell)
+
+        _doc.save(docx_path)
+
+        # ── 8. Convert DOCX → PDF ────────────────────────────────
+        #
+        #   Windows (dev)  : uses docx2pdf  →  pip install docx2pdf
+        #                    (requires Microsoft Word to be installed)
+        #
+        #   Linux (Railway): uses LibreOffice headless
+        #                    Add to Railway nixpacks / Dockerfile:
+        #                    apt-get install -y libreoffice
+        #
+        try:
+            from docx2pdf import convert as docx2pdf_convert
+            docx2pdf_convert(docx_path, pdf_path)
+
+        except ImportError:
+            # Fallback: LibreOffice headless (Linux / Railway)
+            subprocess.run(
+                [
+                    "libreoffice",
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", tmp_dir,
+                    docx_path,
+                ],
+                check=True,
+                timeout=60
+            )
+
+        if not os.path.exists(pdf_path):
+            return res(
+                "PDF conversion failed — "
+                "install docx2pdf (Windows) or libreoffice (Linux/Railway)",
+                [],
+                500
+            )
+
+        # ── 9. Upload PDF to Bunny CDN ───────────────────────────
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        # Clean up temp files
+        try:
+            os.unlink(docx_path)
+            os.unlink(pdf_path)
+            os.rmdir(tmp_dir)
+        except Exception:
+            pass
+
+        file_wrapper = _FileWrapper(
+            data=pdf_bytes,
+            filename=f"indent_{indent_no_safe}.pdf"
+        )
+
+        print (file_wrapper)
+        cdn_url = upload_file_to_bunny(
+            file=file_wrapper,
+            mainFolder="indent_docs",
+            subFolder=detail.get("projectCode", "unknown"),
+            fileName=f"indent_{indent_no_safe}"
+        )
+
+        if not cdn_url:
+            return res(
+                "PDF generated but upload to CDN failed",
+                [],
+                500
+            )
+
+        return res(
+            "Indent document generated successfully",
+            {"documentUrl": cdn_url},
+            200
+        )
+
+    except ImportError:
+        return res(
+            "docxtpl is not installed. "
+            "Run: pip install docxtpl",
+            [],
+            500
+        )
+
+    except Exception as e:
+        return res(str(e), [], 500)

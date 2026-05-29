@@ -7,6 +7,8 @@ from app.middleware.auth_middleware import login_required
 from app.middleware.role_middleware import require_super_admin,require_admin
 from app.modules.resources.indent.service import *
 
+from flask import jsonify
+
 indent_bp = Blueprint( "indent",__name__)
 
 @indent_bp.route("/items-by-category", methods=["GET"])
@@ -286,3 +288,8 @@ def history(indent_id):
     return get_indent_history(
         indent_id
     )
+
+@indent_bp.route("/<int:indent_id>/document", methods=["GET"])
+def download_indent_document(indent_id):
+    response, status = generate_indent_document(indent_id)
+    return jsonify(response), status

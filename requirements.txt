@@ -26,3 +26,5 @@ tzdata==2026.1
 Werkzeug==3.1.8
 cloudinary
 requests
+docxtpl
+docx2pdf
