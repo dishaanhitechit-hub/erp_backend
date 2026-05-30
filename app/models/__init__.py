@@ -23,3 +23,17 @@ from .approval_path import (ApprovalPath,
     ApprovalHistory,
     ModuleMaster)
 from .term_conditions import *
+
+from .communication_models import (
+    CommConversation, CommConversationMember,
+    CommMessage, CommMessageReceipt, CommTypingStatus,
+    CommPing, CommNotification,
+    CommCall, CommCallParticipant, CommCallSignal,
+    CommMeeting, CommMeetingParticipant,
+    CommAnnouncement, CommAnnouncementRead,
+)
+
+from .user_activity_model import UserPresence
+from .user_activity_model import UserActivityLog
+from .user_activity_model import RecordViewer
+from .project_location import *

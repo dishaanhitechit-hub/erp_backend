@@ -15,11 +15,12 @@ from app.models.project_designation_permission import *
 from app.models.project_user_permission import *
 from app.models.permission_action import *
 from app.models.feature_page import *
-from app.extensions import db
+
 from app.response import res
 from app.cloudinary_uploader import *
-from app.extensions import db
+
 from app.models.approval_path import ApprovalPath
+from app.models.project_location import *
 from app.modules.setting.permission_service import get_user_permissions
 from collections import defaultdict
 
@@ -1751,3 +1752,157 @@ def get_edit_users(
             [],
             500
         )
+
+
+def create_project_location(request):
+
+    body = request.get_json()
+
+    project_code = body.get("projectCode")
+    store_location = body.get("storeLocation")
+    use_location = body.get("useLocation")
+
+    project = (
+        Project.query
+        .filter_by(
+            project_code=project_code
+        )
+        .first()
+    )
+
+    if not project:
+        return res(
+            "Project not found",
+            [],
+            404
+        )
+
+    location = ProjectLocation(
+        project_code=project_code,
+        store_location=store_location,
+        use_location=use_location
+    )
+
+    db.session.add(location)
+    db.session.commit()
+
+    data = [{
+        "id": location.id,
+        "projectCode": location.project_code,
+        "storeLocation": location.store_location,
+        "useLocation": location.use_location
+    }]
+
+    return res(
+        "Location created",
+        data,
+        200
+    )
+
+def update_project_location(
+        request,
+        location_id
+):
+
+    location = (
+        ProjectLocation.query
+        .get(location_id)
+    )
+
+    if not location:
+        return res(
+            "Location not found",
+            [],
+            404
+        )
+
+    body = request.get_json()
+
+    location.store_location = body.get(
+        "storeLocation",
+        location.store_location
+    )
+
+    location.use_location = body.get(
+        "useLocation",
+        location.use_location
+    )
+
+    db.session.commit()
+
+    data = [{
+        "id": location.id,
+        "projectCode": location.project_code,
+        "storeLocation": location.store_location,
+        "useLocation": location.use_location
+    }]
+
+    return res(
+        "Location updated",
+        data,
+        200
+    )
+
+def get_project_locations(project_code):
+
+    project = (
+        Project.query
+        .filter_by(
+            project_code=project_code
+        )
+        .first()
+    )
+
+    if not project:
+        return res(
+            "Project not found",
+            [],
+            404
+        )
+
+    data = []
+
+    for location in project.projects:
+
+        data.append({
+            "id": location.id,
+            "projectCode": location.project_code,
+            "storeLocation": location.store_location,
+            "useLocation": location.use_location
+        })
+
+    return res(
+        "Location list fetched",
+        data,
+        200
+    )
+
+def delete_project_location(location_id):
+
+    location = (
+        ProjectLocation.query
+        .get(location_id)
+    )
+
+    if not location:
+        return res(
+            "Location not found",
+            [],
+            404
+        )
+
+    data = [{
+        "id": location.id,
+        "projectCode": location.project_code,
+        "storeLocation": location.store_location,
+        "useLocation": location.use_location
+    }]
+
+    db.session.delete(location)
+    db.session.commit()
+
+    return res(
+        "Location deleted successfully",
+        data,
+        200
+    )

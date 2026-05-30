@@ -5,12 +5,14 @@ from app.middleware.auth_middleware import login_required
 from app.response import res
 from flask import send_from_directory
 from app.middleware.role_middleware import require_super_admin
-from .service import ( create_user,create_project,
-                       # assign_role,
-                       delete_role,create_approval_path,get_approval_paths,
-                       get_roles_by_project_code,
+from .service import ( create_user,create_project,delete_role,
+                       create_approval_path,get_approval_paths,get_roles_by_project_code,
                        get_all_users,get_all_project,get_edit_users,
-                    delete_project_designation,add_designation_to_project,get_user_by_id,update_user,get_project_by_id,update_project,update_roles_by_project_code)
+                       delete_project_designation,add_designation_to_project,get_user_by_id,
+                       update_user,get_project_by_id,update_project,
+                       update_roles_by_project_code,delete_project_location,
+                       create_project_location,update_project_location,get_project_locations,
+                       )
 
 
 
@@ -262,4 +264,102 @@ def edit_users_route():
     )
     return get_edit_users(
         project_code
+    )
+
+
+# ===========================
+# CREATE LOCATION
+# ===========================
+
+@setting_bp.route(
+    "/project-location",
+    methods=["POST"]
+)
+@login_required
+@require_super_admin
+def create_project_location_route():
+
+    return create_project_location(request)
+
+
+# ===========================
+# GET ALL LOCATIONS OF PROJECT
+# ===========================
+
+@setting_bp.route(
+    "/project-location/<string:project_code>",
+    methods=["GET"]
+)
+@login_required
+def get_project_locations_route(
+
+        project_code
+
+):
+
+    return get_project_locations(
+        project_code
+    )
+
+
+# ===========================
+# GET SINGLE LOCATION
+# ===========================
+
+# @setting_bp.route(
+#     "/project-location/details/<int:location_id>",
+#     methods=["GET"]
+# )
+# @login_required
+# def get_project_location_route(
+#
+#         location_id
+#
+# ):
+#
+#     return get_project_location(
+#         location_id
+#     )
+
+
+# ===========================
+# UPDATE LOCATION
+# ===========================
+
+@setting_bp.route(
+    "/project-location/<int:location_id>",
+    methods=["PUT"]
+)
+@login_required
+@require_super_admin
+def update_project_location_route(
+
+        location_id
+
+):
+
+    return update_project_location(
+        request,
+        location_id
+    )
+
+
+# ===========================
+# DELETE LOCATION
+# ===========================
+
+@setting_bp.route(
+    "/project-location/<int:location_id>",
+    methods=["DELETE"]
+)
+@login_required
+@require_super_admin
+def delete_project_location_route(
+
+        location_id
+
+):
+
+    return delete_project_location(
+        location_id
     )
