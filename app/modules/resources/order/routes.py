@@ -63,10 +63,17 @@ def api_indent_pending():
     sub_code=request.args.get(
         "subCategoryCode"
     )
+    asset_only = (
+            request.args.get(
+                "assetOnly",
+                "false"
+            ).lower() == "true"
+    )
 
     return get_indent_pending_qty_list(
         project_code,
-        sub_code
+        sub_code,
+        asset_only
     )
 
 

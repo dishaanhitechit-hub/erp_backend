@@ -36,8 +36,22 @@ def create_app():
     from .modules.resources.order.routes import order_bp
     app.register_blueprint(order_bp, url_prefix="/resource/order")
 
+    from .modules.resources.order_projectwork.routes import pw_order_bp
+    app.register_blueprint(pw_order_bp, url_prefix="/resource/pw-order")
+
     from .modules.project.routes import project_bp
     app.register_blueprint(project_bp, url_prefix="/project")
+
+    from .modules.communication.communication_routes import comm_bp
+    app.register_blueprint(comm_bp, url_prefix="/comm")
+
+    from .modules.communication.frontend_route import frontend_bp
+    app.register_blueprint(frontend_bp)
+
+    from .modules.tracking.presence_routes import presence_bp
+    from .modules.tracking.activity_routes import activity_bp
+    app.register_blueprint(presence_bp, url_prefix="/tracking")
+    app.register_blueprint(activity_bp, url_prefix="/tracking")
 
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))

@@ -16,6 +16,7 @@ from app.cloudinary_uploader import *
 from app.modules.work_flow import *
 from app.models.term_conditions import *
 from app.models.unit import Unit
+from app.models.category_group import *
 import json
 
 from app.models.vendor import *
@@ -524,13 +525,14 @@ files=None,
 
 def get_indent_pending_qty_list(
         project_code,
-        sub_code ):
+        sub_code,
+        asset_only=False):
 
     try:
 
         result=[]
 
-        rows = (
+        query = (
 
             db.session.query(
 
@@ -579,7 +581,15 @@ def get_indent_pending_qty_list(
                 Item.item_code ==
                 IndentItem.item_code
             )
+            .join(
+                CCCode,
+                CCCode.id == Item.cc_code_id
+            )
 
+            .join(
+                GroupMaster,
+                GroupMaster.id == CCCode.group_id
+            )
             .outerjoin(
                 Unit,
                 Unit.id ==
@@ -605,8 +615,21 @@ def get_indent_pending_qty_list(
                 "Approved"
 
             )
+        )
 
-            .group_by(
+        if asset_only:
+
+            query = query.filter(
+            GroupMaster.group_name == "FIXED ASSET"
+        )
+
+        else:
+
+            query = query.filter(
+            GroupMaster.group_name != "FIXED ASSET"
+        )
+
+        rows=(query .group_by(
 
                 IndentMaster.indent_no,
 
