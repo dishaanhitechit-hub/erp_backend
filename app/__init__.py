@@ -42,16 +42,16 @@ def create_app():
     from .modules.project.routes import project_bp
     app.register_blueprint(project_bp, url_prefix="/project")
 
-    from .modules.communication.communication_routes import comm_bp
-    app.register_blueprint(comm_bp, url_prefix="/comm")
+    # from .modules.communication.communication_routes import comm_bp
+    # app.register_blueprint(comm_bp, url_prefix="/comm")
 
-    from .modules.communication.frontend_route import frontend_bp
-    app.register_blueprint(frontend_bp)
+    # from .modules.communication.frontend_route import frontend_bp
+    # app.register_blueprint(frontend_bp)
 
-    from .modules.tracking.presence_routes import presence_bp
-    from .modules.tracking.activity_routes import activity_bp
-    app.register_blueprint(presence_bp, url_prefix="/tracking")
-    app.register_blueprint(activity_bp, url_prefix="/tracking")
+    # from .modules.tracking.presence_routes import presence_bp
+    # from .modules.tracking.activity_routes import activity_bp
+    # app.register_blueprint(presence_bp, url_prefix="/tracking")
+    # app.register_blueprint(activity_bp, url_prefix="/tracking")
 
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
