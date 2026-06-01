@@ -3,6 +3,7 @@ from app.models.approval_path import (
     ApprovalHistory
 )
 
+from app.alias_helper import *
 from app.extensions import db
 
 
@@ -159,6 +160,9 @@ def is_creator(
         module_code,
         user_id
 ):
+    module_code = get_approval_module(
+        module_code
+    )
 
     creator = (
 
@@ -197,6 +201,9 @@ def is_current_approver(
         level_no,
         user_id
 ):
+    module_code = get_approval_module(
+        module_code
+    )
 
     approver=(
 
@@ -241,6 +248,9 @@ def get_current_approver(
         module_code,
         level_no
 ):
+    module_code = get_approval_module(
+        module_code
+    )
 
     return (
 
@@ -275,6 +285,9 @@ def has_approver(
         project_code,
         module_code
 ):
+    module_code = get_approval_module(
+        module_code
+    )
 
     approver=(
 
@@ -381,6 +394,9 @@ def has_workflow_access(
         user_id,
         path_type=None
 ):
+    module_code = get_approval_module(
+        module_code
+    )
 
     query=(
 
