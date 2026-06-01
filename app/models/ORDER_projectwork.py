@@ -56,7 +56,11 @@ class ProjectWorkOrderMaster(db.Model):
         db.String(50),
         nullable=True
     )
-
+    cost_head = db.Column(
+        db.String(50),
+        nullable=True,
+        default=0
+    )
     # ── Vendor ────────────────────────────────────────────────────
     vendor_id = db.Column(
         db.Integer,

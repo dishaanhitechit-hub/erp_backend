@@ -301,6 +301,7 @@ def create_pw_order(data, user_id, files=None):
             project_code     = data.get("projectCode"),
             category_code    = data.get("categoryCode"),
             sub_codes        = json.dumps(sub_codes_list),   # stored as JSON array
+            cost_head=data.get("costHead"),
             vendor_id        = data.get("vendorId"),
             order_date       = data.get("orderDate"),
             validity_date    = data.get("validityDate"),
@@ -713,6 +714,7 @@ def get_pw_order_details(order_id: int):
             ),
             "subCategoryCodes": sub_codes_list,   # list e.g. ["SVC","COMP"]
             "categoryCode":     order.category_code,
+            "costHead":order.cost_head,
             "vendorId":        order.vendor_id,
             "vendorName":      (
                 order.vendor.ledger_name if order.vendor else None
@@ -723,7 +725,8 @@ def get_pw_order_details(order_id: int):
             ),
             "quotationNo":     order.quotation_no,
             "quotationDate":   (
-                str(order.quotation_date) if order.quotation_date else None
+                order.quotation_date.strftime(
+                    "%Y-%m-%d") if order.quotation_date else None
             ),
             "billingAddress":  order.billing_address,
             "shippingAddress": order.shipping_address,

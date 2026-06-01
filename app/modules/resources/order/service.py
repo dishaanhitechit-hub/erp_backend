@@ -242,6 +242,8 @@ files=None,
                 "categoryCode"
             ),
             sub_code=data.get("subCategoryCode"),
+
+            cost_head=data.get("costHead"),
             vendor_id=data.get(
                 "vendorId"
             ),
@@ -864,6 +866,7 @@ def get_order_details(
             "attachedQuota": order.supporting_file ,
             "subCategoryCode":order.sub_code,
             "categoryCode": order.category_code,
+            "costHead": order.cost_head,
             "vendorId":order.vendor_id,
 
             "orderDate":
@@ -884,7 +887,8 @@ def get_order_details(
             order.order_message,
             "bookedAmount":order.booked_amount,
             "quotationNo":order. quotation_no,
-            "quotationDate":order.quotation_date,
+            "quotationDate":order.quotation_date.strftime(
+                    "%Y-%m-%d"),
             "basicAmount":
             float(
                 order.basic_amount

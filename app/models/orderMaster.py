@@ -37,9 +37,13 @@ class OrderMaster(db.Model):
 
     category_code=db.Column(
         db.String(50),
-        nullable=True
+        nullable=False
     )
-
+    cost_head = db.Column(
+        db.String(50),
+        nullable=True,
+        default=0
+    )
     vendor_id=db.Column(
         db.Integer,
         db.ForeignKey(
