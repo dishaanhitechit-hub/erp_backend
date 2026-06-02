@@ -278,6 +278,8 @@ def create_pw_order(data, user_id, files=None):
             subFolder=data.get("xtemp", xtemp),
             fileName="support",
         )
+        if not supporting_file:
+            return res("ladle miaooo", [], 400)
 
         # ── parse sub-category codes (one or many) ───────────────
         raw_sub = data.get("subCategoryCodes") or data.get("subCategoryCode") or []
@@ -301,7 +303,7 @@ def create_pw_order(data, user_id, files=None):
             project_code     = data.get("projectCode"),
             category_code    = data.get("categoryCode"),
             sub_codes        = json.dumps(sub_codes_list),   # stored as JSON array
-            cost_head=data.get("costHead"),
+            cost_head          =data.get("costHead"),
             vendor_id        = data.get("vendorId"),
             order_date       = data.get("orderDate"),
             validity_date    = data.get("validityDate"),
@@ -731,13 +733,13 @@ def get_pw_order_details(order_id: int):
             "billingAddress":  order.billing_address,
             "shippingAddress": order.shipping_address,
             "orderMessage":    order.order_message,
-            "orderFile":    order.supporting_file,
+            "orderFile":       order.supporting_file,
             "bookedAmount":    float(order.booked_amount or 0),
             "basicAmount":     float(order.basic_amount or 0),
             "gstAmount":       float(order.gst_amount or 0),
             "totalAmount":     float(order.total_amount or 0),
             "workflowStatus":  order.workflow_status,
-            "status":          order.status,
+            # "status":          order.status,
             "locked":          order.locked,
             "currentLevel":    order.current_level,
             "items":           items,

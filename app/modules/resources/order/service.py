@@ -229,6 +229,8 @@ files=None,
             )
 
         )
+        if not supporting_file:
+            return res("ladle miaooo", [], 400)
 
         order=OrderMaster(
 
@@ -863,7 +865,7 @@ def get_order_details(
             "projectName":
             order.project.project_name,
 
-            "attachedQuota": order.supporting_file ,
+            "orderFile": order.supporting_file ,
             "subCategoryCode":order.sub_code,
             "categoryCode": order.category_code,
             "costHead": order.cost_head,
