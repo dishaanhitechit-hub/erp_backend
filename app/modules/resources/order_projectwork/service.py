@@ -275,7 +275,7 @@ def create_pw_order(data, user_id, files=None):
         supporting_file = upload_file_to_bunny(
             file=order_file,
             mainFolder="pw_order",
-            subFolder=data.get("xtemp", xtemp),
+            subFolder= xtemp,
             fileName="support",
         )
         if not supporting_file:
