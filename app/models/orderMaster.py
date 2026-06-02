@@ -42,7 +42,7 @@ class OrderMaster(db.Model):
     cost_head = db.Column(
         db.String(50),
         nullable=True,
-        default=0
+        default="test"
     )
     vendor_id=db.Column(
         db.Integer,

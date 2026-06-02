@@ -731,7 +731,7 @@ def get_pw_order_details(order_id: int):
             "billingAddress":  order.billing_address,
             "shippingAddress": order.shipping_address,
             "orderMessage":    order.order_message,
-            "attachedFile":    order.supporting_file,
+            "orderFile":    order.supporting_file,
             "bookedAmount":    float(order.booked_amount or 0),
             "basicAmount":     float(order.basic_amount or 0),
             "gstAmount":       float(order.gst_amount or 0),
