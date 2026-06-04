@@ -45,3 +45,5 @@ from .ORDER_projectwork import (
 from .workflow_alias import *
 
 from .concrete_registry import *
+
+from .grnMaster import *

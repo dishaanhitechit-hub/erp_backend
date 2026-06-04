@@ -1,6 +1,8 @@
 from flask import Flask
 from .config import Config
 from .extensions import db, jwt, bcrypt, migrate
+from .FUN.socket import socketio
+from .FUN.error_sound import register_error_sound_handlers
 
 from flask_cors import CORS
 
@@ -14,6 +16,10 @@ def create_app():
     jwt.init_app(app)
     bcrypt.init_app(app)
     migrate.init_app(app, db)
+    socketio.init_app(app)
+
+    # FUN: error sound on every error
+    register_error_sound_handlers(app)
 
     # register routes
     from .modules.auth.routes import auth_bp
@@ -35,6 +41,9 @@ def create_app():
     app.register_blueprint(enquiry_bp, url_prefix="/resource/enquiry")
     from .modules.resources.order.routes import order_bp
     app.register_blueprint(order_bp, url_prefix="/resource/order")
+
+    from .modules.resources.grn.routes import grn_bp
+    app.register_blueprint(grn_bp, url_prefix="/resource/grn")
 
     from .modules.resources.order_projectwork.routes import pw_order_bp
     app.register_blueprint(pw_order_bp, url_prefix="/resource/pw-order")
