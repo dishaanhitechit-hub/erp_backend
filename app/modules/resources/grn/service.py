@@ -815,7 +815,147 @@ def reject_grn(grn_id, rejected_by=None, comments=None):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 10. GRN HISTORY
+# 10. EDIT GRN
+# ══════════════════════════════════════════════════════════════════
+
+def edit_grn(grn_id, data, user_id, files=None):
+    try:
+
+        grn = GrnMaster.query.get(grn_id)
+
+        if not grn:
+            return res("GRN not found", [], 404)
+
+        # ── lock check ─────────────────────────────────────────
+        if grn.locked:
+            return res("GRN cannot be edited", [], 400)
+
+        # ── only Draft / Reback can edit ───────────────────────
+        if grn.workflow_status not in ["Draft", "Reback"]:
+            return res("Only Draft or Reback GRN can be edited", [], 400)
+
+        # ── creator check ──────────────────────────────────────
+        allowed = is_creator(grn.project_code, "grn", user_id)
+        if not allowed:
+            return res("You are not GRN creator", [], 403)
+
+        # ── items required ─────────────────────────────────────
+        items = data.get("items", [])
+        if isinstance(items, str):
+            items = json.loads(items)
+
+        if not items:
+            return res("Items required", [], 400)
+
+        # ── update header fields ───────────────────────────────
+        if data.get("grnDate"):
+            grn.grn_date = data.get("grnDate")
+        if data.get("receivedCategory"):
+            grn.received_category = data.get("receivedCategory")
+        if data.get("itemCategory"):
+            grn.item_category = data.get("itemCategory")
+        if data.get("costHead"):
+            grn.cost_head = data.get("costHead")
+        if data.get("orderId"):
+            grn.order_id = data.get("orderId")
+        if data.get("vendorId"):
+            grn.vendor_id = data.get("vendorId")
+        if data.get("billingAddress"):
+            grn.billing_address = data.get("billingAddress")
+        if data.get("shippingAddress"):
+            grn.shipping_address = data.get("shippingAddress")
+        if data.get("challanNo"):
+            grn.challan_no = data.get("challanNo")
+        if data.get("partyBillNo"):
+            grn.party_bill_no = data.get("partyBillNo")
+        if data.get("partyBillDate"):
+            grn.party_bill_date = data.get("partyBillDate")
+        if data.get("deliverVehicleNo"):
+            grn.deliver_vehicle_no = data.get("deliverVehicleNo")
+        if data.get("deliveredConcern"):
+            grn.delivered_concern = data.get("deliveredConcern")
+        if data.get("unloadingDatetime"):
+            grn.unloading_datetime = data.get("unloadingDatetime")
+        if data.get("physicallyVerifiedBy"):
+            grn.physically_verified_by = data.get("physicallyVerifiedBy")
+
+        # ── file update ────────────────────────────────────────
+        if files:
+            doc_file = files.get("attachedDoc")
+            if doc_file:
+                grn.attached_doc = upload_file_to_bunny(
+                    file=doc_file,
+                    mainFolder="grn",
+                    subFolder=grn.grn_no,
+                    fileName="attached_doc"
+                )
+
+        # ── wipe old items & rebuild ───────────────────────────
+        GrnItem.query.filter_by(grn_id=grn.id).delete()
+        db.session.flush()
+
+        for line_no, row in enumerate(items, start=1):
+
+            order_item_id = row.get("orderItemId")
+            current_received_qty = float(row.get("currentReceivedQty", 0))
+
+            if current_received_qty <= 0:
+                db.session.rollback()
+                return res(
+                    f"Invalid currentReceivedQty for orderItemId {order_item_id}",
+                    [], 400
+                )
+
+            order_item = OrderItem.query.get(order_item_id)
+            if not order_item:
+                db.session.rollback()
+                return res(
+                    f"Order item {order_item_id} not found",
+                    [], 404
+                )
+
+            # pre_received excludes current GRN (already wiped above)
+            pre_qty = _pre_received_qty(order_item_id)
+            balance = float(order_item.qty or 0) - pre_qty
+
+            if current_received_qty > balance:
+                db.session.rollback()
+                return res(
+                    f"Only {balance} qty remaining for item {order_item.item_code}",
+                    [], 400
+                )
+
+            db.session.add(GrnItem(
+                grn_id=grn.id,
+                order_item_id=order_item_id,
+                grnl=generate_grnl_no(line_no),
+                current_received_qty=current_received_qty,
+                use_location=row.get("useLocation"),
+                store_location=row.get("storeLocation"),
+            ))
+
+        # ── clear reback timestamp if editing after reback ─────
+        if grn.workflow_status == "Reback":
+            grn.correction_sent_at = None
+
+        grn.updated_by = user_id
+        grn.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return res(
+            "GRN updated successfully",
+            {"grnId": grn.id, "grnNo": grn.grn_no},
+            200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 11. GRN HISTORY
 # ══════════════════════════════════════════════════════════════════
 
 def get_grn_history(grn_id):

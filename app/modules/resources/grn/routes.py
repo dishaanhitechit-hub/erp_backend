@@ -11,6 +11,7 @@ from app.modules.resources.grn.service import (
     approve_grn,
     reback_grn,
     reject_grn,
+    edit_grn,
     get_grn_history,
 )
 
@@ -193,6 +194,29 @@ def api_reject_grn(grn_id):
         grn_id=grn_id,
         rejected_by=user_id,
         comments=data.get("comments")
+    )
+
+
+# ==========================================
+# EDIT GRN
+# ==========================================
+
+@grn_bp.route(
+    "/edit/<int:grn_id>",
+    methods=["PUT"]
+)
+@jwt_required()
+def api_edit_grn(grn_id):
+
+    user_id = get_jwt_identity()
+
+    data = dict(request.form)
+
+    return edit_grn(
+        grn_id=grn_id,
+        data=data,
+        user_id=user_id,
+        files=request.files
     )
 
 
