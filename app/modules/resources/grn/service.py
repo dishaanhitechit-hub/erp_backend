@@ -28,8 +28,8 @@ def _fmt_date(d):
     if d is None:
         return None
     if isinstance(d, datetime):
-        return d.strftime("%Y%m%d %H:%M")
-    return d.strftime("%Y%m%d")
+        return d.strftime("%Y-%m-%d %H:%M")
+    return d.strftime("%Y-%m-%d")
 
 
 def _pre_received_qty(order_item_id):
