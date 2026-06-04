@@ -59,7 +59,7 @@ def create_resigistry(request):
     file = request.files
     try:
         pc = data.get("projectCode")
-        project = Project.query.filter_by(projectcode=pc).first()
+        project = Project.query.filter_by(project_code=pc).first()
         if not project:
             return res("Invalid Project Code", [], 400)
 
