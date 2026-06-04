@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, date, time
 
 from app.extensions import db
 from app.response import res
@@ -7,12 +7,16 @@ from app.cloudinary_uploader import upload_file_to_bunny
 from app.models.concrete_registry import ConcreteRegistry
 
 
-def _fmt_date(t):
-    if t is None:
+def _fmt_date(d):
+    if d is None:
         return None
-    if isinstance(t, (t, time)):
-        return t.strftime("%H.%M.%S")
-    return t
+    if isinstance(d, datetime):
+        return d.strftime("%Y%m%d")
+    if isinstance(d, date):
+        return d.strftime("%Y%m%d")
+    if isinstance(d, time):
+        return d.strftime("%H:%M:%S")
+    return d
 
 
 def _registry_dict(r):
