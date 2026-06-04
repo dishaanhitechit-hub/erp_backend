@@ -836,7 +836,7 @@ def edit_grn(grn_id, data, user_id, files=None):
             return res("Only Draft or Reback GRN can be edited", [], 400)
 
         # ── creator check ──────────────────────────────────────
-        allowed = is_creator(grn.project_code, "grn", user_id)
+        allowed = is_creator(grn.project_code, "goods_received_note", user_id)
         if not allowed:
             return res("You are not GRN creator", [], 403)
 
