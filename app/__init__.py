@@ -42,6 +42,9 @@ def create_app():
     from .modules.project.routes import project_bp
     app.register_blueprint(project_bp, url_prefix="/project")
 
+    from .modules.concrete_registry.routes import concrete_registry_bp
+    app.register_blueprint(concrete_registry_bp, url_prefix="/concrete-registry")
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 

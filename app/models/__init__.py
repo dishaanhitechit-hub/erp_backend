@@ -43,3 +43,5 @@ from .ORDER_projectwork import (
     ProjectWorkOrderTermsCondition,
 )
 from .workflow_alias import *
+
+from .concrete_registry import *

@@ -903,7 +903,7 @@ def get_order_details(
                 order.total_amount
             ),
 
-            "status":
+            "workflowStatus":
             order.workflow_status,
 
             "items":
