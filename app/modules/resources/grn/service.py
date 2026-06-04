@@ -253,7 +253,7 @@ def create_grn(data, user_id, files=None):
 
         allowed = is_creator(
             data.get("projectCode"),
-            "grn",
+            "goods_received_note",
             user_id
         )
 
@@ -544,7 +544,7 @@ def submit_grn(grn_id, submitted_by=None):
 
         first_level = get_first_approver(
             grn.project_code,
-            "grn"
+            "goods_received_note"
         )
 
         if not first_level:
@@ -565,7 +565,7 @@ def submit_grn(grn_id, submitted_by=None):
 
         create_history(
             project_code=grn.project_code,
-            module_code="grn",
+            module_code="goods_received_note",
             record_id=grn.id,
             level_no=grn.current_level,
             action="SUBMIT",
@@ -614,7 +614,7 @@ def approve_grn(grn_id, approved_by=None, comments=None):
 
         allowed = is_current_approver(
             grn.project_code,
-            "grn",
+            "goods_received_note",
             grn.current_level,
             approved_by
         )
@@ -624,7 +624,7 @@ def approve_grn(grn_id, approved_by=None, comments=None):
 
         next_level = get_next_approver(
             grn.project_code,
-            "grn",
+            "goods_received_note",
             grn.current_level
         )
 
@@ -632,7 +632,7 @@ def approve_grn(grn_id, approved_by=None, comments=None):
 
             create_history(
                 project_code=grn.project_code,
-                module_code="grn",
+                module_code="goods_received_note",
                 record_id=grn.id,
                 level_no=grn.current_level,
                 action="APPROVE",
@@ -647,7 +647,7 @@ def approve_grn(grn_id, approved_by=None, comments=None):
 
             create_history(
                 project_code=grn.project_code,
-                module_code="grn",
+                module_code="goods_received_note",
                 record_id=grn.id,
                 level_no=grn.current_level,
                 action="FINAL_APPROVE",
@@ -704,7 +704,7 @@ def reback_grn(grn_id, reback_by=None, comments=None):
 
         allowed = is_current_approver(
             grn.project_code,
-            "grn",
+            "goods_received_note",
             grn.current_level,
             reback_by
         )
@@ -720,7 +720,7 @@ def reback_grn(grn_id, reback_by=None, comments=None):
 
         create_history(
             project_code=grn.project_code,
-            module_code="grn",
+            module_code="goods_received_note",
             record_id=grn.id,
             level_no=grn.current_level,
             action="REBACK",
@@ -768,7 +768,7 @@ def reject_grn(grn_id, rejected_by=None, comments=None):
 
         allowed = is_current_approver(
             grn.project_code,
-            "grn",
+            "goods_received_note",
             grn.current_level,
             rejected_by
         )
@@ -786,7 +786,7 @@ def reject_grn(grn_id, rejected_by=None, comments=None):
 
         create_history(
             project_code=grn.project_code,
-            module_code="grn",
+            module_code="goods_received_note",
             record_id=grn.id,
             level_no=grn.current_level,
             action="REJECT",
@@ -966,7 +966,7 @@ def get_grn_history(grn_id):
         if not grn:
             return res("GRN not found", [], 404)
 
-        rows = get_history("grn", grn.id)
+        rows = get_history("goods_received_note", grn.id)
 
         data = []
         for row in rows:
