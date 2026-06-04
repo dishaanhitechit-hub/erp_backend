@@ -489,6 +489,7 @@ def get_grn_details(grn_id):
             "costHead": grn.cost_head,
             "orderId": grn.order_id,
             "orderNo": grn.order.order_no if grn.order else None,
+            "orderDate":_fmt_date(grn.order.order_date),
             "vendorId": grn.vendor_id,
             "partyName": (
                 grn.vendor.ledger_name if grn.vendor else None
