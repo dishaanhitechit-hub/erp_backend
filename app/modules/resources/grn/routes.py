@@ -51,7 +51,9 @@ def api_vendor_orders():
 @jwt_required()
 def api_order_items_for_grn(order_id):
 
-    return get_order_items_for_grn(order_id)
+    # grn_id = request.args.get("grnId", type=int)
+
+    return get_order_items_for_grn(order_id)   ##, grn_id=grn_id)
 
 
 # ==========================================
