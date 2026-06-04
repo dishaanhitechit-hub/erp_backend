@@ -1726,9 +1726,12 @@ def get_edit_users(
                         team_id
                         == role.team_id
                 ):
-                    result[
-                        f"{page}.EDIT"
-                    ].append({
+                    key = f"{page}.EDIT"
+
+                    if key not in result:
+                        result[key] = []
+
+                    result[key].append({
 
                         "id":
                             user_id,
