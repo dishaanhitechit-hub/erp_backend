@@ -11,9 +11,9 @@ def _fmt_date(d):
     if d is None:
         return None
     if isinstance(d, datetime):
-        return d.strftime("%Y%m%d")
+        return d.strftime("%Y-%m-%d")
     if isinstance(d, date):
-        return d.strftime("%Y%m%d")
+        return d.strftime("%Y-%m-%d")
     if isinstance(d, time):
         return d.strftime("%H:%M:%S")
     return d
