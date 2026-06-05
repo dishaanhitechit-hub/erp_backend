@@ -47,3 +47,4 @@ from .workflow_alias import *
 from .concrete_registry import *
 
 from .grnMaster import *
+from .ginMaster import *

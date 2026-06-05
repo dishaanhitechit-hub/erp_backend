@@ -116,24 +116,35 @@ def get_orders_by_vendor(data):
         item_category = data.get("itemCategory")
         cost_head = data.get("costHead")
 
-        # ── smart filter ───────────────────────────────────────
+        filtered_query = query
         if received_category:
-            # UI showed same receivedCategory → filter directly
-            query = query.filter(
+            filtered_query = filtered_query.filter(
                 OrderMaster.category_code == received_category
             )
-        else:
-            # fallback: use costHead + subCategory
+        if cost_head:
+            filtered_query = filtered_query.filter(
+                OrderMaster.cost_head == cost_head
+            )
+        if item_category:
+            filtered_query = filtered_query.filter(
+                OrderMaster.sub_code == item_category
+            )
+
+        rows = filtered_query.order_by(OrderMaster.id.desc()).all()
+
+        # if receivedCategory was provided but matched nothing, fall back to
+        # costHead + itemCategory only
+        if not rows and received_category:
+            fallback_query = query
             if cost_head:
-                query = query.filter(
+                fallback_query = fallback_query.filter(
                     OrderMaster.cost_head == cost_head
                 )
             if item_category:
-                query = query.filter(
+                fallback_query = fallback_query.filter(
                     OrderMaster.sub_code == item_category
                 )
-
-        rows = query.order_by(OrderMaster.id.desc()).all()
+            rows = fallback_query.order_by(OrderMaster.id.desc()).all()
 
         result = []
         for row in rows:

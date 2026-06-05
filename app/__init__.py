@@ -45,6 +45,9 @@ def create_app():
     from .modules.resources.grn.routes import grn_bp
     app.register_blueprint(grn_bp, url_prefix="/resource/grn")
 
+    from .modules.resources.gin.routes import gin_bp
+    app.register_blueprint(gin_bp, url_prefix="/resource/gin")
+
     from .modules.resources.order_projectwork.routes import pw_order_bp
     app.register_blueprint(pw_order_bp, url_prefix="/resource/pw-order")
 
