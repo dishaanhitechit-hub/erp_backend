@@ -249,9 +249,9 @@ def get_item_list_by_subcategories(
 
 def create_pw_order(data, user_id, files=None):
 
-    allowed = is_creator(data.get("projectCode"), "pw_order", user_id)
+    allowed = is_creator(data.get("projectCode"), get_approval_module("pw_order"), user_id)
     if not allowed:
-        return res("You are not pw_order creator", [], 403)
+        return res("You are not service order creator", [], 403)
 
     try:
 
@@ -441,7 +441,7 @@ def create_pw_order(data, user_id, files=None):
         cc_summary = get_pw_cc_code_summary(order.id)
 
         return res(
-            "PW Order created",
+            "Service order created",
             {
                 "orderId":   order.id,
                 "orderNo":   order.order_no,
@@ -465,14 +465,14 @@ def edit_pw_order(order_id, data, user_id, files=None):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order not found", [], 404)
 
         if order.locked:
-            return res("Order cannot be edited", [], 400)
+            return res("Service order cannot be edited", [], 400)
 
-        allowed = is_creator(order.project_code, "pw_order", user_id)
+        allowed = is_creator(order.project_code, get_approval_module("pw_order"), user_id)
         if not allowed:
-            return res("You are not pw_order creator", [], 403)
+            return res("You are not Service order creator", [], 403)
 
         items = data.get("items")
         if not items:
@@ -639,7 +639,7 @@ def edit_pw_order(order_id, data, user_id, files=None):
         db.session.commit()
 
         return res(
-            "PW Order updated successfully",
+            "Service order updated successfully",
             [{"orderId": order.id, "orderNo": order.order_no}],
             200,
         )
@@ -748,7 +748,7 @@ def get_pw_order_details(order_id: int):
             "ccSummary":       cc_summary,
         }
 
-        return res("PW Order details fetched", data, 200)
+        return res("Service order details fetched", data, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -821,7 +821,7 @@ def get_pw_order_list(data: dict):
                 "status":         row.workflow_status
             })
 
-        return res("PW Orders fetched", result, 200)
+        return res("Service orders fetched", result, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -837,13 +837,13 @@ def submit_pw_order(order_id: int, submitted_by=None):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order not found", [], 404)
 
         if order.workflow_status not in ["Draft", "Reback"]:
-            return res("Order already submitted", [], 400)
+            return res("Service Order already submitted", [], 400)
 
         if not order.items:
-            return res("Order has no items", [], 400)
+            return res("Service Order has no items", [], 400)
 
         if order.workflow_status == "Reback":
             order.current_level = 0
@@ -879,7 +879,7 @@ def submit_pw_order(order_id: int, submitted_by=None):
         db.session.commit()
 
         return res(
-            "PW Order submitted successfully",
+            "Service order submitted successfully",
             {
                 "orderId":        order.id,
                 "orderNo":        order.order_no,
@@ -906,10 +906,10 @@ def approve_pw_order(order_id: int, approved_by=None, comments=None):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order not found", [], 404)
 
         if not order.workflow_status.startswith("Pending"):
-            return res("Order not pending", [], 400)
+            return res("Service order not pending", [], 400)
 
         allowed = is_current_approver(
             order.project_code, get_approval_module("pw_order"), order.current_level, approved_by
@@ -955,7 +955,7 @@ def approve_pw_order(order_id: int, approved_by=None, comments=None):
         db.session.commit()
 
         return res(
-            "PW Order approved successfully",
+            "Service order approved successfully",
             {
                 "orderId":        order.id,
                 "workflowStatus": order.workflow_status,
@@ -982,10 +982,10 @@ def reback_pw_order(order_id: int, reback_by=None, comments=None):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order not found", [], 404)
 
         if not order.workflow_status.startswith("Pending"):
-            return res("Order not pending", [], 400)
+            return res("Service order not pending", [], 400)
 
         if not comments:
             return res("Comments required", [], 400)
@@ -1015,7 +1015,7 @@ def reback_pw_order(order_id: int, reback_by=None, comments=None):
         db.session.commit()
 
         return res(
-            "PW Order sent for correction",
+            "Service order sent for correction",
             {"orderId": order.id, "workflowStatus": order.workflow_status},
             200,
         )
@@ -1038,10 +1038,10 @@ def reject_pw_order(order_id: int, rejected_by=None, comments=None):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order not found", [], 404)
 
         if not order.workflow_status.startswith("Pending"):
-            return res("Order not pending", [], 400)
+            return res("Service order not pending", [], 400)
 
         if not comments:
             return res("Comments required", [], 400)
@@ -1073,7 +1073,7 @@ def reject_pw_order(order_id: int, rejected_by=None, comments=None):
         db.session.commit()
 
         return res(
-            "PW Order rejected",
+            "Service order rejected",
             {"orderId": order.id, "workflowStatus": order.workflow_status},
             200,
         )
@@ -1096,10 +1096,10 @@ def delete_pw_order(order_id: int):
 
         order = ProjectWorkOrderMaster.query.get(order_id)
         if not order:
-            return res("PW Order not found", [], 404)
+            return res("Service order order not found", [], 404)
 
         if order.locked:
-            return res("Only Draft/Reback orders can be deleted", [], 400)
+            return res("Only Draft/Reback Service orders can be deleted", [], 400)
 
         ProjectWorkOrderItem.query.filter_by(order_id=order.id).delete()
 
@@ -1109,7 +1109,7 @@ def delete_pw_order(order_id: int):
         db.session.delete(order)
         db.session.commit()
 
-        return res("PW Order deleted successfully", [], 200)
+        return res("Service order deleted successfully", [], 200)
 
     except SQLAlchemyError as e:
         db.session.rollback()
