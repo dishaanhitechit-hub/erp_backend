@@ -32,6 +32,7 @@ from app.models.category_group import GroupMaster, CategoryMaster
 from app.models.unit import Unit
 from app.models.term_conditions import TermConditions
 from app.models.vendor import Vendor
+from app.alias_helper import *
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -847,7 +848,7 @@ def submit_pw_order(order_id: int, submitted_by=None):
         if order.workflow_status == "Reback":
             order.current_level = 0
 
-        first_level = get_first_approver(order.project_code, "pw_order")
+        first_level = get_first_approver(order.project_code,  get_approval_module("pw_order"))
 
         if not first_level:
             # Auto-approve when no approver is configured
@@ -911,13 +912,13 @@ def approve_pw_order(order_id: int, approved_by=None, comments=None):
             return res("Order not pending", [], 400)
 
         allowed = is_current_approver(
-            order.project_code, "pw_order", order.current_level, approved_by
+            order.project_code, get_approval_module("pw_order"), order.current_level, approved_by
         )
         if not allowed:
             return res("You are not current approver", [], 403)
 
         next_level = get_next_approver(
-            order.project_code, "pw_order", order.current_level
+            order.project_code, get_approval_module("pw_order"), order.current_level
         )
 
         if next_level:
@@ -990,7 +991,7 @@ def reback_pw_order(order_id: int, reback_by=None, comments=None):
             return res("Comments required", [], 400)
 
         allowed = is_current_approver(
-            order.project_code, "pw_order", order.current_level, reback_by
+            order.project_code, get_approval_module("pw_order"), order.current_level, reback_by
         )
         if not allowed:
             return res("You are not current approver", [], 403)
@@ -1046,7 +1047,7 @@ def reject_pw_order(order_id: int, rejected_by=None, comments=None):
             return res("Comments required", [], 400)
 
         allowed = is_current_approver(
-            order.project_code, "pw_order", order.current_level, rejected_by
+            order.project_code, get_approval_module("pw_order"), order.current_level, rejected_by
         )
         if not allowed:
             return res("You are not current approver", [], 403)
