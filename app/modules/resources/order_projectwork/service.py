@@ -816,8 +816,8 @@ def get_pw_order_list(data: dict):
                 "gstAmount":      float(row.gst_amount or 0),
                 "totalAmount":    float(row.total_amount or 0),
                 "bookedAmount":   float(row.booked_amount or 0),
-                "workflowStatus": row.workflow_status,
-                "status":         row.status,
+                # "workflowStatus": row.workflow_status,
+                "status":         row.workflow_status
             })
 
         return res("PW Orders fetched", result, 200)
