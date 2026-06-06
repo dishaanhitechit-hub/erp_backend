@@ -48,3 +48,4 @@ from .concrete_registry import *
 
 from .grnMaster import *
 from .ginMaster import *
+from .drawingRegister import *

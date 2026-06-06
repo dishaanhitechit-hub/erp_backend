@@ -48,14 +48,17 @@ def create_app():
     from .modules.resources.gin.routes import gin_bp
     app.register_blueprint(gin_bp, url_prefix="/resource/gin")
 
+    from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
+    app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")
+
     from .modules.resources.order_projectwork.routes import pw_order_bp
     app.register_blueprint(pw_order_bp, url_prefix="/resource/pw-order")
 
     from .modules.project.routes import project_bp
     app.register_blueprint(project_bp, url_prefix="/project")
 
-    from .modules.concrete_registry.routes import concrete_registry_bp
-    app.register_blueprint(concrete_registry_bp, url_prefix="/concrete-registry")
+    from .modules.project_mgmt.register.concrete_registry.routes import concrete_registry_bp
+    app.register_blueprint(concrete_registry_bp, url_prefix="/project-mgmt/register/concrete-registry")
 
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
