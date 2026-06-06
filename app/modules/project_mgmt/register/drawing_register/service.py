@@ -595,7 +595,7 @@ def get_drawing_register_history(dr_id):
                 "comments": row.comments,
                 "actionBy": row.user.username if row.user else None,
                 "createdAt": (
-                    row.created_at.strftime("%Y%m%d %H:%M:%S")
+                    row.created_at.strftime("%Y-%m-%d %H:%M:%S")
                     if row.created_at else None
                 ),
             })
