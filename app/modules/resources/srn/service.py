@@ -97,8 +97,8 @@ def get_pw_orders_by_vendor(data):
             ProjectWorkOrderMaster.workflow_status == "Approved"
         )
 
-        category_code    = data.get("categoryCode")
-        sub_category_code = data.get("subCategoryCode")
+        category_code    = data.get("receivedCategory")
+        sub_category_code = data.get("itemCategory")
         cost_head        = data.get("costHead")
 
         filtered_query = base_query
