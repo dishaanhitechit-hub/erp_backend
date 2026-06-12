@@ -1,100 +1,151 @@
+# # from app import create_app
+# # from app.extensions import db
+# #
+# # app = create_app()
+# #
+# # with app.app_context():
+# #     db.drop_all()
+# #     db.create_all()
+#
+#
 # from app import create_app
-# from app.extensions import db
+# from app.models.feature_page import FeaturePage
+# from app.models.approval_path import *
+# from app.models.user import User
+# import pandas as pd
+# from reportlab.platypus import SimpleDocTemplate, Preformatted
+# from reportlab.lib.styles import getSampleStyleSheet
+# from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
+# from reportlab.lib import colors
+# from reportlab.lib import styles
+# from reportlab.lib import units
 #
 # app = create_app()
 #
 # with app.app_context():
-#     db.drop_all()
-#     db.create_all()
+#
+#     pages = ModuleMaster.query.all()
+#
+#     pdf = SimpleDocTemplate(
+#         "module_master_report.pdf"
+#     )
+#
+#     elements = []
+#
+#     style_sheet = styles.getSampleStyleSheet()
+#
+#     title = Paragraph(
+#         "Module Master Report",
+#         style_sheet['Title']
+#     )
+#
+#     elements.append(title)
+#     elements.append(Spacer(1, 0.3 * units.inch))
+#
+#     # Header
+#     data = [["Page Name", "Page Code"]]
+#
+#     # Rows
+#     for p in pages:
+#         data.append([
+#             str(p.module_name),
+#             str(p.module_code)
+#         ])
+#
+#     table = Table(
+#         data,
+#         colWidths=[250, 200]
+#     )
+#
+#     table.setStyle(
+#         TableStyle([
+#             ('BACKGROUND', (0,0), (-1,0), colors.grey),
+#             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+#
+#             ('ALIGN',(0,0),(-1,-1),'CENTER'),
+#
+#             ('FONTNAME', (0,0),(-1,0),'Helvetica-Bold'),
+#             ('FONTSIZE', (0,0),(-1,-1),10),
+#
+#             ('BOTTOMPADDING',(0,0),(-1,0),12),
+#
+#             ('GRID',(0,0),(-1,-1),1,colors.black),
+#
+#             ('BACKGROUND',(0,1),(-1,-1),colors.beige)
+#         ])
+#     )
+#
+#     elements.append(table)
+#
+#     pdf.build(elements)
+#
+#     print("PDF created successfully: module_master_report.pdf")
+#
+#
+#
+#     # name = User.query.all()
+#     #
+#     # data = []
+#     #
+#     # for n in name:
+#     #     data.append({
+#     #         "Username": n.username,
+#     #         "Login Username": n.login_username
+#     #     })
+#     #
+#     # df = pd.DataFrame(data)
+#     #
+#     # df.to_excel("users.xlsx", index=False)
+#     #
+#     # print("Excel exported successfully")
 
+import psycopg2
+import csv
+import os
 
-from app import create_app
-from app.models.feature_page import FeaturePage
-from app.models.approval_path import *
-from app.models.user import User
-import pandas as pd
-from reportlab.platypus import SimpleDocTemplate, Preformatted
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
-from reportlab.lib import colors
-from reportlab.lib import styles
-from reportlab.lib import units
+# Your Railway connection details
+conn = psycopg2.connect(
+    host="yamabiko.proxy.rlwy.net",
+    port=57509,        # replace with your actual port
+    database="railway",
+    user="postgres",
+    password="JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe"      # replace with your actual password
+)
 
-app = create_app()
+cursor = conn.cursor()
 
-with app.app_context():
+# Get all tables from public schema
+cursor.execute("""
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+""")
+tables = [row[0] for row in cursor.fetchall()]
 
-    pages = ModuleMaster.query.all()
+if not tables:
+    print("⚠️ No tables found!")
+else:
+    os.makedirs("railway_csv_export", exist_ok=True)
 
-    pdf = SimpleDocTemplate(
-        "module_master_report.pdf"
-    )
+    for table in tables:
+        print(f"Exporting: {table}...")
+        try:
+            cursor.execute(f'SELECT * FROM "{table}"')
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
 
-    elements = []
+            filepath = f"railway_csv_export/{table}.csv"
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(columns)
+                writer.writerows(rows)
 
-    style_sheet = styles.getSampleStyleSheet()
+            print(f"  ✅ Saved: {filepath} ({len(rows)} rows)")
 
-    title = Paragraph(
-        "Module Master Report",
-        style_sheet['Title']
-    )
+        except Exception as e:
+            print(f"  ⚠️ Skipped {table}: {e}")
+            conn.rollback()  # reset connection after error
 
-    elements.append(title)
-    elements.append(Spacer(1, 0.3 * units.inch))
-
-    # Header
-    data = [["Page Name", "Page Code"]]
-
-    # Rows
-    for p in pages:
-        data.append([
-            str(p.module_name),
-            str(p.module_code)
-        ])
-
-    table = Table(
-        data,
-        colWidths=[250, 200]
-    )
-
-    table.setStyle(
-        TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-
-            ('ALIGN',(0,0),(-1,-1),'CENTER'),
-
-            ('FONTNAME', (0,0),(-1,0),'Helvetica-Bold'),
-            ('FONTSIZE', (0,0),(-1,-1),10),
-
-            ('BOTTOMPADDING',(0,0),(-1,0),12),
-
-            ('GRID',(0,0),(-1,-1),1,colors.black),
-
-            ('BACKGROUND',(0,1),(-1,-1),colors.beige)
-        ])
-    )
-
-    elements.append(table)
-
-    pdf.build(elements)
-
-    print("PDF created successfully: module_master_report.pdf")
-
-
-
-    # name = User.query.all()
-    #
-    # data = []
-    #
-    # for n in name:
-    #     data.append({
-    #         "Username": n.username,
-    #         "Login Username": n.login_username
-    #     })
-    #
-    # df = pd.DataFrame(data)
-    #
-    # df.to_excel("users.xlsx", index=False)
-    #
-    # print("Excel exported successfully")
+cursor.close()
+conn.close()
+print("\n🎉 All tables exported to 'railway_csv_export' folder!")

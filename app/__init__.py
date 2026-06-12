@@ -48,6 +48,9 @@ def create_app():
     from .modules.resources.gin.routes import gin_bp
     app.register_blueprint(gin_bp, url_prefix="/resource/gin")
 
+    from .modules.resources.srn.routes import srn_bp
+    app.register_blueprint(srn_bp, url_prefix="/resource/srn")
+
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")
 
