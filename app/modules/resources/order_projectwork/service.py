@@ -279,8 +279,8 @@ def create_pw_order(data, user_id, files=None):
             subFolder= xtemp,
             fileName="support",
         )
-        if not supporting_file:
-            return res("ladle miaooo", [], 400)
+        # if not supporting_file:
+        #     return res("ladle miaooo", [], 400)
 
         # ── parse sub-category codes (one or many) ───────────────
         raw_sub = data.get("subCategoryCodes") or data.get("subCategoryCode") or []
