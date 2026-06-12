@@ -51,6 +51,9 @@ def create_app():
     from .modules.resources.srn.routes import srn_bp
     app.register_blueprint(srn_bp, url_prefix="/resource/srn")
 
+    from .modules.resources.vendor_billing_grn.routes import bvs_bp
+    app.register_blueprint(bvs_bp, url_prefix="/resource/bvs")
+
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")
 

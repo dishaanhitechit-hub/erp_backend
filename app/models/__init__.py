@@ -50,3 +50,4 @@ from .grnMaster import *
 from .ginMaster import *
 from .drawingRegister import *
 from .srnMaster import *
+from .bvsMaster import *
