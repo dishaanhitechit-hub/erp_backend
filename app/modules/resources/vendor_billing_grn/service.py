@@ -299,6 +299,10 @@ def create_bvs(data, user_id):
             project_code    = data.get("projectCode"),
             vendor_id       = data.get("vendorId"),
             party_bill_no   = data.get("partyBillNo"),
+            received_category=data.get("receivedCategory"),
+            item_category = data.get("itemCategory"),
+            cost_head = data.get("costHead"),
+
             party_date      = data.get("partyDate") or None,
             order_id        = data.get("orderId"),
             site            = data.get("site"),
@@ -464,6 +468,9 @@ def get_bvs_details(bvs_id):
             items.append({
                 "id":            bi.id,
                 "grnItemId":     bi.grn_item_id,
+                "recievedCategory":bi.recieved_category,
+                "itemCategory":bi.item_category,
+                "costHead":bi.cost_head,
                 "grnNo":         grn.grn_no   if grn else None,
                 "grnl":          gi.grnl      if gi  else None,
                 "itemCode":      oi.item_code if oi  else None,
@@ -922,7 +929,7 @@ def get_bvs_history(bvs_id):
                 "comments":  row.comments,
                 "actionBy":  row.user.username if row.user else None,
                 "createdAt": (
-                    row.created_at.strftime("%Y%m%d %H:%M:%S")
+                    row.created_at.strftime("%Y-%m-%d %H:%M:%S")
                     if row.created_at else None
                 ),
             })

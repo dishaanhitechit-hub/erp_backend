@@ -31,6 +31,10 @@ class BvsMaster(db.Model):
         nullable=True
     )
 
+    received_category = db.Column(db.String(100), nullable=True)
+    item_category = db.Column(db.String(100), nullable=True)
+    cost_head = db.Column(db.String(100), nullable=True)
+
     party_bill_no  = db.Column(db.String(100), nullable=True)
     party_date     = db.Column(db.Date,        nullable=True)
 
