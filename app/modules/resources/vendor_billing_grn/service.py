@@ -19,7 +19,7 @@ from app.modules.work_flow import (
     get_history,
 )
 
-_MODULE = "vendor_billing_grn"
+_MODULE = "billing_by_grn"
 
 
 # ══════════════════════════════════════════════════════════════════
