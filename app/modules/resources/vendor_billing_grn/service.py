@@ -468,9 +468,7 @@ def get_bvs_details(bvs_id):
             items.append({
                 "id":            bi.id,
                 "grnItemId":     bi.grn_item_id,
-                "recievedCategory":bi.recieved_category,
-                "itemCategory":bi.item_category,
-                "costHead":bi.cost_head,
+
                 "grnNo":         grn.grn_no   if grn else None,
                 "grnl":          gi.grnl      if gi  else None,
                 "itemCode":      oi.item_code if oi  else None,
@@ -498,6 +496,9 @@ def get_bvs_details(bvs_id):
             "bvsDate":         _fmt_date(bvs.bvs_date),
             "projectCode":     bvs.project_code,
             "vendorId":        bvs.vendor_id,
+            "recievedCategory": bvs.recieved_category,
+            "itemCategory": bvs.item_category,
+            "costHead": bvs.cost_head,
             "partyName":       bvs.vendor.ledger_name        if bvs.vendor else None,
             "partyAddress":    bvs.vendor.registered_address if bvs.vendor else None,
             "partyGstn":       bvs.vendor.gstin              if bvs.vendor else None,
