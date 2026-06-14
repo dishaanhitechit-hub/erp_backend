@@ -474,7 +474,9 @@ def get_bvs_details(bvs_id):
 
                 "grnNo":         grn.grn_no   if grn else None,
                 "grnl":          gi.grnl      if gi  else None,
+                "grnDate": _fmt_date(grn.grn_date) if grn else None,
                 "itemCode":      oi.item_code if oi  else None,
+
                 "itemName":      oi.item.item_name if oi and oi.item else None,
                 "itemUnit":      (
                     oi.item.unit.unit_name
