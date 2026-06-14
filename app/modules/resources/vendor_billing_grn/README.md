@@ -2,7 +2,7 @@
 
 Base URL: `/resource/bvs`
 Auth: All endpoints require `Authorization: Bearer <JWT>` header.
-Module Code: `vendor_billing_grn`
+Module Code: `billing_by_grn`
 Content-Type: `application/json` (all endpoints — no file upload)
 
 ---
@@ -21,8 +21,9 @@ Vendor + Project
 
 **Available Qty rule:**
 - `availableQty = grn_item.receivedQty − sum(billingQty from non-Rejected BVS)`
-- Draft BVS **counts** → reduces available qty for others
+- Draft / Pending / Reback / Approved BVS **counts** → reduces available qty
 - Rejected BVS **does not count** → qty is freed back
+- Items with `availableQty = 0` are still returned (for visibility)
 
 ---
 
@@ -46,21 +47,22 @@ Vendor + Project
 
 ## 1. Get Orders by Vendor
 
-Fetch approved orders for a vendor + project. Same filter logic as GRN.
-
 **GET** `/resource/bvs/vendor-orders`
 
 ### Query Parameters
 
-| Parameter        | Type   | Required | Description                                |
-|------------------|--------|----------|--------------------------------------------|
-| vendorId         | int    | Yes      | Vendor ID                                  |
-| projectCode      | string | Yes      | Project code                               |
-| receivedCategory | string | No       | Filter by `order_master.category_code`     |
-| itemCategory     | string | No       | Filter by `order_master.sub_code`          |
-| costHead         | string | No       | Filter by `order_master.cost_head`         |
+| Parameter        | Type   | Required | Description                            |
+|------------------|--------|----------|----------------------------------------|
+| vendorId         | int    | Yes      | Vendor ID                              |
+| projectCode      | string | Yes      | Project code                           |
+| receivedCategory | string | No       | Filter by `order_master.category_code` |
+| itemCategory     | string | No       | Filter by `order_master.sub_code`      |
+| costHead         | string | No       | Filter by `order_master.cost_head`     |
 
-> **Fallback:** if `receivedCategory` is provided but yields no results, retries with `itemCategory` + `costHead` only.
+**Filter logic (AND + fallback):**
+1. Apply all provided filters together (AND)
+2. If `receivedCategory` was given but result is empty → retry with `itemCategory` + `costHead` only
+3. If none provided → returns all approved orders for that vendor + project
 
 ### Success Response `200`
 
@@ -84,20 +86,21 @@ Fetch approved orders for a vendor + project. Same filter logic as GRN.
 }
 ```
 
+### Error Responses
+
+| Status | Message                  |
+|--------|--------------------------|
+| 400    | `vendorId required`      |
+| 400    | `projectCode required`   |
+| 500    | Internal server error    |
+
 ---
 
 ## 2. Get GRNs by Order
 
-Fetch all **approved** GRNs for an order, with each GRN's items and available billing qty.
-This is the main selection grid — user picks GRNs and items to bill.
+Fetch all **Approved** GRNs for an order with each item's available billing qty.
 
 **GET** `/resource/bvs/grns-by-order/<order_id>`
-
-### Path Parameters
-
-| Parameter | Type | Description   |
-|-----------|------|---------------|
-| order_id  | int  | Order master ID |
 
 ### Success Response `200`
 
@@ -146,18 +149,18 @@ This is the main selection grid — user picks GRNs and items to bill.
 }
 ```
 
+> `rate` and `gstPercent` are from the linked `order_item`. Frontend shows these as read-only.
+
 ### Error Responses
 
-| Status | Message                      |
-|--------|------------------------------|
-| 404    | `Order not found`            |
-| 500    | Internal server error        |
+| Status | Message           |
+|--------|-------------------|
+| 404    | `Order not found` |
+| 500    | Internal server error |
 
 ---
 
 ## 3. Create BVS
-
-Create a new BVS in **Draft** status.
 
 **POST** `/resource/bvs/create`
 
@@ -172,46 +175,39 @@ Content-Type: `application/json`
   "vendorId": 5,
   "partyBillNo": "INV-2024-099",
   "partyDate": "2024-06-10",
+  "receivedCategory": "Material",
+  "itemCategory": "Civil",
+  "costHead": "Project Work /Fixed Asset",
   "orderId": 12,
   "site": "PROJ-001",
   "billingAddress": "Site Office, Block A",
   "shippingAddress": "Site Office, Block A",
   "items": [
-    {
-      "grnItemId": 7,
-      "billingQty": 50
-    },
-    {
-      "grnItemId": 9,
-      "billingQty": 20
-    }
+    { "grnItemId": 7, "billingQty": 50 },
+    { "grnItemId": 9, "billingQty": 20 }
   ]
 }
 ```
 
 ### Request Fields
 
-| Field           | Type         | Required | Description                                          |
-|-----------------|--------------|----------|------------------------------------------------------|
-| bvsDate         | date         | Yes      | BVS date (`YYYY-MM-DD`)                              |
-| projectCode     | string       | Yes      | Project code                                         |
-| vendorId        | int          | No       | Vendor ID                                            |
-| partyBillNo     | string       | No       | Party bill / invoice number                          |
-| partyDate       | date         | No       | Party bill date (`YYYY-MM-DD`)                       |
-| orderId         | int          | No       | Linked order ID                                      |
-| site            | string       | No       | Site (auto from project)                             |
-| billingAddress  | string       | No       | Billing address                                      |
-| shippingAddress | string       | No       | Shipping address                                     |
-| items           | array        | Yes      | Array of item objects (see below)                    |
+| Field            | Type   | Required | Description                                      |
+|------------------|--------|----------|--------------------------------------------------|
+| bvsDate          | date   | Yes      | BVS date (`YYYY-MM-DD`)                          |
+| projectCode      | string | Yes      | Project code                                     |
+| vendorId         | int    | No       | Vendor ID                                        |
+| partyBillNo      | string | No       | Party invoice number                             |
+| partyDate        | date   | No       | Party invoice date (`YYYY-MM-DD`)                |
+| receivedCategory | string | No       | Saved on BVS for reference                       |
+| itemCategory     | string | No       | Saved on BVS for reference                       |
+| costHead         | string | No       | Saved on BVS for reference                       |
+| orderId          | int    | No       | Linked order ID                                  |
+| site             | string | No       | Site                                             |
+| billingAddress   | string | No       | Billing address                                  |
+| shippingAddress  | string | No       | Shipping address                                 |
+| items            | array  | Yes      | Array of `{ grnItemId, billingQty }`             |
 
-### `items` Array
-
-| Field      | Type   | Required | Description                                      |
-|------------|--------|----------|--------------------------------------------------|
-| grnItemId  | int    | Yes      | GRN item ID from `/grns-by-order` endpoint       |
-| billingQty | number | Yes      | Qty to bill (must be > 0 and ≤ availableQty)     |
-
-> `rate` and `gstPercent` are pulled automatically from the linked `order_item` — do not send them.
+> `rate` and `gstPercent` are pulled automatically from the `order_item` — do **not** send them.
 
 ### Success Response `201`
 
@@ -237,14 +233,14 @@ Content-Type: `application/json`
 
 ### Error Responses
 
-| Status | Message                                              |
-|--------|------------------------------------------------------|
-| 403    | `You are not BVS creator`                            |
-| 400    | `No items provided`                                  |
-| 400    | `Invalid billingQty for grnItemId {id}`              |
-| 404    | `GRN item {id} not found`                            |
-| 400    | `Only {n} qty available for GRN item {id}`           |
-| 500    | Internal server error                                |
+| Status | Message                                         |
+|--------|-------------------------------------------------|
+| 403    | `You are not BVS creator`                       |
+| 400    | `No items provided`                             |
+| 400    | `Invalid billingQty for grnItemId {id}`         |
+| 404    | `GRN item {id} not found`                       |
+| 400    | `Only {n} qty available for GRN item {id}`      |
+| 500    | Internal server error                           |
 
 ---
 
@@ -254,13 +250,13 @@ Content-Type: `application/json`
 
 ### Query Parameters
 
-| Parameter      | Type   | Required | Description                        |
-|----------------|--------|----------|------------------------------------|
-| projectCode    | string | Yes      | Project code                       |
-| vendorId       | int    | No       | Filter by vendor                   |
-| orderId        | int    | No       | Filter by linked order             |
-| workflowStatus | string | No       | Filter by workflow status          |
-| search         | string | No       | Partial match on BVS number        |
+| Parameter      | Type   | Required | Description                      |
+|----------------|--------|----------|----------------------------------|
+| projectCode    | string | Yes      | Project code                     |
+| vendorId       | int    | No       | Filter by vendor                 |
+| orderId        | int    | No       | Filter by linked order           |
+| workflowStatus | string | No       | Filter by workflow status        |
+| search         | string | No       | Partial match on BVS number      |
 
 ### Success Response `200`
 
@@ -273,6 +269,9 @@ Content-Type: `application/json`
       "bvsNo": "840001",
       "bvsDate": "2024-06-12",
       "projectCode": "PROJ-001",
+      "recievedCategory": "Material",
+      "itemCategory": "Civil",
+      "costHead": "Project Work /Fixed Asset",
       "orderNo": "440001",
       "partyName": "ABC Suppliers Pvt Ltd",
       "partyBillNo": "INV-2024-099",
@@ -284,6 +283,13 @@ Content-Type: `application/json`
   "status": 200
 }
 ```
+
+### Error Responses
+
+| Status | Message                |
+|--------|------------------------|
+| 400    | `projectCode required` |
+| 500    | Internal server error  |
 
 ---
 
@@ -302,6 +308,9 @@ Content-Type: `application/json`
     "bvsDate": "2024-06-12",
     "projectCode": "PROJ-001",
     "vendorId": 5,
+    "recievedCategory": "Material",
+    "itemCategory": "Civil",
+    "costHead": "Project Work /Fixed Asset",
     "partyName": "ABC Suppliers Pvt Ltd",
     "partyAddress": "123, Main Road, Kolkata - 700001",
     "partyGstn": "19AABCA1234A1Z5",
@@ -364,13 +373,12 @@ Content-Type: `application/json`
 
 ## 6. Edit BVS
 
-Edit a Draft or Reback BVS. Replaces all items.
+Only allowed when `workflowStatus` is `Draft` or `Reback` and `locked = false`.
+Replaces all items on every edit.
 
 **PUT** `/resource/bvs/edit/<bvs_id>`
 
 Content-Type: `application/json`
-
-All header fields optional. `items` is required.
 
 ```json
 {
@@ -383,6 +391,9 @@ All header fields optional. `items` is required.
   ]
 }
 ```
+
+> All header fields are optional. `items` is required.
+> During edit, old items are wiped first — so `availableQty` is recalculated excluding current BVS before validating new items.
 
 ### Success Response `200`
 
@@ -400,17 +411,17 @@ All header fields optional. `items` is required.
 
 ### Error Responses
 
-| Status | Message                                              |
-|--------|------------------------------------------------------|
-| 404    | `BVS not found`                                      |
-| 400    | `BVS cannot be edited` (locked)                      |
-| 400    | `Only Draft or Reback BVS can be edited`             |
-| 403    | `You are not BVS creator`                            |
-| 400    | `Items required`                                     |
-| 400    | `Invalid billingQty for grnItemId {id}`              |
-| 404    | `GRN item {id} not found`                            |
-| 400    | `Only {n} qty available for GRN item {id}`           |
-| 500    | Internal server error                                |
+| Status | Message                                         |
+|--------|-------------------------------------------------|
+| 404    | `BVS not found`                                 |
+| 400    | `BVS cannot be edited` (locked)                 |
+| 400    | `Only Draft or Reback BVS can be edited`        |
+| 403    | `You are not BVS creator`                       |
+| 400    | `Items required`                                |
+| 400    | `Invalid billingQty for grnItemId {id}`         |
+| 404    | `GRN item {id} not found`                       |
+| 400    | `Only {n} qty available for GRN item {id}`      |
+| 500    | Internal server error                           |
 
 ---
 
@@ -419,6 +430,9 @@ All header fields optional. `items` is required.
 **POST** `/resource/bvs/submit/<bvs_id>`
 
 No request body.
+
+> If no approver is configured for `billing_by_grn` in the project, BVS is auto-approved immediately.
+> On Reback re-submit, `current_level` resets to 0 (back to L1).
 
 ### Success Response `200`
 
@@ -434,6 +448,15 @@ No request body.
 }
 ```
 
+### Error Responses
+
+| Status | Message                    |
+|--------|----------------------------|
+| 404    | `BVS not found`            |
+| 400    | `BVS already submitted`    |
+| 400    | `BVS has no items`         |
+| 500    | Internal server error      |
+
 ---
 
 ## 8. Approve BVS
@@ -443,6 +466,9 @@ No request body.
 ```json
 { "comments": "Bill verified against GRNs." }
 ```
+
+> If more approval levels exist → moves to `Pending_L{next}`.
+> If this is the final level → `workflowStatus = Approved`, `locked = true`.
 
 ### Success Response `200`
 
@@ -458,6 +484,15 @@ No request body.
 }
 ```
 
+### Error Responses
+
+| Status | Message                      |
+|--------|------------------------------|
+| 404    | `BVS not found`              |
+| 400    | `BVS not pending`            |
+| 403    | `You are not current approver` |
+| 500    | Internal server error        |
+
 ---
 
 ## 9. Reback BVS
@@ -472,6 +507,8 @@ No request body.
 |----------|----------|
 | comments | Yes      |
 
+> Sets `locked = false` so creator can edit and resubmit.
+
 ### Success Response `200`
 
 ```json
@@ -481,6 +518,16 @@ No request body.
   "status": 200
 }
 ```
+
+### Error Responses
+
+| Status | Message                        |
+|--------|--------------------------------|
+| 404    | `BVS not found`                |
+| 400    | `BVS not pending`              |
+| 400    | `Comments required`            |
+| 403    | `You are not current approver` |
+| 500    | Internal server error          |
 
 ---
 
@@ -496,6 +543,8 @@ No request body.
 |----------|----------|
 | comments | Yes      |
 
+> On rejection `locked = true`, `status = Inactive`. All `billingQty` in this BVS is freed — `availableQty` increases for other BVS referencing those GRN items.
+
 ### Success Response `200`
 
 ```json
@@ -506,7 +555,15 @@ No request body.
 }
 ```
 
-> On rejection, `billingQty` of all items in this BVS is freed back — `availableQty` increases for other BVS.
+### Error Responses
+
+| Status | Message                        |
+|--------|--------------------------------|
+| 404    | `BVS not found`                |
+| 400    | `BVS not pending`              |
+| 400    | `Comments required`            |
+| 403    | `You are not current approver` |
+| 500    | Internal server error          |
 
 ---
 
@@ -520,14 +577,16 @@ No request body.
 {
   "message": "BVS history fetched",
   "data": [
-    { "id": 1, "action": "SUBMIT",       "level": 0, "comments": null,                           "actionBy": "john.doe",    "createdAt": "20240612 10:00:00" },
-    { "id": 2, "action": "REBACK",       "level": 1, "comments": "Billing qty mismatch.",         "actionBy": "manager",     "createdAt": "20240612 14:22:00" },
-    { "id": 3, "action": "SUBMIT",       "level": 0, "comments": null,                           "actionBy": "john.doe",    "createdAt": "20240613 09:10:00" },
-    { "id": 4, "action": "FINAL_APPROVE","level": 1, "comments": "Bill verified against GRNs.", "actionBy": "manager",     "createdAt": "20240613 11:45:00" }
+    { "id": 1, "action": "SUBMIT",        "level": 0, "comments": null,                          "actionBy": "john.doe", "createdAt": "2024-06-12 10:00:00" },
+    { "id": 2, "action": "REBACK",        "level": 1, "comments": "Billing qty mismatch.",        "actionBy": "manager",  "createdAt": "2024-06-12 14:22:00" },
+    { "id": 3, "action": "SUBMIT",        "level": 0, "comments": null,                          "actionBy": "john.doe", "createdAt": "2024-06-13 09:10:00" },
+    { "id": 4, "action": "FINAL_APPROVE", "level": 1, "comments": "Bill verified against GRNs.", "actionBy": "manager",  "createdAt": "2024-06-13 11:45:00" }
   ],
   "status": 200
 }
 ```
+
+**Possible `action` values:** `SUBMIT`, `APPROVE`, `FINAL_APPROVE`, `REBACK`, `REJECT`
 
 ---
 
@@ -539,13 +598,13 @@ Draft → [Submit] → Pending_L1 → [Approve] → Pending_L2 → ... → Appro
                               → [Reject]  → Rejected  ← billingQty freed back
 ```
 
-| Status       | Editable | Locked | billingQty counted |
-|--------------|----------|--------|-------------------|
-| Draft        | Yes      | No     | Yes               |
-| Pending_L{n} | No       | Yes    | Yes               |
-| Reback       | Yes      | No     | Yes               |
-| Approved     | No       | Yes    | Yes               |
-| Rejected     | No       | Yes    | **No** (freed)    |
+| Status       | Editable | Locked | billingQty counted in alreadyBilled |
+|--------------|----------|--------|-------------------------------------|
+| Draft        | Yes      | No     | Yes                                 |
+| Pending_L{n} | No       | Yes    | Yes                                 |
+| Reback       | Yes      | No     | Yes                                 |
+| Approved     | No       | Yes    | Yes                                 |
+| Rejected     | No       | Yes    | **No** (freed back)                 |
 
 ---
 
@@ -553,50 +612,54 @@ Draft → [Submit] → Pending_L1 → [Approve] → Pending_L2 → ... → Appro
 
 ### `bvs_master`
 
-| Column             | Type         | Notes                                 |
-|--------------------|--------------|---------------------------------------|
-| id                 | int PK       |                                       |
-| bvs_no             | varchar(50)  | Unique, serial starting from 840001   |
-| bvs_date           | date         | Required                              |
-| project_code       | varchar(50)  | FK → projects.project_code            |
-| vendor_id          | int          | FK → vendors.id                       |
-| party_bill_no      | varchar(100) |                                       |
-| party_date         | date         |                                       |
-| order_id           | int          | FK → order_master.id                  |
-| site               | varchar(200) |                                       |
-| billing_address    | text         |                                       |
-| shipping_address   | text         |                                       |
-| basic_amount       | numeric(14,2)|                                       |
-| gst_amount         | numeric(14,2)|                                       |
-| total_amount       | numeric(14,2)|                                       |
-| workflow_status    | varchar(30)  | Default: Draft                        |
-| current_level      | int          | Default: 0                            |
-| locked             | boolean      | Default: false                        |
-| created_by         | int          | FK → users.id                         |
-| submitted_by       | int          | FK → users.id                         |
-| approved_by        | int          | FK → users.id                         |
-| rejected_by        | int          | FK → users.id                         |
-| updated_by         | int          | FK → users.id                         |
-| submitted_at       | datetime     |                                       |
-| final_approved_at  | datetime     |                                       |
-| rejected_at        | datetime     |                                       |
-| correction_sent_at | datetime     |                                       |
-| created_at         | datetime     | Auto                                  |
-| updated_at         | datetime     | Auto                                  |
+| Column             | Type          | Notes                               |
+|--------------------|---------------|-------------------------------------|
+| id                 | int PK        |                                     |
+| bvs_no             | varchar(50)   | Unique serial starting from 840001  |
+| bvs_date           | date          |                                     |
+| project_code       | varchar(50)   | FK → projects.project_code          |
+| vendor_id          | int           | FK → vendors.id                     |
+| party_bill_no      | varchar(100)  |                                     |
+| party_date         | date          |                                     |
+| received_category  | varchar(100)  | Saved from filter for reference     |
+| item_category      | varchar(100)  | Saved from filter for reference     |
+| cost_head          | varchar(100)  | Saved from filter for reference     |
+| order_id           | int           | FK → order_master.id                |
+| site               | varchar(200)  |                                     |
+| billing_address    | text          |                                     |
+| shipping_address   | text          |                                     |
+| basic_amount       | numeric(14,2) |                                     |
+| gst_amount         | numeric(14,2) |                                     |
+| total_amount       | numeric(14,2) |                                     |
+| workflow_status    | varchar(30)   | Default: Draft                      |
+| current_level      | int           | Default: 0                          |
+| locked             | boolean       | Default: false                      |
+| status             | varchar(20)   | Set to Inactive on Reject           |
+| created_by         | int           | FK → users.id                       |
+| submitted_by       | int           | FK → users.id                       |
+| approved_by        | int           | FK → users.id                       |
+| rejected_by        | int           | FK → users.id                       |
+| updated_by         | int           | FK → users.id                       |
+| submitted_at       | datetime      |                                     |
+| final_approved_at  | datetime      |                                     |
+| rejected_at        | datetime      |                                     |
+| correction_sent_at | datetime      |                                     |
+| created_at         | datetime      | Auto                                |
+| updated_at         | datetime      | Auto                                |
 
 ### `bvs_items`
 
-| Column      | Type         | Notes                               |
-|-------------|--------------|-------------------------------------|
-| id          | int PK       |                                     |
-| bvs_id      | int          | FK → bvs_master.id                  |
-| grn_item_id | int          | FK → grn_items.id                   |
-| billing_qty | numeric(12,2)|                                     |
-| rate        | numeric(12,2)| Copied from order_item at save time |
-| amount      | numeric(14,2)| billing_qty × rate                  |
-| gst_percent | numeric(5,2) | Copied from order_item              |
-| gst_amount  | numeric(14,2)| amount × gst_percent / 100          |
-| created_at  | datetime     | Auto                                |
+| Column      | Type          | Notes                                |
+|-------------|---------------|--------------------------------------|
+| id          | int PK        |                                      |
+| bvs_id      | int           | FK → bvs_master.id                   |
+| grn_item_id | int           | FK → grn_items.id                    |
+| billing_qty | numeric(12,2) |                                      |
+| rate        | numeric(12,2) | Copied from order_item at save time  |
+| amount      | numeric(14,2) | billing_qty × rate                   |
+| gst_percent | numeric(5,2)  | Copied from order_item               |
+| gst_amount  | numeric(14,2) | amount × gst_percent / 100           |
+| created_at  | datetime      | Auto                                 |
 
 ---
 
@@ -607,11 +670,19 @@ flask db migrate -m "add bvs tables"
 flask db upgrade
 ```
 
+### module_master entry (required before workflow actions work)
+
+```sql
+INSERT INTO module_master (module_code, module_name)
+VALUES ('billing_by_grn', 'Vendor Billing by GRN');
+```
+
 ---
 
 ## Notes
 
 - **No file upload** — BVS uses `application/json` (no `multipart/form-data`)
-- **rate & gst pulled automatically** from `order_item` — frontend should not send these
-- **CC Summary** is returned on create and edit responses as well as in details
-- **alreadyBilled** in item grid includes Draft + Pending + Approved BVS items (not Rejected)
+- **rate & gst pulled automatically** from `order_item` — do not send from frontend
+- **CC Summary** returned on create, edit, and details responses
+- **alreadyBilled** counts Draft + Pending + Reback + Approved BVS items, excludes Rejected
+- **Module code** is `billing_by_grn` (not `vendor_billing_grn`) — use this for workflow alias setup

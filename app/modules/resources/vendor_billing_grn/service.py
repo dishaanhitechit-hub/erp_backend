@@ -150,17 +150,17 @@ def get_orders_by_vendor(data):
 
         rows = filtered_query.order_by(OrderMaster.id.desc()).all()
 
-        if not rows and received_category:
-            fallback_query = base_query
-            if item_category:
-                fallback_query = fallback_query.filter(
-                    OrderMaster.sub_code == item_category
-                )
-            if cost_head:
-                fallback_query = fallback_query.filter(
-                    OrderMaster.cost_head == cost_head
-                )
-            rows = fallback_query.order_by(OrderMaster.id.desc()).all()
+        # if not rows and received_category:
+        #     fallback_query = base_query
+        #     if item_category:
+        #         fallback_query = fallback_query.filter(
+        #             OrderMaster.sub_code == item_category
+        #         )
+        #     if cost_head:
+        #         fallback_query = fallback_query.filter(
+        #             OrderMaster.cost_head == cost_head
+        #         )
+        #     rows = fallback_query.order_by(OrderMaster.id.desc()).all()
 
         result = []
         for row in rows:
@@ -429,7 +429,7 @@ def get_bvs_list(data):
                 "bvsNo":          row.bvs_no,
                 "bvsDate":        _fmt_date(row.bvs_date),
                 "projectCode":    row.project_code,
-                "recievedCategory": row.recieved_category,
+                "recievedCategory": row.received_category,
                 "itemCategory": row.item_category,
                 "costHead": row.cost_head,
                 "orderNo":        row.order.order_no    if row.order  else None,
@@ -499,7 +499,7 @@ def get_bvs_details(bvs_id):
             "bvsDate":         _fmt_date(bvs.bvs_date),
             "projectCode":     bvs.project_code,
             "vendorId":        bvs.vendor_id,
-            "recievedCategory": bvs.recieved_category,
+            "recievedCategory": bvs.received_category,
             "itemCategory": bvs.item_category,
             "costHead": bvs.cost_head,
             "partyName":       bvs.vendor.ledger_name        if bvs.vendor else None,

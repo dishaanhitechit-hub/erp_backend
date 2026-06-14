@@ -31,7 +31,7 @@ class BvsMaster(db.Model):
         nullable=True
     )
 
-    received_category = db.Column(db.String(100), nullable=True)
+    received_category  = db.Column(db.String(100), nullable=True)
     item_category = db.Column(db.String(100), nullable=True)
     cost_head = db.Column(db.String(100), nullable=True)
 
