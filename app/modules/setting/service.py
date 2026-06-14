@@ -1444,23 +1444,144 @@ def create_approval_path(data):
 
 
 
+# def get_approval_paths(projectCode):
+#
+#     try:
+#
+#         if not projectCode:
+#
+#             return res(
+#                 "Project code required",
+#                 [],
+#                 400
+#             )
+#
+#
+#         rows = (
+#             ApprovalPath.query
+#             .filter_by(
+#                 project_code=projectCode
+#             )
+#             .order_by(
+#                 ApprovalPath.module_code,
+#                 ApprovalPath.level_no
+#             )
+#             .all()
+#         )
+#
+#
+#         module_map = defaultdict(
+#
+#             lambda: {
+#
+#                 "moduleCode": None,
+#                 "moduleName": None,
+#
+#                 "creatorUsers": [],
+#                 "approverUsers": []
+#
+#             }
+#
+#         )
+#
+#
+#         for row in rows:
+#
+#             item = module_map[
+#                 row.module_code
+#             ]
+#
+#             item["moduleCode"] = row.module_code
+#
+#             item["moduleName"] = (
+#                 row.module.module_name
+#                 if row.module
+#                 else None
+#             )
+#
+#
+#             if row.path_type=="CREATOR":
+#
+#                 item[
+#                     "creatorUsers"
+#                 ].append({
+#
+#                     "userId":
+#                     row.user_id,
+#
+#                     "userName":
+#                     row.user.username
+#                     if row.user
+#                     else None
+#
+#                 })
+#
+#
+#             elif row.path_type=="APPROVER":
+#
+#                 item[
+#                     "approverUsers"
+#                 ].append({
+#
+#                     "userId":
+#                     row.user_id,
+#
+#                     "userName":
+#                     row.user.username
+#                     if row.user
+#                     else None,
+#
+#                     "level":
+#                     row.level_no
+#
+#                 })
+#
+#
+#         data = {
+#
+#             "projectCode":
+#             projectCode,
+#
+#             "modules":
+#             list(
+#                 module_map.values()
+#             )
+#
+#         }
+#
+#
+#         return res(
+#             "Approval path fetched successfully",
+#             [data],
+#             200
+#         )
+#
+#
+#     except Exception as e:
+#
+#         return res(
+#             str(e),
+#             [],
+#             500
+#         )
+
+
+#######test
+
+from collections import defaultdict
+from sqlalchemy.orm import joinedload
+
 def get_approval_paths(projectCode):
-
     try:
-
         if not projectCode:
-
-            return res(
-                "Project code required",
-                [],
-                400
-            )
-
+            return res("Project code required", [], 400)
 
         rows = (
             ApprovalPath.query
-            .filter_by(
-                project_code=projectCode
+            .filter_by(project_code=projectCode)
+            .options(
+                joinedload(ApprovalPath.module),
+                joinedload(ApprovalPath.user)
             )
             .order_by(
                 ApprovalPath.module_code,
@@ -1469,101 +1590,48 @@ def get_approval_paths(projectCode):
             .all()
         )
 
-
         module_map = defaultdict(
-
             lambda: {
-
                 "moduleCode": None,
                 "moduleName": None,
-
                 "creatorUsers": [],
                 "approverUsers": []
-
             }
-
         )
-
 
         for row in rows:
-
-            item = module_map[
-                row.module_code
-            ]
-
+            item = module_map[row.module_code]
             item["moduleCode"] = row.module_code
+            item["moduleName"] = row.module.module_name if row.module else None
 
-            item["moduleName"] = (
-                row.module.module_name
-                if row.module
-                else None
-            )
-
-
-            if row.path_type=="CREATOR":
-
-                item[
-                    "creatorUsers"
-                ].append({
-
-                    "userId":
-                    row.user_id,
-
-                    "userName":
-                    row.user.username
-                    if row.user
-                    else None
-
+            if row.path_type == "CREATOR":
+                item["creatorUsers"].append({
+                    "userId": row.user_id,
+                    "userName": row.user.username if row.user else None
                 })
 
-
-            elif row.path_type=="APPROVER":
-
-                item[
-                    "approverUsers"
-                ].append({
-
-                    "userId":
-                    row.user_id,
-
-                    "userName":
-                    row.user.username
-                    if row.user
-                    else None,
-
-                    "level":
-                    row.level_no
-
+            elif row.path_type == "APPROVER":
+                item["approverUsers"].append({
+                    "userId": row.user_id,
+                    "userName": row.user.username if row.user else None,
+                    "level": row.level_no
                 })
-
 
         data = {
-
-            "projectCode":
-            projectCode,
-
-            "modules":
-            list(
-                module_map.values()
-            )
-
+            "projectCode": projectCode,
+            "modules": list(module_map.values())
         }
 
-
-        return res(
-            "Approval path fetched successfully",
-            [data],
-            200
-        )
-
+        return res("Approval path fetched successfully", [data], 200)
 
     except Exception as e:
+        return res(str(e), [], 500)
 
-        return res(
-            str(e),
-            [],
-            500
-        )
+
+
+
+
+
 
 def get_edit_users(
         project_code
