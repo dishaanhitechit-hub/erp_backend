@@ -513,6 +513,13 @@ def get_bss_details(bss_id):
 
         cc_summary = _get_bss_cc_summary(bss.id)
 
+        # parse stored JSON list back to Python list
+        try:
+            sub_codes_list = json.loads(bss.item_category) if bss.item_category else []
+        except Exception:
+            sub_codes_list = []
+
+
         data = {
             "id":               bss.id,
             "bssNo":            bss.bss_no,
@@ -520,7 +527,7 @@ def get_bss_details(bss_id):
             "projectCode":      bss.project_code,
             "vendorId":         bss.vendor_id,
             "receivedCategory": bss.received_category,
-            "itemCategory":     bss.item_category,
+            "itemCategory":     sub_codes_list,
             "costHead":         bss.cost_head,
             "partyName":        bss.vendor.ledger_name        if bss.vendor else None,
             "partyAddress":     bss.vendor.registered_address if bss.vendor else None,

@@ -449,13 +449,21 @@ def get_srn_details(srn_id):
                 "storeLocation":       si.store_location,
             })
 
+
+        # parse stored JSON list back to Python list
+        try:
+            sub_codes_list = json.loads(srn.item_category) if srn.item_category else []
+        except Exception:
+            sub_codes_list = []
+
+
         data = {
             "id":                    srn.id,
             "srnNo":                 srn.srn_no,
             "srnDate":               _fmt_date(srn.srn_date),
             "projectCode":           srn.project_code,
             "receivedCategory":      srn.received_category,
-            "itemCategory":          srn.item_category,
+            "itemCategory":          sub_codes_list,
             "costHead":              srn.cost_head,
             "orderId":               srn.order_id,
             "orderNo":               srn.order.order_no   if srn.order else None,
