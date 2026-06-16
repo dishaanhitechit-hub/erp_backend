@@ -297,6 +297,23 @@ def create_bss(data, user_id):
 
         bss_no = generate_bss_no()
 
+        raw_sub = data.get("itemCategory") or data.get("subCategoryCode") or []
+        if isinstance(raw_sub, str):
+            try:
+                sub_codes_list = json.loads(raw_sub)  # JSON array string
+            except Exception:
+                # comma-separated fallback: "SVC,COMP"
+                sub_codes_list = [c.strip() for c in raw_sub.split(",") if c.strip()]
+        elif isinstance(raw_sub, list):
+            sub_codes_list = raw_sub
+        else:
+            sub_codes_list = [raw_sub] if raw_sub else []
+
+        if not sub_codes_list:
+            return res("At least one subCategoryCode required", [], 400)
+
+
+
         bss = BssMaster(
             bss_no            = bss_no,
             bss_date          = data.get("bssDate"),
@@ -305,7 +322,7 @@ def create_bss(data, user_id):
             party_bill_no     = data.get("partyBillNo"),
             party_date        = data.get("partyDate") or None,
             received_category = data.get("receivedCategory"),
-            item_category     = data.get("itemCategory"),
+            item_category     = json.dumps(sub_codes_list),
             cost_head         = data.get("costHead"),
             order_id          = data.get("orderId"),
             site              = data.get("site"),

@@ -263,12 +263,28 @@ def create_srn(data, user_id, files=None):
                     fileName="attached_doc"
                 )
 
+        raw_sub = data.get("itemCategory") or data.get("subCategoryCode") or []
+        if isinstance(raw_sub, str):
+            try:
+                sub_codes_list = json.loads(raw_sub)  # JSON array string
+            except Exception:
+                # comma-separated fallback: "SVC,COMP"
+                sub_codes_list = [c.strip() for c in raw_sub.split(",") if c.strip()]
+        elif isinstance(raw_sub, list):
+            sub_codes_list = raw_sub
+        else:
+            sub_codes_list = [raw_sub] if raw_sub else []
+
+        if not sub_codes_list:
+            return res("At least one subCategoryCode required", [], 400)
+
+
         srn = SrnMaster(
             srn_no                = srn_no,
             srn_date              = data.get("srnDate"),
             project_code          = data.get("projectCode"),
             received_category     = data.get("receivedCategory"),
-            item_category         = data.get("itemCategory"),
+            item_category         = json.dumps(sub_codes_list),
             cost_head             = data.get("costHead"),
             order_id              = data.get("orderId"),
             vendor_id             = data.get("vendorId"),
