@@ -493,11 +493,35 @@ def update_roles_by_project_code(projectCode, data):
             400
         )
 
-    # FIX: load ALL pages and actions in 2 queries ONCE before the loop.
-    # Previously, these were queried once per permission key inside the loop
-    # causing 100s of DB hits and gunicorn worker timeouts.
+    # FIX: load ALL lookup data in bulk ONCE before the loop.
+    # Previously every page, action, and existing permission was fetched
+    # individually per permission key inside the loop — causing 100s of DB
+    # hits per request and gunicorn worker timeouts.
+
+    # 2 queries total for reference data
     all_pages = {p.page_code: p for p in FeaturePage.query.all()}
     all_actions = {a.action_name: a for a in PermissionAction.query.all()}
+
+    # 1 query — all existing designation permissions for this project, keyed
+    # by (designation_id, team_id, page_id, action_id) for O(1) lookup
+    existing_desig_perms = {
+        (p.designation_id, p.team_id, p.page_id, p.action_id): p
+        for p in ProjectDesignationPermission.query.filter_by(
+            project_id=project.id
+        ).all()
+    }
+
+    # 1 query — all existing user-override permissions for this project,
+    # keyed by (project_user_role_id, page_id, action_id)
+    existing_user_perms = {
+        (p.project_user_role_id, p.page_id, p.action_id): p
+        for p in ProjectUserPermission.query.join(
+            ProjectUserRole,
+            ProjectUserPermission.project_user_role_id == ProjectUserRole.id
+        ).filter(
+            ProjectUserRole.project_id == project.id
+        ).all()
+    }
 
     for item in role_user_map:
 
@@ -593,17 +617,9 @@ def update_roles_by_project_code(projectCode, data):
             if not action:
                 continue
 
-            existing_permission = (
-                ProjectDesignationPermission.query
-                .filter_by(
-                    project_id=project.id,
-                    designation_id=designation_id,
-                    page_id=page.id,
-                    team_id=team_id,
-                    # user_id=user_id,
-                    action_id=action.id
-                )
-                .first()
+            # FIX: dict lookup instead of DB query per permission (loaded once above)
+            existing_permission = existing_desig_perms.get(
+                (designation_id, team_id, page.id, action.id)
             )
 
             # ==========================================
@@ -733,14 +749,9 @@ def update_roles_by_project_code(projectCode, data):
             if not action:
                 continue
 
-            existing_permission = (
-                ProjectUserPermission.query
-                .filter_by(
-                    project_user_role_id=role.id,
-                    page_id=page.id,
-                    action_id=action.id
-                )
-                .first()
+            # FIX: dict lookup instead of DB query per permission (loaded once above)
+            existing_permission = existing_user_perms.get(
+                (role.id, page.id, action.id)
             )
 
             # ==========================================
