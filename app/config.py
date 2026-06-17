@@ -10,13 +10,13 @@ class Config:
     # DB_NAME = os.getenv("DB_NAME")
     # DB_PORT = os.getenv("DB_PORT")
     JWT_ACCESS_TOKEN_EXPIRES = False
-    # SQLALCHEMY_DATABASE_URI = (
-    #     f"postgresql://postgres:JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe@yamabiko.proxy.rlwy.net:57509/railway"
-    # )
-
     SQLALCHEMY_DATABASE_URI = (
-        f"postgresql://dishaan:Blue#Skydishaan&99!@10.0.0.2:6432/dishaan_erp"
+        f"postgresql://postgres:JoFJPHzrFFzKosJdRnneXRYLtUxjiTWe@yamabiko.proxy.rlwy.net:57509/railway"
     )
+
+    # SQLALCHEMY_DATABASE_URI = (
+    #     f"postgresql://dishaan:Blue#Skydishaan&99!@10.0.0.2:6432/dishaan_erp"
+    # )
 
     # SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     # if not SQLALCHEMY_DATABASE_URI:
