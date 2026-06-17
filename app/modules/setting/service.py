@@ -523,6 +523,12 @@ def update_roles_by_project_code(projectCode, data):
         ).all()
     }
 
+    # Disable autoflush for the loop — prevents SQLAlchemy from flushing
+    # pending deletes mid-loop before each SELECT query (hundreds of round
+    # trips). All changes accumulate in memory, committed in one batch below.
+    # Business logic unchanged: False/None still delete, True still upserts.
+    db.session.autoflush = False
+
     for item in role_user_map:
 
         designation_id = item.get(
@@ -851,6 +857,8 @@ def update_roles_by_project_code(projectCode, data):
 
                 db.session.add(permission)
 
+    # Re-enable autoflush and commit all accumulated changes in one batch
+    db.session.autoflush = True
     db.session.commit()
 
     response_data = [
