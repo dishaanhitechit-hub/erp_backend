@@ -15,7 +15,7 @@ class Config:
     # )
 
     SQLALCHEMY_DATABASE_URI = (
-        f"postgresql://dishaan:Blue#Skydishaan&99!@10.0.0.2:5432/dishaan_erp"
+        f"postgresql://dishaan:Blue#Skydishaan&99!@10.0.0.2:6432/dishaan_erp"
     )
 
     # SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
