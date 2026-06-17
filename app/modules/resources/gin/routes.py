@@ -1,6 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+# MAINTENANCE: tracks which user is in the middle of a write operation
+from app.utils.txn_tracker import TransactionTracker
+
 from app.modules.resources.gin.service import (
     get_orders_by_vendor,
     get_order_items_for_gin,
@@ -57,9 +60,16 @@ def api_order_items_for_gin(order_id):
 def api_create_gin():
 
     user_id = get_jwt_identity()
-    data = dict(request.form)
 
-    return create_gin(data=data, user_id=user_id, files=request.files)
+    # MAINTENANCE: mark open — user has started creating a GIN
+    TransactionTracker.mark_open(user_id, "gin_create")
+
+    response = create_gin(data=dict(request.form), user_id=user_id, files=request.files)
+
+    # MAINTENANCE: GIN saved — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================
@@ -168,14 +178,21 @@ def api_reject_gin(gin_id):
 def api_edit_gin(gin_id):
 
     user_id = get_jwt_identity()
-    data = dict(request.form)
 
-    return edit_gin(
+    # MAINTENANCE: mark open — user is editing an existing GIN
+    TransactionTracker.mark_open(user_id, "gin_edit")
+
+    response = edit_gin(
         gin_id=gin_id,
-        data=data,
+        data=dict(request.form),
         user_id=user_id,
         files=request.files
     )
+
+    # MAINTENANCE: edit complete — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================

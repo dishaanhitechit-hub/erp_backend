@@ -1,6 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+# MAINTENANCE: tracks which user is in the middle of a write operation
+from app.utils.txn_tracker import TransactionTracker
+
 from app.modules.resources.order.service import (
     create_order,
     get_indent_pending_qty_list,
@@ -32,6 +35,10 @@ def api_create_order():
 
     user_id = get_jwt_identity()
 
+    # MAINTENANCE: mark this user as having an open (incomplete) operation
+    # so the 11:30 PM sweep knows they were in the middle of creating an order
+    TransactionTracker.mark_open(user_id, "order_create")
+
     data = dict(
         request.form
     )
@@ -41,6 +48,9 @@ def api_create_order():
         user_id=user_id,
         files=request.files
     )
+
+    # MAINTENANCE: work is done — remove from open transaction list
+    TransactionTracker.mark_closed(user_id)
 
     return response
 
@@ -292,11 +302,14 @@ def api_edit_order(
 
     user_id = get_jwt_identity()
 
+    # MAINTENANCE: mark open — user is editing an existing order
+    TransactionTracker.mark_open(user_id, "order_edit")
+
     data = dict(
         request.form
     )
 
-    return edit_order(
+    response = edit_order(
 
         order_id=order_id,
 
@@ -306,3 +319,8 @@ def api_edit_order(
 
         files=request.files
     )
+
+    # MAINTENANCE: edit complete — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response

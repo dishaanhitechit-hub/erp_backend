@@ -5,6 +5,7 @@ from .extensions import db, jwt, bcrypt, migrate
 # from .FUN.error_sound import register_error_sound_handlers
 
 from flask_cors import CORS
+from .middleware.maintenance import register_maintenance_middleware
 
 def create_app():
     app = Flask(__name__)
@@ -16,6 +17,12 @@ def create_app():
     jwt.init_app(app)
     bcrypt.init_app(app)
     migrate.init_app(app, db)
+
+    # maintenance model — must be imported so Alembic detects the table
+    from .models import maintenance_txn  # noqa
+
+    # maintenance middleware
+    register_maintenance_middleware(app)
     # socketio.init_app(app)
 
     # FUN: error sound on every error
@@ -56,6 +63,9 @@ def create_app():
 
     from .modules.resources.vendor_billing_srn.routes import bss_bp
     app.register_blueprint(bss_bp, url_prefix="/resource/bss")
+
+    from .modules.resources.machinery_mgmt.routes import machinery_bp
+    app.register_blueprint(machinery_bp, url_prefix="/resource/machinery")
 
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")

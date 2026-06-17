@@ -1,6 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+# MAINTENANCE: tracks which user is in the middle of a write operation
+from app.utils.txn_tracker import TransactionTracker
+
 from app.modules.resources.vendor_billing_grn.service import (
     get_orders_by_vendor,
     get_grns_by_order,
@@ -57,9 +60,16 @@ def api_grns_by_order(order_id):
 def api_create_bvs():
 
     user_id = get_jwt_identity()
-    data    = request.get_json() or {}
 
-    return create_bvs(data=data, user_id=user_id)
+    # MAINTENANCE: mark open — user has started creating a BVS (vendor billing against GRN)
+    TransactionTracker.mark_open(user_id, "bvs_create")
+
+    response = create_bvs(data=request.get_json() or {}, user_id=user_id)
+
+    # MAINTENANCE: BVS saved — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================
@@ -101,9 +111,16 @@ def api_bvs_details(bvs_id):
 def api_edit_bvs(bvs_id):
 
     user_id = get_jwt_identity()
-    data    = request.get_json() or {}
 
-    return edit_bvs(bvs_id=bvs_id, data=data, user_id=user_id)
+    # MAINTENANCE: mark open — user is editing an existing BVS
+    TransactionTracker.mark_open(user_id, "bvs_edit")
+
+    response = edit_bvs(bvs_id=bvs_id, data=request.get_json() or {}, user_id=user_id)
+
+    # MAINTENANCE: edit complete — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================

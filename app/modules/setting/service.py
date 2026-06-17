@@ -493,6 +493,12 @@ def update_roles_by_project_code(projectCode, data):
             400
         )
 
+    # FIX: load ALL pages and actions in 2 queries ONCE before the loop.
+    # Previously, these were queried once per permission key inside the loop
+    # causing 100s of DB hits and gunicorn worker timeouts.
+    all_pages = {p.page_code: p for p in FeaturePage.query.all()}
+    all_actions = {a.action_name: a for a in PermissionAction.query.all()}
+
     for item in role_user_map:
 
         designation_id = item.get(
@@ -575,16 +581,14 @@ def update_roles_by_project_code(projectCode, data):
             except ValueError:
                 continue
 
-            page = FeaturePage.query.filter_by(
-                page_code=page_code
-            ).first()
+            # FIX: dict lookup instead of DB query (loaded once above)
+            page = all_pages.get(page_code)
 
             if not page:
                 continue
 
-            action = PermissionAction.query.filter_by(
-                action_name=action_name
-            ).first()
+            # FIX: dict lookup instead of DB query (loaded once above)
+            action = all_actions.get(action_name)
 
             if not action:
                 continue
@@ -717,16 +721,14 @@ def update_roles_by_project_code(projectCode, data):
             except ValueError:
                 continue
 
-            page = FeaturePage.query.filter_by(
-                page_code=page_code
-            ).first()
+            # FIX: dict lookup instead of DB query (loaded once above)
+            page = all_pages.get(page_code)
 
             if not page:
                 continue
 
-            action = PermissionAction.query.filter_by(
-                action_name=action_name
-            ).first()
+            # FIX: dict lookup instead of DB query (loaded once above)
+            action = all_actions.get(action_name)
 
             if not action:
                 continue

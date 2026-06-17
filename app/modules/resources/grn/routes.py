@@ -1,6 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+# MAINTENANCE: tracks which user is in the middle of a write operation
+from app.utils.txn_tracker import TransactionTracker
+
 from app.modules.resources.grn.service import (
     get_orders_by_vendor,
     get_order_items_for_grn,
@@ -69,13 +72,19 @@ def api_create_grn():
 
     user_id = get_jwt_identity()
 
-    data = dict(request.form)
+    # MAINTENANCE: mark open — user has started creating a GRN
+    TransactionTracker.mark_open(user_id, "grn_create")
 
-    return create_grn(
-        data=data,
+    response = create_grn(
+        data=dict(request.form),
         user_id=user_id,
         files=request.files
     )
+
+    # MAINTENANCE: GRN saved — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================
@@ -212,14 +221,20 @@ def api_edit_grn(grn_id):
 
     user_id = get_jwt_identity()
 
-    data = dict(request.form)
+    # MAINTENANCE: mark open — user is editing an existing GRN
+    TransactionTracker.mark_open(user_id, "grn_edit")
 
-    return edit_grn(
+    response = edit_grn(
         grn_id=grn_id,
-        data=data,
+        data=dict(request.form),
         user_id=user_id,
         files=request.files
     )
+
+    # MAINTENANCE: edit complete — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================

@@ -52,3 +52,4 @@ from .drawingRegister import *
 from .srnMaster import *
 from .bvsMaster import *
 from .bssMaster import *
+from .machineryLogBook import *

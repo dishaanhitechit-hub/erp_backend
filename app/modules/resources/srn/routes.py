@@ -1,6 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+# MAINTENANCE: tracks which user is in the middle of a write operation
+from app.utils.txn_tracker import TransactionTracker
+
 from app.modules.resources.srn.service import (
     get_pw_orders_by_vendor,
     get_pw_order_items_for_srn,
@@ -57,9 +60,16 @@ def api_order_items_for_srn(order_id):
 def api_create_srn():
 
     user_id = get_jwt_identity()
-    data    = dict(request.form)
 
-    return create_srn(data=data, user_id=user_id, files=request.files)
+    # MAINTENANCE: mark open — user has started creating a SRN
+    TransactionTracker.mark_open(user_id, "srn_create")
+
+    response = create_srn(data=dict(request.form), user_id=user_id, files=request.files)
+
+    # MAINTENANCE: SRN saved — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================
@@ -168,14 +178,21 @@ def api_reject_srn(srn_id):
 def api_edit_srn(srn_id):
 
     user_id = get_jwt_identity()
-    data    = dict(request.form)
 
-    return edit_srn(
+    # MAINTENANCE: mark open — user is editing an existing SRN
+    TransactionTracker.mark_open(user_id, "srn_edit")
+
+    response = edit_srn(
         srn_id=srn_id,
-        data=data,
+        data=dict(request.form),
         user_id=user_id,
         files=request.files
     )
+
+    # MAINTENANCE: edit complete — mark closed
+    TransactionTracker.mark_closed(user_id)
+
+    return response
 
 
 # ==========================================
