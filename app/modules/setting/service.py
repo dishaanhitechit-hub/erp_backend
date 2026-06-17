@@ -493,41 +493,10 @@ def update_roles_by_project_code(projectCode, data):
             400
         )
 
-    # FIX: load ALL lookup data in bulk ONCE before the loop.
-    # Previously every page, action, and existing permission was fetched
-    # individually per permission key inside the loop — causing 100s of DB
-    # hits per request and gunicorn worker timeouts.
-
-    # 2 queries total for reference data
+    # FIX: load pages and actions once — used for O(1) lookup inside the loop
+    # instead of querying DB per permission key (was causing 100s of DB hits).
     all_pages = {p.page_code: p for p in FeaturePage.query.all()}
     all_actions = {a.action_name: a for a in PermissionAction.query.all()}
-
-    # 1 query — all existing designation permissions for this project, keyed
-    # by (designation_id, team_id, page_id, action_id) for O(1) lookup
-    existing_desig_perms = {
-        (p.designation_id, p.team_id, p.page_id, p.action_id): p
-        for p in ProjectDesignationPermission.query.filter_by(
-            project_id=project.id
-        ).all()
-    }
-
-    # 1 query — all existing user-override permissions for this project,
-    # keyed by (project_user_role_id, page_id, action_id)
-    existing_user_perms = {
-        (p.project_user_role_id, p.page_id, p.action_id): p
-        for p in ProjectUserPermission.query.join(
-            ProjectUserRole,
-            ProjectUserPermission.project_user_role_id == ProjectUserRole.id
-        ).filter(
-            ProjectUserRole.project_id == project.id
-        ).all()
-    }
-
-    # Disable autoflush for the loop — prevents SQLAlchemy from flushing
-    # pending deletes mid-loop before each SELECT query (hundreds of round
-    # trips). All changes accumulate in memory, committed in one batch below.
-    # Business logic unchanged: False/None still delete, True still upserts.
-    db.session.autoflush = False
 
     for item in role_user_map:
 
@@ -600,265 +569,107 @@ def update_roles_by_project_code(projectCode, data):
         # DESIGNATION PERMISSIONS
         # ==================================================
 
+        # FIX: bulk delete ALL existing designation permissions for this
+        # designation+team in ONE SQL DELETE instead of one delete per row.
+        # Then we only INSERT the True ones below — False/None = not stored.
+        ProjectDesignationPermission.query.filter_by(
+            project_id=project.id,
+            designation_id=designation_id,
+            team_id=team_id
+        ).delete(synchronize_session=False)
+
         for permission_key, allowed in permissions.items():
 
             try:
-
-                page_code, action_name = (
-                    permission_key.split(".")
-                )
-
+                page_code, action_name = permission_key.split(".")
             except ValueError:
                 continue
 
-            # FIX: dict lookup instead of DB query (loaded once above)
             page = all_pages.get(page_code)
-
             if not page:
                 continue
 
-            # FIX: dict lookup instead of DB query (loaded once above)
             action = all_actions.get(action_name)
-
             if not action:
                 continue
 
-            # FIX: dict lookup instead of DB query per permission (loaded once above)
-            existing_permission = existing_desig_perms.get(
-                (designation_id, team_id, page.id, action.id)
-            )
+            # None or False = deleted above, skip
+            if allowed is None or allowed is False:
 
-            # ==========================================
-            # NULL => DELETE
-            # ==========================================
-
-            if allowed is None:
-
-                    if existing_permission:
-                        db.session.delete(
-                            existing_permission
-                        )
-
-                    # ==========================================
-                    # REMOVE CREATOR IF EDIT REMOVED
-                    # ==========================================
-
-                    if action_name == "EDIT":
-
-                        approval = ApprovalPath.query.filter_by(
-
-                            project_code=project.project_code,
-
-                            module_code=page_code,
-
-                            user_id=user_id,
-
-                            path_type="CREATOR"
-
-                        ).first()
-
-                        if approval:
-                            db.session.delete(
-                                approval
-                            )
-
-                    continue
-
-            # ===================== ADD THIS HERE =====================
-
-            if allowed is False:
-
-                    if existing_permission:
-                        db.session.delete(
-                            existing_permission
-                        )
-
-                    # ==========================================
-                    # REMOVE CREATOR IF EDIT REMOVED
-                    # ==========================================
-
-                    if action_name == "EDIT":
-
-                        approval = ApprovalPath.query.filter_by(
-
-                            project_code=project.project_code,
-
-                            module_code=page_code,
-
-                            user_id=user_id,
-
-                            path_type="CREATOR"
-
-                        ).first()
-
-                        if approval:
-                            db.session.delete(
-                                approval
-                            )
-
-                    continue
-
-            # ==========================================
-            # UPDATE EXISTING
-            # ==========================================
-
-            if existing_permission:
-                existing_permission.user_id = user_id
-                existing_permission.allowed = (
-                    allowed
-                )
-
-            # ==========================================
-            # CREATE NEW
-            # ==========================================
-
-            else:
-
-                permission = (
-                    ProjectDesignationPermission(
-                        project_id=project.id,
-                        designation_id=designation_id,
-                        page_id=page.id,
+                # REMOVE CREATOR approval path if EDIT permission is removed
+                if action_name == "EDIT":
+                    approval = ApprovalPath.query.filter_by(
+                        project_code=project.project_code,
+                        module_code=page_code,
                         user_id=user_id,
-                        team_id=team_id,
-                        action_id=action.id,
-                        allowed=allowed
-                    )
-                )
+                        path_type="CREATOR"
+                    ).first()
+                    if approval:
+                        db.session.delete(approval)
 
-                db.session.add(permission)
+                continue
+
+            # allowed is True — INSERT only
+            db.session.add(ProjectDesignationPermission(
+                project_id=project.id,
+                designation_id=designation_id,
+                page_id=page.id,
+                user_id=user_id,
+                team_id=team_id,
+                action_id=action.id,
+                allowed=allowed
+            ))
 
         # ==================================================
         # USER OVERRIDE PERMISSIONS
         # ==================================================
 
+        # FIX: bulk delete ALL existing user override permissions for this
+        # role in ONE SQL DELETE instead of one delete per row.
+        # Then we only INSERT the True ones below — False/None = not stored.
+        ProjectUserPermission.query.filter_by(
+            project_user_role_id=role.id
+        ).delete(synchronize_session=False)
+
         for permission_key, allowed in user_permissions.items():
 
             try:
-
-                page_code, action_name = (
-                    permission_key.split(".")
-                )
-
+                page_code, action_name = permission_key.split(".")
             except ValueError:
                 continue
 
-            # FIX: dict lookup instead of DB query (loaded once above)
             page = all_pages.get(page_code)
-
             if not page:
                 continue
 
-            # FIX: dict lookup instead of DB query (loaded once above)
             action = all_actions.get(action_name)
-
             if not action:
                 continue
 
-            # FIX: dict lookup instead of DB query per permission (loaded once above)
-            existing_permission = existing_user_perms.get(
-                (role.id, page.id, action.id)
-            )
+            # None or False = deleted above, skip
+            if allowed is None or allowed is False:
 
-            # ==========================================
-            # NULL => DELETE OVERRIDE
-            # ==========================================
+                # REMOVE CREATOR approval path if EDIT permission is removed
+                if action_name == "EDIT":
+                    approval = ApprovalPath.query.filter_by(
+                        project_code=project.project_code,
+                        module_code=page_code,
+                        user_id=user_id,
+                        path_type="CREATOR"
+                    ).first()
+                    if approval:
+                        db.session.delete(approval)
 
-            if allowed is None:
-                    if existing_permission:
-                        db.session.delete(
-                            existing_permission
-                        )
+                continue
 
-                    # ==========================================
-                    # REMOVE CREATOR IF EDIT REMOVED
-                    # ==========================================
+            # allowed is True — INSERT only
+            db.session.add(ProjectUserPermission(
+                project_user_role_id=role.id,
+                page_id=page.id,
+                action_id=action.id,
+                allowed=allowed
+            ))
 
-                    if action_name == "EDIT":
-
-                        approval = ApprovalPath.query.filter_by(
-
-                            project_code=project.project_code,
-
-                            module_code=page_code,
-
-                            user_id=user_id,
-
-                            path_type="CREATOR"
-
-                        ).first()
-
-                        if approval:
-                            db.session.delete(
-                                approval
-                            )
-
-                    continue
-
-            # ===================== ADD THIS HERE =====================
-
-            if allowed is False:
-
-                    if existing_permission:
-                        db.session.delete(
-                            existing_permission
-                        )
-
-                    # ==========================================
-                    # REMOVE CREATOR IF EDIT REMOVED
-                    # ==========================================
-
-                    if action_name == "EDIT":
-
-                        approval = ApprovalPath.query.filter_by(
-
-                            project_code=project.project_code,
-
-                            module_code=page_code,
-
-                            user_id=user_id,
-
-                            path_type="CREATOR"
-
-                        ).first()
-
-                        if approval:
-                            db.session.delete(
-                                approval
-                            )
-
-                    continue
-
-            # ==========================================
-            # UPDATE OVERRIDE
-            # ==========================================
-
-            if existing_permission:
-
-                existing_permission.allowed = (
-                    allowed
-                )
-
-            # ==========================================
-            # CREATE OVERRIDE
-            # ==========================================
-
-            else:
-
-                permission = (
-                    ProjectUserPermission(
-                        project_user_role_id=role.id,
-                        page_id=page.id,
-
-                        action_id=action.id,
-                        allowed=allowed
-                    )
-                )
-
-                db.session.add(permission)
-
-    # Re-enable autoflush and commit all accumulated changes in one batch
-    db.session.autoflush = True
     db.session.commit()
 
     response_data = [
