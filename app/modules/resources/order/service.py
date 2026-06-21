@@ -22,7 +22,7 @@ import json
 from app.models.vendor import *
 from app.models.project import Project
 
-CUSTOMER_SUPPLY_CATEGORY = "customer_supply_order"
+CUSTOMER_SUPPLY_CATEGORY = "Customer_Supply_Order"
 SITE_TRANSFER_CATEGORY   = "Site_Transfer_Order"
 
 
