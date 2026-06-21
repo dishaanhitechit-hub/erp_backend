@@ -46,7 +46,7 @@ def _resolve_party_name(order):
     if order.category_code == CUSTOMER_SUPPLY_CATEGORY:
         return order.project.client_name if order.project else None
     if order.category_code == SITE_TRANSFER_CATEGORY:
-        return None
+        return order.transfer_site_project.client_name if order.transfer_site_project else None
     return order.vendor.ledger_name if order.vendor else None
 
 
