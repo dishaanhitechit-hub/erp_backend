@@ -800,25 +800,30 @@ def get_all_users(projectCode=None):  # Test done & pass
 
 
 
-def get_all_project():
-    user_id = int(get_jwt_identity())  # from identity
-    claims = get_jwt()  # from additional_claims
-
+def get_all_project(exclude_current: bool = False, current_project_code: str = None):
+    user_id = int(get_jwt_identity())
+    claims = get_jwt()
     role = claims.get("role")
 
-
-    if role == "super_admin":
-        projects = Project.query.all()
+    if exclude_current:
+        # No role restriction — all projects, minus the current one
+        query = Project.query
+        if current_project_code:
+            query = query.filter(Project.project_code != current_project_code)
+        projects = query.all()
 
     else:
+        if role == "super_admin":
+            projects = Project.query.all()
+        else:
+            projects = (
+                db.session.query(Project)
+                .join(ProjectTeam, Project.id == ProjectTeam.project_id)
+                .filter(ProjectTeam.user_id == user_id)
+                .distinct()
+                .all()
+            )
 
-        projects = (
-            db.session.query(Project)
-            .join(ProjectTeam, Project.id == ProjectTeam.project_id)
-            .filter(ProjectTeam.user_id == user_id)
-            .distinct()
-            .all()
-        )
     if not projects:
         return res("No projects found", [], 404)
     data = [

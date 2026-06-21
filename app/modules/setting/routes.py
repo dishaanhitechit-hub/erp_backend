@@ -199,9 +199,13 @@ def get_signature(filename):
 
 @setting_bp.route("/project-list", methods=["GET"])
 @login_required
-# @require_super_admin
 def get_project_list_route():
-    return  get_all_project()
+    exclude_current = request.args.get("excludeCurrent", "false").lower() == "true"
+    current_project_code = request.args.get("currentProjectCode")
+    return get_all_project(
+        exclude_current=exclude_current,
+        current_project_code=current_project_code
+    )
 
 @setting_bp.route("/user/<int:userId>", methods=["GET", "PUT"])
 @login_required
