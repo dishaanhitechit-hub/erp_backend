@@ -186,6 +186,7 @@ class OrderMaster(db.Model):
 
     project=db.relationship(
         "Project",
+        foreign_keys="[OrderMaster.project_code]",
         backref="orders"
     )
 
