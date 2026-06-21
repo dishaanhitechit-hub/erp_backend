@@ -20,6 +20,34 @@ from app.models.category_group import *
 import json
 
 from app.models.vendor import *
+from app.models.project import Project
+
+CUSTOMER_SUPPLY_CATEGORY = "customer_supply_order"
+SITE_TRANSFER_CATEGORY   = "Site_Transfer_Order"
+
+
+def _apply_party_logic(order, data):
+    category = data.get("categoryCode") or order.category_code
+
+    if category == CUSTOMER_SUPPLY_CATEGORY:
+        order.vendor_id             = None
+        order.transfer_project_site = None
+
+    elif category == SITE_TRANSFER_CATEGORY:
+        order.vendor_id             = None
+        order.transfer_project_site = data.get("transferProjectSite")
+
+    else:
+        order.vendor_id             = data.get("vendorId")
+        order.transfer_project_site = None
+
+
+def _resolve_party_name(order):
+    if order.category_code == CUSTOMER_SUPPLY_CATEGORY:
+        return order.project.client_name if order.project else None
+    if order.category_code == SITE_TRANSFER_CATEGORY:
+        return None
+    return order.vendor.ledger_name if order.vendor else None
 
 
 def get_cc_code_summary(order_id):
@@ -243,9 +271,6 @@ files=None,
             sub_code=data.get("subCategoryCode"),
 
             cost_head=data.get("costHead"),
-            vendor_id=data.get(
-                "vendorId"
-            ),
 
             order_date=data.get(
                 "orderDate"
@@ -291,6 +316,7 @@ files=None,
 
         db.session.flush()
 
+        _apply_party_logic(order, data)
 
         total_basic=0
         total_gst=0
@@ -867,6 +893,9 @@ def get_order_details(
             "categoryCode": order.category_code,
             "costHead": order.cost_head,
             "vendorId":order.vendor_id,
+            "partyName": _resolve_party_name(order),
+            "transferProjectSite": order.transfer_project_site,
+            "transferProjectName": order.transfer_site_project.project_name if order.transfer_site_project else None,
 
             "orderDate":
             str( order.order_date ),
@@ -1041,7 +1070,7 @@ def get_order_list(
                 "orderNo":
                 row.order_no,
 
-                "partyName":row.vendor.ledger_name,
+                "partyName": _resolve_party_name(row),
 
                 "projectCode":
                 row.project_code,
@@ -1860,7 +1889,7 @@ def edit_order(order_id, data, user_id, files=None):
 
 
         # ── header fields ─────────────────────────────────────
-        order.vendor_id = data.get("vendorId", order.vendor_id)
+        _apply_party_logic(order, data)
         order.order_date = data.get("orderDate", order.order_date)
         order.validity_date = data.get("validityDate", order.validity_date)
         order.billing_address = data.get("billingAddress", order.billing_address)

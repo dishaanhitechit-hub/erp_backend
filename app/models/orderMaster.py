@@ -51,6 +51,13 @@ class OrderMaster(db.Model):
         ),
         nullable=True
     )
+
+    transfer_project_site = db.Column(
+        db.String(50),
+        db.ForeignKey("projects.project_code"),
+        nullable=True
+    )
+
     booked_amount=db.Column(
         db.Numeric(14,4),
         nullable=False,
@@ -215,6 +222,12 @@ class OrderMaster(db.Model):
     vendor = db.relationship(
         "Vendor",
         backref="orders"
+    )
+
+    transfer_site_project = db.relationship(
+        "Project",
+        foreign_keys="[OrderMaster.transfer_project_site]",
+        lazy=True
     )
 # app/models/order_item.py
 
