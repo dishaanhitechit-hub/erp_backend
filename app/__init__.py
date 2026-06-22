@@ -67,6 +67,9 @@ def create_app():
     from .modules.resources.machinery_mgmt.routes import machinery_bp
     app.register_blueprint(machinery_bp, url_prefix="/resource/machinery")
 
+    from .modules.resources.dc.routes import dc_bp
+    app.register_blueprint(dc_bp, url_prefix="/resource/dc")
+
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")
 
