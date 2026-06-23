@@ -24,6 +24,8 @@ from app.models.project_location import *
 from app.modules.setting.permission_service import get_user_permissions
 from collections import defaultdict
 
+from models import Project
+
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
 
@@ -141,6 +143,7 @@ def create_project(data): #Test done & pass
             project_manager=data.get("projectManager"),
             initial_order_value=data.get("initialOrderValue"),
             revised_order_value=data.get("revisedOrderValue"),
+            company_billing_address=data.get("companyBillingAddress"),
             state=data.get("state"),
             state_code=data.get("stateCode"),
             status=status,
@@ -917,7 +920,7 @@ def get_project_by_id(projectId):
         "shippingAddress": project.shipping_address,
         "shippingAddress2": project.shipping_address_2,
         "shippingAddress3": project.shipping_address_3,
-
+        "companyBillingAddress" : project.company_billing_address,
         "projectManager": project.project_manager,
 
         "initialOrderValue": project.initial_order_value,
@@ -964,7 +967,8 @@ def update_project(projectId, data):
         project.commercial_manager = data.get("commercialManager", project.commercial_manager)
         project.comm_mgmt_email_id = data.get("commMgmtEmailId", project.comm_mgmt_email_id)
         project.comm_mgmt_contact_number = data.get("commMgmtContactNumber", project.comm_mgmt_contact_number)
-        project.gstn = data.get("gstn", project.gstn)
+        project.gstn = data.get("gstn", project.gstn),
+        project.company_billing_address= data.get("companyBillingAddress",project.company_billing_address),
         project.billing_address = data.get("billingAddress", project.billing_address)
         project.shipping_address = data.get("shippingAddress", project.shipping_address)
         project.shipping_address_2 = data.get("shippingAddress2", project.shipping_address_2)

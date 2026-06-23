@@ -30,6 +30,7 @@ class Project(db.Model):
     revised_order_value = db.Column(db.String(200))
     original_start_date = db.Column(db.Date)
     extended_complete_date = db.Column(db.Date)
+    company_billing_address=db.Column(db.String(400),nullable=True)
     status = db.Column(db.String(50))  # ongoing / hold / completed
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())
