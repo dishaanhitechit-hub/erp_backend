@@ -24,7 +24,7 @@ from app.models.project_location import *
 from app.modules.setting.permission_service import get_user_permissions
 from collections import defaultdict
 
-from models import Project
+
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
