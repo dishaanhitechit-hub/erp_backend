@@ -31,7 +31,7 @@ _PAGE = "log_sheet"
 
 
 def _can_view():
-    perms = get_jwt().get("permissions", {})
+    perms = {k.lower(): v for k, v in get_jwt().get("permissions", {}).items()}
     return perms.get(f"{_PAGE}.view") or perms.get(f"{_PAGE}.edit")
 
 
