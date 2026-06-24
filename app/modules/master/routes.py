@@ -1,7 +1,9 @@
 from flask import send_from_directory
 from flask import make_response
-from flask import Blueprint, request
+from flask import Blueprint, request, jsonify
 from flask import send_from_directory
+
+from flask_jwt_extended import get_jwt
 
 from app.middleware.auth_middleware import login_required
 
@@ -285,4 +287,68 @@ def term_detail(termId):
 @require_admin
 def term_delete(termId):
     return delete_term(termId)
+
+
+# ==========================================
+# BANK & CASH
+# ==========================================
+
+_PAGE_BANK = "bank_cash"
+
+
+def _can_view_bank():
+    perms = {k.lower(): v for k, v in get_jwt().get("permissions", {}).items()}
+    return perms.get(f"{_PAGE_BANK}.view") or perms.get(f"{_PAGE_BANK}.edit")
+
+
+def _can_edit_bank():
+    claims = get_jwt()
+    if claims.get("role") in ("admin", "super_admin"):
+        return True
+    perms = {k.lower(): v for k, v in claims.get("permissions", {}).items()}
+    return perms.get(f"{_PAGE_BANK}.edit")
+
+
+def _no_access():
+    return jsonify({"message": "Access denied", "data": [], "status": 403}), 403
+
+
+@master_bp.route("/bank-cash/create", methods=["POST"])
+@login_required
+def bank_cash_create():
+    if not _can_edit_bank():
+        return _no_access()
+    return create_bank_cash(request.json)
+
+
+@master_bp.route("/bank-cash/list", methods=["GET"])
+@login_required
+def bank_cash_list():
+    # if not _can_view_bank():
+    #     return _no_access()
+    return get_all_bank_cash()
+
+
+@master_bp.route("/bank-cash/<int:recordId>", methods=["GET"])
+@login_required
+def bank_cash_detail(recordId):
+    # if not _can_view_bank():
+    #     return _no_access()
+    return get_bank_cash_by_id(recordId)
+
+
+@master_bp.route("/bank-cash/update/<int:recordId>", methods=["PUT"])
+@login_required
+def bank_cash_update(recordId):
+    if not _can_edit_bank():
+        return _no_access()
+    return update_bank_cash(recordId, request.json)
+
+
+@master_bp.route("/bank-cash/delete/<int:recordId>", methods=["DELETE"])
+@login_required
+def bank_cash_delete(recordId):
+    if not _can_edit_bank():
+        return _no_access()
+    return delete_bank_cash(recordId)
 

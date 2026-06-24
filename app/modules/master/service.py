@@ -1396,3 +1396,137 @@ def delete_term(termId):
         [],
         200
     )
+
+
+# ==========================================
+# BANK & CASH
+# ==========================================
+
+from app.models.bankCash import BankCash
+
+
+def create_bank_cash(data):
+    existing = BankCash.query.filter_by(
+        bank_code=data.get("bankCode")
+    ).first()
+
+    if existing:
+        return res("Bank Code already exists", [], 400)
+
+    record = BankCash(
+        type=data.get("type"),
+        bank_code=data.get("bankCode"),
+        bank_holder_name=data.get("bankHolderName"),
+        bank_account_number=data.get("bankAcNumber"),
+        bank_name=data.get("bankName"),
+        branch_name=data.get("branchName"),
+        ifsc_code=data.get("ifscCode"),
+        micr_code=data.get("micrCode"),
+        customer_id=data.get("customerId"),
+        branch_manager_name=data.get("branchManagerName"),
+        branch_manager_contact=data.get("branchManagerContact"),
+        branch_manager_email=data.get("branchManagerMailId"),
+    )
+
+    if hasattr(g, "current_user"):
+        record.created_by = g.current_user.get("id")
+
+    db.session.add(record)
+    db.session.commit()
+
+    return res(
+        "Bank/Cash created successfully",
+        [{"id": record.id, "bankCode": record.bank_code, "type": record.type}],
+        201
+    )
+
+
+def get_all_bank_cash():
+    records = BankCash.query.order_by(BankCash.id.desc()).all()
+
+    data = [{
+        "id": r.id,
+        "type": r.type,
+        "bankCode": r.bank_code,
+        "bankHolderName": r.bank_holder_name,
+        "bankAcNumber": r.bank_account_number,
+        "bankName": r.bank_name,
+        "branchName": r.branch_name,
+        "ifscCode": r.ifsc_code,
+        "micrCode": r.micr_code,
+        "customerId": r.customer_id,
+        "branchManagerName": r.branch_manager_name,
+        "branchManagerContact": r.branch_manager_contact,
+        "branchManagerMailId": r.branch_manager_email,
+        "status": r.status,
+        "createdAt": r.created_at
+    } for r in records]
+
+    return res("Bank/Cash list fetched successfully", data, 200)
+
+
+def get_bank_cash_by_id(record_id):
+    r = BankCash.query.get(record_id)
+
+    if not r:
+        return res("Record not found", [], 404)
+
+    return res(
+        "Bank/Cash fetched successfully",
+        [{
+            "id": r.id,
+            "type": r.type,
+            "bankCode": r.bank_code,
+            "bankHolderName": r.bank_holder_name,
+            "bankAcNumber": r.bank_account_number,
+            "bankName": r.bank_name,
+            "branchName": r.branch_name,
+            "ifscCode": r.ifsc_code,
+            "micrCode": r.micr_code,
+            "customerId": r.customer_id,
+            "branchManagerName": r.branch_manager_name,
+            "branchManagerContact": r.branch_manager_contact,
+            "branchManagerMailId": r.branch_manager_email,
+            "status": r.status
+        }],
+        200
+    )
+
+
+def update_bank_cash(record_id, data):
+    r = BankCash.query.get(record_id)
+
+    if not r:
+        return res("Record not found", [], 404)
+
+    r.type                   = data.get("type", r.type)
+    r.bank_holder_name       = data.get("bankHolderName", r.bank_holder_name)
+    r.bank_account_number    = data.get("bankAcNumber", r.bank_account_number)
+    r.bank_name              = data.get("bankName", r.bank_name)
+    r.branch_name            = data.get("branchName", r.branch_name)
+    r.ifsc_code              = data.get("ifscCode", r.ifsc_code)
+    r.micr_code              = data.get("micrCode", r.micr_code)
+    r.customer_id            = data.get("customerId", r.customer_id)
+    r.branch_manager_name    = data.get("branchManagerName", r.branch_manager_name)
+    r.branch_manager_contact = data.get("branchManagerContact", r.branch_manager_contact)
+    r.branch_manager_email   = data.get("branchManagerMailId", r.branch_manager_email)
+
+    db.session.commit()
+
+    return res(
+        "Bank/Cash updated successfully",
+        [{"id": r.id, "bankCode": r.bank_code, "type": r.type}],
+        200
+    )
+
+
+def delete_bank_cash(record_id):
+    r = BankCash.query.get(record_id)
+
+    if not r:
+        return res("Record not found", [], 404)
+
+    db.session.delete(r)
+    db.session.commit()
+
+    return res("Bank/Cash deleted successfully", [], 200)

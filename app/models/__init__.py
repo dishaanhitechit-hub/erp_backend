@@ -54,3 +54,4 @@ from .bvsMaster import *
 from .bssMaster import *
 from .machineryLogBook import *
 from .dcMaster import *
+from .bankCash import *
