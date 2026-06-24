@@ -312,6 +312,8 @@ def create_pw_order(data, user_id, files=None):
             quotation_date   = data.get("quotationDate"),
             billing_address  = data.get("billingAddress"),
             shipping_address = data.get("shippingAddress"),
+            contact_person=data.get("contactPerson"),
+            contact_number=data.get("contactNumber"),
             order_message    = data.get("orderMessage"),
             supporting_file  = supporting_file,
             workflow_status  = "Draft",
@@ -488,6 +490,8 @@ def edit_pw_order(order_id, data, user_id, files=None):
         order.billing_address  = data.get("billingAddress",  order.billing_address)
         order.shipping_address = data.get("shippingAddress", order.shipping_address)
         order.order_message    = data.get("orderMessage",    order.order_message)
+        order.contact_person = data.get("contactPerson", order.contact_person)
+        order.contact_number = data.get("contactNumber", order.contact_number)
         order.quotation_no     = data.get("quotationNo",     order.quotation_no)
         order.quotation_date   = data.get("quotationDate",   order.quotation_date)
 
@@ -735,6 +739,9 @@ def get_pw_order_details(order_id: int):
             "shippingAddress": order.shipping_address,
             "orderMessage":    order.order_message,
             "orderFile":       order.supporting_file,
+            "contactPerson": order.contact_person,
+            "contactNumber": order.contact_number,
+
             "bookedAmount":    float(order.booked_amount or 0),
             "basicAmount":     float(order.basic_amount or 0),
             "gstAmount":       float(order.gst_amount or 0),

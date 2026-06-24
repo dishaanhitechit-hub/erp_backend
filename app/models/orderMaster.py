@@ -13,6 +13,8 @@ class OrderMaster(db.Model):
         primary_key=True
     )
 
+
+
     order_no=db.Column(
         db.String(50),
         unique=True,
@@ -85,6 +87,12 @@ class OrderMaster(db.Model):
         db.Text
     )
 
+    contact_person=db.Column(
+        db.String(50),nullable=True
+    )
+
+    contact_number=db.Column(db.String(50),nullable=True)
+
     order_message=db.Column(
         db.Text
     )
@@ -92,6 +100,9 @@ class OrderMaster(db.Model):
     supporting_file=db.Column(
         db.Text
     )
+
+
+
 
     basic_amount=db.Column(
         db.Numeric(14,2),

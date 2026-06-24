@@ -285,7 +285,8 @@ files=None,
             billing_address=data.get(
                 "billingAddress"
             ),
-
+            contact_person =data.get("contactPerson"),
+            contact_number=data.get("contactNumber"),
             shipping_address=data.get(
                 "shippingAddress"
             ),
@@ -896,20 +897,15 @@ def get_order_details(
             "partyName": _resolve_party_name(order),
             "transferProjectSite": order.transfer_project_site,
             "transferProjectName": order.transfer_site_project.project_name if order.transfer_site_project else None,
+            "contactPerson": order.contact_person,
+            "contactNumber": order.contact_number,
+            "orderDate": str( order.order_date ),
 
-            "orderDate":
-            str( order.order_date ),
-
-            "validityDate":
-            str( order.validity_date )
-            if order.validity_date
+            "validityDate": str( order.validity_date ) if order.validity_date
             else None,
 
-            "billingAddress":
-            order.billing_address,
-
-            "shippingAddress":
-            order.shipping_address,
+            "billingAddress":order.billing_address,
+            "shippingAddress":order.shipping_address,
 
             "orderMessage":
             order.order_message,
@@ -1897,6 +1893,8 @@ def edit_order(order_id, data, user_id, files=None):
         order.order_message = data.get("orderMessage",order.order_message)
         order.quotation_no = data.get("quotationNo", order.quotation_no)
         order.quotation_date=data.get("quotationDate",order.quotation_date)
+        order.contact_person=data.get("contactPerson",order.contact_person)
+        order.contact_number=data.get("contactNumber",order.contact_number)
 
 
         # ── file update ───────────────────────────────────────

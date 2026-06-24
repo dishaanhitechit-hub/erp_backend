@@ -115,6 +115,12 @@ class ProjectWorkOrderMaster(db.Model):
         db.Text
     )
 
+    contact_person = db.Column(
+        db.String(50), nullable=True
+    )
+
+    contact_number = db.Column(db.String(50), nullable=True)
+
     shipping_address = db.Column(
         db.Text
     )
