@@ -26,7 +26,7 @@ from collections import defaultdict
 
 
 
-UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
+# UPLOAD_FOLDER = os.path.join(os.getcwd(), "/mnt/data/uploads/signatures")
 
 
 
@@ -66,20 +66,18 @@ def create_user(request): # Test done & pass
         is_active= status_value
     )
     user.set_password(password)
-    base_url = request.host_url
-    # save signature file
 
+    db.session.add(user)
+    db.session.flush()
 
     if signatureFile:
         user.signature = upload_file_to_bunny(
             file=signatureFile,
             mainFolder="users",
-            subFolder=user.user_code,
+            subFolder=f"{user.username}_{user.id}",
             fileName="signature"
         )
 
-    db.session.add(user)
-    db.session.commit()
     data = [{
         "id": user.id,
         "username": user.username,
@@ -1070,18 +1068,49 @@ def update_user(userId, request):
         user.set_password(password)
 
     # file upload
-    base_url = request.host_url
-    file = request.files.get("signature")
-    if file:
-        if not os.path.exists(UPLOAD_FOLDER):
-            os.makedirs(UPLOAD_FOLDER)
+    # base_url = request.host_url
+    # file = request.files.get("signature")
+    # if file:
+    #     if not os.path.exists(UPLOAD_FOLDER):
+    #         os.makedirs(UPLOAD_FOLDER)
+    #
+    #     ext = file.filename.split('.')[-1]
+    #     filename = f"{uuid.uuid4()}.{ext}"
+    #     filepath = os.path.join(UPLOAD_FOLDER, filename)
+    #
+    #     file.save(filepath)
+    #     user.signature = filename
 
-        ext = file.filename.split('.')[-1]
-        filename = f"{uuid.uuid4()}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file = request.files.get(
+        "signature"
+    )
 
-        file.save(filepath)
-        user.signature = filename
+    if not file:
+        return res(
+            "Signature file is required",
+            [],
+            400
+        )
+    supporting_file = (
+
+        upload_file_to_bunny(
+
+            file=
+            file,
+
+            mainFolder=
+            "user",
+
+            subFolder=
+            f"{user.username}_{user.id}"
+            ,
+
+            fileName=
+            "support"
+
+        )
+
+    )
 
     db.session.commit()
 
@@ -1095,7 +1124,7 @@ def update_user(userId, request):
         "whatsapp": user.wp_mobile,
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
-        "signatureUrl": f"{base_url}/setting/uploads/signatures/{user.signature}"
+        "signatureUrl": supporting_file
     }]
 
     return res("User updated successfully", data, 200)
