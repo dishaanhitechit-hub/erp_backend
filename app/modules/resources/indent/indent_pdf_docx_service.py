@@ -15,7 +15,7 @@ Security layers
 """
 import io, os, copy, hashlib, tempfile
 import qrcode
-import pythoncom
+import subprocess
 from datetime import datetime
 from lxml import etree
 from PIL import Image, ImageDraw
@@ -23,7 +23,6 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx2pdf import convert
 from flask import current_app, make_response, send_from_directory
 
 from app.extensions import db
@@ -1022,16 +1021,17 @@ def generate_indent_pdf(indent_id, base_url, force=False):
             # Green tick + VERIFIED text + VERIFIED watermark on last page
             # _add_verified_section(doc, fp)
 
-        # ── docx → PDF via MS Word COM ────────────────────────────────────────
+        # ── docx → PDF via LibreOffice (cross-platform) ───────────────────────
         with tempfile.TemporaryDirectory() as tmpdir:
             docx_path = os.path.join(tmpdir, "indent.docx")
-            pdf_path  = os.path.join(tmpdir, "indent.pdf")
             doc.save(docx_path)
-            pythoncom.CoInitialize()
-            try:
-                convert(docx_path, pdf_path)
-            finally:
-                pythoncom.CoUninitialize()
+            subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "pdf",
+                 "--outdir", tmpdir, docx_path],
+                check=True, timeout=60,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            pdf_path = os.path.join(tmpdir, "indent.pdf")
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()
 
