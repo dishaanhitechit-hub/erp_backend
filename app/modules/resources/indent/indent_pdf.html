@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4;
+    margin: 42mm 16px 20px 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    color: #000;
+    background: #fff;
+  }
+
+  /* REPEATING HEADER — fixed in top margin, every page */
+  #page-header {
+    position: fixed;
+    top: -40mm;
+    left: 0;
+    right: 0;
+  }
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .header-table td { vertical-align: middle; padding: 0; }
+  .logo-cell { width: 185px; }
+  .logo-cell img { width: 185px; height: auto; }
+  .website-cell { text-align: right; font-size: 16px; font-weight: bold; }
+  .title-block { text-align: center; font-size: 42px; font-weight: bold; margin: 18px 0 10px; letter-spacing: 1px; }
+
+  /* DETAILS TWO COLUMN */
+  .details-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .details-table td { vertical-align: top; padding: 0; }
+  .col-left  { width: 48%; padding-right: 20px; }
+  .col-right { width: 48%; padding-left: 20px; }
+  .detail-row-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .detail-row-table td { vertical-align: top; font-size: 18px; padding: 0; }
+  .d-label { width: 165px; font-weight: bold; }
+  .d-value { }
+
+  /* ITEMS TABLE */
+  table.items { width: 100%; border-collapse: collapse; }
+  table.items thead { display: table-header-group; }
+  table.items tr { page-break-inside: avoid; }
+  table.items th {
+    background: #d8d8d8;
+    border: 1px solid #666;
+    padding: 6px 4px;
+    font-size: 14px;
+    text-align: center;
+  }
+  table.items td {
+    border: 1px solid #888;
+    padding: 7px 4px;
+    font-size: 13px;
+    text-align: center;
+    height: 38px;
+  }
+  table.items tbody tr.last-row td { background: #bfe8f2; }
+
+  /* FOOTER SIGNOFF */
+  .footer { margin-top: 35px; font-size: 17px; }
+  .footer-row-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .footer-row-table td { vertical-align: top; padding: 0; }
+  .f-label { width: 170px; font-weight: bold; }
+  .f-value { }
+</style>
+</head>
+<body>
+
+  <!-- REPEATING HEADER (every page) -->
+  <div id="page-header">
+    <table class="header-table">
+      <tr>
+        <td class="logo-cell">
+          <img src="data:image/jpeg;base64,{{ logo_b64 }}" alt="Logo">
+        </td>
+        <td class="website-cell">
+          www.dishaanhitech.com
+        </td>
+      </tr>
+    </table>
+    <div class="title-block">INDENT</div>
+  </div>
+
+  <!-- BODY -->
+
+  <!-- DETAILS TWO COLUMN -->
+  <table class="details-table">
+    <tr>
+      <td class="col-left">
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Site Code</td>
+            <td class="d-value">: {{ indent.project_code }}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Project Name</td>
+            <td class="d-value">: {{ indent.project.project_name if indent.project else "—" }}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Customer Name</td>
+            <td class="d-value">: {{ indent.project.client_name if indent.project else "—" }}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Sale Order No</td>
+            <td class="d-value">: {{ indent.sale_order_no or "—" }}</td>
+          </tr>
+        </table>
+
+      </td>
+      <td class="col-right">
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Indent No</td>
+            <td class="d-value">: {{ indent.indent_no }}{% if indent.site_reg_serial_no %} / RSL : {{ indent.site_reg_serial_no }}{% endif %}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Indent Date</td>
+            <td class="d-value">: {{ indent.indent_date }}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Required Date</td>
+            <td class="d-value">: {{ indent.required_within or "—" }}</td>
+          </tr>
+        </table>
+
+        <table class="detail-row-table">
+          <tr>
+            <td class="d-label">Indent Category</td>
+            <td class="d-value">: {{ indent.category_code }}</td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+  <!-- ITEMS TABLE -->
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:34pt">SL No</th>
+        <th style="width:52pt">Item Code</th>
+        <th style="width:119pt">Item Name</th>
+        <th style="width:100pt">Specification</th>
+        <th style="width:43pt">Unit</th>
+        <th style="width:43pt">Qty</th>
+        <th style="width:84pt">Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr{% if loop.last %} class="last-row"{% endif %}>
+        <td>{{ item.sl }}</td>
+        <td>{{ item.item_code }}</td>
+        <td style="text-align:left;">{{ item.item_name }}</td>
+        <td style="text-align:left;">{{ item.note or "" }}</td>
+        <td>{{ item.unit }}</td>
+        <td>{{ "%.2f"|format(item.qty) }}</td>
+        <td style="text-align:left;">{{ item.location or "" }}</td>
+      </tr>
+      {% endfor %}
+      {% for i in range(items|length, min_rows) %}
+      <tr{% if loop.last %} class="last-row"{% endif %}>
+        <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- FOOTER SIGNOFF -->
+  <div class="footer">
+
+    {% if indent.indent_placed_by %}
+    <table class="footer-row-table">
+      <tr>
+        <td class="f-label">Indent Placed By</td>
+        <td class="f-value">: {{ indent.indent_placed_by }}</td>
+      </tr>
+    </table>
+    {% endif %}
+
+    {% if prepared_by %}
+    <table class="footer-row-table">
+      <tr>
+        <td class="f-label">Created By</td>
+        <td class="f-value">: {{ prepared_by.name }}{% if prepared_by.at %} &nbsp;&nbsp; [{{ prepared_by.at }}]{% endif %}</td>
+      </tr>
+    </table>
+    {% endif %}
+
+    {% for checker in checked_by %}
+    <table class="footer-row-table">
+      <tr>
+        <td class="f-label">Verified By</td>
+        <td class="f-value">: {{ checker.name }}{% if checker.at %} &nbsp;&nbsp; [{{ checker.at }}]{% endif %}</td>
+      </tr>
+    </table>
+    {% endfor %}
+
+    {% if authorised_by %}
+    <table class="footer-row-table">
+      <tr>
+        <td class="f-label">Approved By</td>
+        <td class="f-value">: {{ authorised_by.name }}{% if authorised_by.at %} &nbsp;&nbsp; [{{ authorised_by.at }}]{% endif %}</td>
+      </tr>
+    </table>
+    {% endif %}
+
+  </div>
+
+</body>
+</html>
