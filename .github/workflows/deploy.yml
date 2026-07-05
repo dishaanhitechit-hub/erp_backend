@@ -2,22 +2,22 @@ name: Deploy Backend
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 167.233.108.123
-          username: root
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /var/www/prax-erp
+            cd /srv/backend
             git pull origin master
             source venv/bin/activate
             pip install -r requirements.txt
-            systemctl restart prax-erp
+            sudo systemctl restart backend.service
