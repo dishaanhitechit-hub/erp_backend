@@ -30,4 +30,3 @@ xhtml2pdf
 qrcode[pil]
 pillow
 itsdangerous
-pythoncom
