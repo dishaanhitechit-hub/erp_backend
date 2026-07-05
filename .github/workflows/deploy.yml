@@ -1,4 +1,4 @@
-name: Deploy Backend to Hetzner
+name: Deploy Backend
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 167.233.108.123
           username: root

@@ -195,6 +195,11 @@ class OrderMaster(db.Model):
         default=False
     )
 
+    pdf_url = db.Column(db.Text, nullable=True)
+    pdf_token = db.Column(db.Text, nullable=True)
+    pdf_generated_at = db.Column(db.DateTime, nullable=True)
+
+
     project=db.relationship(
         "Project",
         foreign_keys="[OrderMaster.project_code]",

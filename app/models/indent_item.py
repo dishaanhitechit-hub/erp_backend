@@ -47,7 +47,7 @@ class IndentItem(db.Model):
     )
 
     location = db.Column(
-        db.String(150),
+        db.String(1500),
         nullable=True
     )
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 # MAINTENANCE: tracks which user is in the middle of a write operation
@@ -17,6 +17,14 @@ from app.modules.resources.order.service import (
     get_order_history,
     edit_order
 )
+
+# [PDF] — import pdf service functions
+from app.modules.resources.order.pdf_service import (
+    generate_order_pdf,
+    verify_order_pdf,
+    serve_pdf_file,
+)
+# [END PDF]
 
 order_bp = Blueprint( "order",__name__)
 
@@ -324,3 +332,30 @@ def api_edit_order(
     TransactionTracker.mark_closed(user_id)
 
     return response
+
+# ==========================================
+# [PDF] — Generate Order PDF
+# Remove @jwt_required() if you want this publicly accessible
+# ==========================================
+@order_bp.route("/generate-pdf/<int:order_id>", methods=["GET"])
+@jwt_required()
+def api_generate_pdf(order_id):
+    base_url = request.host_url
+    return generate_order_pdf(order_id, base_url)
+
+
+# ==========================================
+# [PDF] — Verify QR (public — no JWT, scanned by anyone)
+# ==========================================
+@order_bp.route("/verify/<token>", methods=["GET"])
+def api_verify_pdf(token):
+    return verify_order_pdf(token)
+
+
+# ==========================================
+# [PDF] [STORAGE] — Serve local PDF file
+# Remove this route entirely when switching to BunnyCDN
+# ==========================================
+@order_bp.route("/pdf-file/<path:relative_path>", methods=["GET"])
+def api_serve_pdf(relative_path):
+    return serve_pdf_file(relative_path)

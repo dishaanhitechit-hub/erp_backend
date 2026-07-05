@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    /* Bahnschrift Light / Aptos are Microsoft-bundled fonts — likely not installed on your Linux PDF server.
+       Either self-host the actual font files via @font-face (if you have the license) or keep this fallback stack. */
+    font-family: "Bahnschrift Light", "Segoe UI", Arial, sans-serif;
+    font-size: 10pt;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+  }
+  .doc-header .logo img { height: 0.63in; }
+  .doc-header .company-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .doc-header .website { font-size: 10pt; margin-bottom: 6px; }
+  .doc-header .qr img { width: 0.94in; height: 0.94in; }
+
+  .company-tagline { font-size: 14pt; margin: 2px 0 8px; }
+
+  .doc-title { text-align: center; margin: 6px 0 10px; }
+  .doc-title .doc-name { font-size: 16pt; }
+  .doc-title .doc-code { font-size: 16pt; font-weight: bold; }
+
+  .meta-grid { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 10px; }
+  .meta-grid td { padding: 2px 4px; vertical-align: top; }
+  .meta-grid td.label { white-space: nowrap; width: 1%; }
+  .meta-grid td.colon { width: 1%; }
+  .meta-grid td.value { width: 48%; }
+
+  table.items { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  /* thead repeats on every printed page automatically in Chromium; kept explicit for clarity */
+  table.items thead { display: table-header-group; }
+  table.items tr { page-break-inside: avoid; break-inside: avoid; }
+  table.items th, table.items td { border: 1px solid #000; padding: 4px 5px; }
+  table.items th { background: #D9D9D9; font-weight: bold; text-align: center; }
+  table.items td.num { text-align: center; }
+
+  .signoff {
+    margin-top: 16px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    font-size: 10pt;
+  }
+  .signoff div { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+  <div class="doc-header">
+    <div class="logo">
+      <img src="{{ company.logo_url }}" alt="{{ company.name }}">
+    </div>
+    <div class="company-meta">
+      <div class="website">{{ company.website }}</div>
+      <div class="qr"><img src="{{ qr_image_base64 }}" alt="QR"></div>
+    </div>
+  </div>
+
+  <div class="company-tagline">{{ company.legal_suffix }}</div>
+
+  <div class="doc-title">
+    <div class="doc-name">GOODS ISSUE NOTE</div>
+    <div class="doc-code">[GIN]</div>
+  </div>
+
+  <table class="meta-grid">
+    <tr>
+      <td class="label">Site Code</td><td class="colon">:</td><td class="value">{{ gin.site_code }}</td>
+      <td class="label">GIN No</td><td class="colon">:</td><td class="value">{{ gin.gin_no }}</td>
+    </tr>
+    <tr>
+      <td class="label">Project Name</td><td class="colon">:</td><td class="value">{{ gin.project_name }}</td>
+      <td class="label">GIN Date</td><td class="colon">:</td><td class="value">{{ gin.gin_date }}</td>
+    </tr>
+    <tr>
+      <td class="label">Customer Name</td><td class="colon">:</td><td class="value">{{ gin.customer_name }}</td>
+      <td class="label">Issue Time</td><td class="colon">:</td><td class="value">{{ gin.issue_time }}</td>
+    </tr>
+    <tr>
+      <td class="label">Party Name</td><td class="colon">:</td><td class="value">{{ gin.party_name }}</td>
+      <td class="label">Order No</td><td class="colon">:</td><td class="value">{{ gin.order_no }}</td>
+    </tr>
+    <tr>
+      <td class="label">Issue Slip No</td><td class="colon">:</td><td class="value">{{ gin.issue_slip_no }}</td>
+      <td class="label">Issue Category</td><td class="colon">:</td><td class="value">{{ gin.issue_category }}</td>
+    </tr>
+    <tr>
+      <td class="label">Cost Head</td><td class="colon">:</td><td class="value">{{ gin.cost_head }}</td>
+      <td class="label">Item Category</td><td class="colon">:</td><td class="value">{{ gin.item_category }}</td>
+    </tr>
+    <tr>
+      <td class="label">Cost Factor</td><td class="colon">:</td><td class="value">{{ gin.cost_factor }}</td>
+      <td class="label">Received By</td><td class="colon">:</td><td class="value">{{ gin.received_by }}</td>
+    </tr>
+  </table>
+
+  <table class="items">
+    <colgroup>
+      <col style="width: 6.5%"><col style="width: 9.5%"><col style="width: 39.3%">
+      <col style="width: 9.5%"><col style="width: 10.9%"><col style="width: 24.3%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>SL No</th><th>Item Code</th><th>Item Name</th><th>Unit</th><th>Qty</th><th>Used Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="num">{{ loop.index }}</td>
+        <td>{{ item.item_code }}</td>
+        <td>{{ item.item_name }}</td>
+        <td class="num">{{ item.unit }}</td>
+        <td class="num">{{ item.qty }}</td>
+        <td>{{ item.used_location }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="signoff">
+    <div>Recommendation By&nbsp;&nbsp;&nbsp;: {{ gin.recommended_by }}</div>
+    <div>Issued By&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {{ gin.issued_by }}{% if gin.issued_at %} [{{ gin.issued_at }}]{% endif %}</div>
+    <div>Document Verified By : {{ gin.verified_by }}{% if gin.verified_at %} [{{ gin.verified_at }}]{% endif %}</div>
+  </div>
+
+</body>
+</html>

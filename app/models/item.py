@@ -39,7 +39,7 @@ class Item(db.Model):
     )
 
     item_name = db.Column(
-        db.String(200),
+        db.String(2000),
         nullable=False
     )
 

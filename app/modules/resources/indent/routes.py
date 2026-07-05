@@ -6,8 +6,30 @@ from app.middleware.auth_middleware import login_required
 
 from app.middleware.role_middleware import require_super_admin,require_admin
 from app.modules.resources.indent.service import *
+from app.modules.resources.indent.indent_pdf_docx_service import (
+    generate_indent_pdf, serve_indent_pdf, verify_indent_pdf
+)
 
 indent_bp = Blueprint( "indent",__name__)
+
+
+@indent_bp.route("/generate-pdf/<int:indent_id>", methods=["GET"])
+@login_required
+def api_generate_indent_pdf(indent_id):
+    base_url = request.host_url
+    force    = request.args.get("force", "0") == "1"
+    return generate_indent_pdf(indent_id, base_url, force=force)
+
+
+@indent_bp.route("/pdf-file/<path:relative_path>", methods=["GET"])
+def api_serve_indent_pdf(relative_path):
+    # [STORAGE] remove this route when switching to BunnyCDN
+    return serve_indent_pdf(relative_path)
+
+
+@indent_bp.route("/verify/<string:token>", methods=["GET"])
+def api_verify_indent_pdf(token):
+    return verify_indent_pdf(token)
 
 @indent_bp.route("/items-by-category", methods=["GET"])
 @login_required
