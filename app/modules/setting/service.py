@@ -1112,7 +1112,7 @@ def update_user(userId, request):
 
     )
     user.signature = supporting_file or user.signature
-    db.session.commit()
+    db.se?ssion.commit()
 
     data = [{
         "id": user.id,
