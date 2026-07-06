@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            export FLAK_APP = run.py
+            export FLASK_APP=run.py
             cd /srv/backend
             git pull origin master
             source venv/bin/activate
