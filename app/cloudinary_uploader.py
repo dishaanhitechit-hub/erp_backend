@@ -9,7 +9,7 @@ def upload_file_to_bunny(file, mainFolder, subFolder, fileName):
 
         media_base_path = os.getenv("MEDIA_BASE_PATH")
         media_base_url  = os.getenv("MEDIA_BASE_URL")
-
+        print("MEDIA_BASE_PATH =", media_base_path)
         if not media_base_path or not media_base_url:
             raise ValueError("MEDIA_BASE_PATH or MEDIA_BASE_URL not set in environment")
 
