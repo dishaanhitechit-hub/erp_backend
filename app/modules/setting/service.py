@@ -1106,12 +1106,12 @@ def update_user(userId, request):
             ,
 
             fileName=
-            "support"
+            "signature"
 
         )
 
     )
-
+    user.signature = supporting_file or user.signature
     db.session.commit()
 
     data = [{
