@@ -1350,9 +1350,13 @@ def term_edit(termId, data):
     ]
 
     return res("Term edited successfully", data, 200)
-
+from flask import request
 def get_all_terms():
-    terms = TermConditions.query.order_by(TermConditions.id.desc()).all()
+    module = request.args.get("module")
+    Query = TermConditions.query
+    if module:
+        Query = Query.filter(TermConditions.category == module)
+    terms = Query.query.order_by(TermConditions.id.desc()).all()
     data=[]
     for t in terms:
         data.append({
