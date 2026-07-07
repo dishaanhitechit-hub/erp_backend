@@ -18,8 +18,8 @@ from app.modules.resources.order.service import (
     edit_order
 )
 
-# [PDF] — import pdf service functions
-from app.modules.resources.order.pdf_service import (
+# [PDF] — ReportLab direct-PDF service (pixel-perfect, no DOCX/LibreOffice needed)
+from app.modules.resources.order.order_pdf_rl_service import (
     generate_order_pdf,
     verify_order_pdf,
     serve_pdf_file,
@@ -341,7 +341,8 @@ def api_edit_order(
 @jwt_required()
 def api_generate_pdf(order_id):
     base_url = request.host_url
-    return generate_order_pdf(order_id, base_url)
+    force    = request.args.get("force", "0") == "1"
+    return generate_order_pdf(order_id, base_url, force=force)
 
 
 # ==========================================

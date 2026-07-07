@@ -1,6 +1,12 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+from app.modules.resources.grn.grn_pdf_rl_service import (
+    generate_grn_pdf,
+    verify_grn_pdf,
+    serve_grn_pdf_file,
+)
+
 # MAINTENANCE: tracks which user is in the middle of a write operation
 from app.utils.txn_tracker import TransactionTracker
 
@@ -249,3 +255,21 @@ def api_edit_grn(grn_id):
 def api_grn_history(grn_id):
 
     return get_grn_history(grn_id)
+
+
+@grn_bp.route("/generate-pdf/<int:grn_id>", methods=["GET"])
+@jwt_required()
+def api_generate_grn_pdf(grn_id):
+    base_url = request.host_url
+    force    = request.args.get("force", "0") == "1"
+    return generate_grn_pdf(grn_id, base_url, force=force)
+
+
+@grn_bp.route("/verify/<string:token>", methods=["GET"])
+def api_verify_grn_pdf(token):
+    return verify_grn_pdf(token)
+
+
+@grn_bp.route("/pdf-file/<path:relative_path>", methods=["GET"])
+def api_serve_grn_pdf(relative_path):
+    return serve_grn_pdf_file(relative_path)
