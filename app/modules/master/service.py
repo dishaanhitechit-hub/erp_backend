@@ -1356,7 +1356,7 @@ def get_all_terms():
     Query = TermConditions.query
     if module:
         Query = Query.filter(TermConditions.category == module)
-    terms = Query.query.order_by(TermConditions.id.desc()).all()
+    terms = Query.order_by(TermConditions.id.desc()).all()
     data=[]
     for t in terms:
         data.append({
