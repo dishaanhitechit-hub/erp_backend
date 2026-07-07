@@ -1213,9 +1213,19 @@ def verify_order_pdf(token):
             return _page("invalid")
         if data.get("fp") != _fingerprint(order):
             return _page("tampered", order)
+        # Serve PDF bytes directly — never expose real file path in browser URL.
+        # Browser URL stays as /resource/order/verify/<token> permanently.
         base_prefix = current_app.config.get("PDF_BASE_URL", "/resource/order/pdf-file")
         relative    = order.pdf_url.replace(base_prefix + "/", "", 1)
-        return serve_pdf_file(relative)
+        full_path   = os.path.join(_storage_root(), relative)
+        with open(full_path, "rb") as fh:
+            pdf_bytes = fh.read()
+        resp = make_response(pdf_bytes)
+        resp.headers["Content-Type"]        = "application/pdf"
+        # Use order_no as filename so download name is clean, not the real path
+        resp.headers["Content-Disposition"] = f'inline; filename="{order.order_no}.pdf"'
+        resp.headers["Cache-Control"]       = "no-store"
+        return resp
     except SignatureExpired as e:
         try:
             payload = e.payload
