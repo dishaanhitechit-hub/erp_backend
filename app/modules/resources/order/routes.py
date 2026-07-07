@@ -23,6 +23,7 @@ from app.modules.resources.order.order_pdf_rl_service import (
     generate_order_pdf,
     verify_order_pdf,
     serve_pdf_file,
+    serve_pdf_for_token,
 )
 # [END PDF]
 
@@ -350,10 +351,20 @@ def api_generate_pdf(order_id):
 
 # ==========================================
 # [PDF] — Verify QR (public — no JWT, scanned by anyone)
+# Returns HTML page with verification status + embedded PDF viewer
 # ==========================================
 @order_bp.route("/verify/<token>", methods=["GET"])
 def api_verify_pdf(token):
     return verify_order_pdf(token)
+
+
+# ==========================================
+# [PDF] — Serve raw PDF via token (used by iframe inside verify page)
+# Public — no JWT, token itself is the auth. Real file path never exposed.
+# ==========================================
+@order_bp.route("/verify-pdf/<token>", methods=["GET"])
+def api_verify_pdf_raw(token):
+    return serve_pdf_for_token(token)
 
 
 # ==========================================

@@ -1205,27 +1205,178 @@ def generate_order_pdf(order_id, base_url, force=False):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def verify_order_pdf(token):
+    """
+    Public endpoint — scanned from QR code.
+    Returns a verification HTML page with order details + embedded PDF viewer.
+    Real file path is never exposed; the iframe loads /verify-pdf/<token>.
+    """
     try:
         data  = _serializer().loads(token, salt=PDF_TOKEN_SALT,
                                     max_age=PDF_EXPIRY_DAYS * 86400)
         order = OrderMaster.query.get(data["oid"])
         if not order or order.pdf_token != token:
-            return _page("invalid")
+            return _page_error("invalid")
         if data.get("fp") != _fingerprint(order):
-            return _page("tampered", order)
-        # Serve PDF bytes directly — never expose real file path in browser URL.
-        # Browser URL stays as /resource/order/verify/<token> permanently.
-        base_prefix = current_app.config.get("PDF_BASE_URL", "/resource/order/pdf-file")
-        relative    = order.pdf_url.replace(base_prefix + "/", "", 1)
-        full_path   = os.path.join(_storage_root(), relative)
-        with open(full_path, "rb") as fh:
-            pdf_bytes = fh.read()
-        resp = make_response(pdf_bytes)
-        resp.headers["Content-Type"]        = "application/pdf"
-        # Use order_no as filename so download name is clean, not the real path
-        resp.headers["Content-Disposition"] = f'inline; filename="{order.order_no}.pdf"'
-        resp.headers["Cache-Control"]       = "no-store"
-        return resp
+            return _page_error("tampered", order)
+
+        # ── Build verification page with embedded PDF ─────────────────────────
+        vendor      = order.vendor
+        vendor_name = vendor.ledger_name if vendor else "—"
+        order_date  = str(order.order_date or "—")
+        grand_total = f"₹{float(order.total_amount or 0):,.2f}"
+        status      = order.workflow_status or "—"
+
+        # iframe src points to /verify-pdf/<token> — raw PDF, no real path
+        pdf_src = f"/resource/order/verify-pdf/{token}"
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Order Verification — {order.order_no}</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }}
+
+    /* ── Verification banner ── */
+    .banner {{
+      width: 100%;
+      max-width: 900px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.10);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }}
+    .banner-header {{
+      background: #1b5e20;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .banner-header .icon {{ font-size: 28px; }}
+    .banner-header .title {{ font-size: 18px; font-weight: bold; }}
+    .banner-header .subtitle {{ font-size: 12px; opacity: .85; }}
+
+    /* ── Order detail grid ── */
+    .details {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0;
+      border-top: 1px solid #e0e0e0;
+    }}
+    .detail-item {{
+      padding: 12px 20px;
+      border-right: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f0f0f0;
+    }}
+    .detail-item .label {{
+      font-size: 10px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 3px;
+    }}
+    .detail-item .value {{
+      font-size: 13px;
+      font-weight: bold;
+      color: #222;
+    }}
+    .status-approved  {{ color: #2e7d32; }}
+    .status-pending   {{ color: #e65100; }}
+    .status-rejected  {{ color: #b71c1c; }}
+
+    /* ── PDF viewer ── */
+    .pdf-container {{
+      width: 100%;
+      max-width: 900px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.10);
+      overflow: hidden;
+    }}
+    .pdf-container iframe {{
+      width: 100%;
+      height: 80vh;
+      border: none;
+      display: block;
+    }}
+
+    /* ── Footer ── */
+    .footer {{
+      margin-top: 12px;
+      font-size: 11px;
+      color: #aaa;
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+
+  <!-- Verification banner -->
+  <div class="banner">
+    <div class="banner-header">
+      <span class="icon">✓</span>
+      <div>
+        <div class="title">DOCUMENT VERIFIED</div>
+        <div class="subtitle">This document is authentic and has not been tampered.</div>
+      </div>
+    </div>
+    <div class="details">
+      <div class="detail-item">
+        <div class="label">Order No</div>
+        <div class="value">{order.order_no}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Order Date</div>
+        <div class="value">{order_date}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Vendor</div>
+        <div class="value">{vendor_name}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Total Amount</div>
+        <div class="value">{grand_total}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Status</div>
+        <div class="value status-approved">{status}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Category</div>
+        <div class="value">{order.category_code or "—"}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Embedded PDF viewer — uses token, never exposes real path -->
+  <div class="pdf-container">
+    <iframe src="{pdf_src}" title="Purchase Order {order.order_no}">
+      <p>Your browser does not support PDF viewing.
+         <a href="{pdf_src}">Download PDF</a></p>
+    </iframe>
+  </div>
+
+  <div class="footer">
+    Dishaan Hi-Tech (India) Pvt. Ltd. &nbsp;|&nbsp; Verified document portal
+  </div>
+
+</body>
+</html>"""
+        return make_response(html, 200)
+
     except SignatureExpired as e:
         try:
             payload = e.payload
@@ -1236,47 +1387,77 @@ def verify_order_pdf(token):
                     db.session.commit()
         except Exception:
             pass
-        return _page("expired")
+        return _page_error("expired")
     except BadSignature:
-        return _page("invalid")
+        return _page_error("invalid")
     except Exception as e:
-        return _page("error", msg=str(e))
+        import traceback; traceback.print_exc()
+        return _page_error("error", msg=str(e))
 
 
-def _page(status, order=None, msg=""):
+def serve_pdf_for_token(token):
+    """
+    Serve raw PDF bytes using the same token — called by the iframe inside
+    verify_order_pdf(). Real file path is never sent to the browser.
+    """
+    try:
+        data  = _serializer().loads(token, salt=PDF_TOKEN_SALT,
+                                    max_age=PDF_EXPIRY_DAYS * 86400)
+        order = OrderMaster.query.get(data["oid"])
+        if not order or order.pdf_token != token or not order.pdf_url:
+            return make_response("Not found", 404)
+
+        base_prefix = current_app.config.get("PDF_BASE_URL", "/resource/order/pdf-file")
+        relative    = order.pdf_url.replace(base_prefix + "/", "", 1)
+        full_path   = os.path.join(_storage_root(), relative)
+
+        with open(full_path, "rb") as fh:
+            pdf_bytes = fh.read()
+
+        resp = make_response(pdf_bytes)
+        resp.headers["Content-Type"]        = "application/pdf"
+        resp.headers["Content-Disposition"] = f'inline; filename="{order.order_no}.pdf"'
+        resp.headers["Cache-Control"]       = "no-store"
+        return resp
+
+    except (SignatureExpired, BadSignature):
+        return make_response("Token expired or invalid", 403)
+    except Exception:
+        return make_response("Error serving PDF", 500)
+
+
+def _page_error(status, order=None, msg=""):
+    """HTML error page for invalid / tampered / expired / error states."""
     cfg = {
-        "valid":    ("#2e7d32", "✓ DOCUMENT VERIFIED",
-                     (f"Order <b>{order.order_no}</b> is authentic.<br/>"
-                      f"Total: ₹{float(order.total_amount or 0):,.2f}")
-                     if order else "Verified."),
         "tampered": ("#b71c1c", "⚠ TAMPERED DOCUMENT",
-                     "Data does not match the original.<br/>"
+                     "The document data does not match the original.<br/>"
                      "<b>Do not accept this document.</b>"),
         "expired":  ("#e65100", "⏱ QR CODE EXPIRED",
-                     "This QR is valid for 2 days only.<br/>"
-                     "Request a regenerated document."),
-        "invalid":  ("#37474f", "✗ INVALID QR",
-                     "This QR code is not recognised."),
-        "error":    ("#37474f", "Error", msg),
+                     "This QR code is valid for 2 days only.<br/>"
+                     "Please request a regenerated document."),
+        "invalid":  ("#37474f", "✗ INVALID QR CODE",
+                     "This QR code is not recognised by our system."),
+        "error":    ("#37474f", "⚠ Error", msg or "An unexpected error occurred."),
     }
     color, title, body = cfg.get(status, cfg["invalid"])
-    code = 200 if status == "valid" else 410 if status == "expired" else 400
-    return make_response(
-        f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Order Verification</title>
+    code = 410 if status == "expired" else 400
+    return make_response(f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{title}</title>
 <style>
   body{{font-family:Arial,sans-serif;display:flex;justify-content:center;
        align-items:center;min-height:100vh;margin:0;background:#f5f5f5}}
-  .card{{background:#fff;border-radius:12px;padding:40px;max-width:480px;
+  .card{{background:#fff;border-radius:12px;padding:40px;max-width:440px;
          text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.12)}}
-  .icon{{font-size:52px;color:{color}}}
+  .icon{{font-size:52px}}
   .title{{font-size:20px;font-weight:bold;color:{color};margin:12px 0}}
-  .body{{font-size:14px;color:#555;line-height:1.7}}
+  .body{{font-size:14px;color:#555;line-height:1.8}}
+  .co{{margin-top:24px;font-size:11px;color:#aaa}}
 </style></head><body>
 <div class="card">
   <div class="icon">{title[0]}</div>
   <div class="title">{title}</div>
   <div class="body">{body}</div>
-</div></body></html>""",
-        code,
-    )
+  <div class="co">Dishaan Hi-Tech (India) Pvt. Ltd.</div>
+</div></body></html>""", code)
