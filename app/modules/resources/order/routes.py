@@ -340,7 +340,10 @@ def api_edit_order(
 @order_bp.route("/generate-pdf/<int:order_id>", methods=["GET"])
 @jwt_required()
 def api_generate_pdf(order_id):
-    base_url = request.host_url
+    from flask import current_app
+    # Use PUBLIC_BASE_URL from config so QR links point to the reachable server.
+    # Falls back to request.host_url for local development.
+    base_url = (current_app.config.get("PUBLIC_BASE_URL") or request.host_url).rstrip("/") + "/"
     force    = request.args.get("force", "0") == "1"
     return generate_order_pdf(order_id, base_url, force=force)
 

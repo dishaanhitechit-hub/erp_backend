@@ -12,3 +12,5 @@ class Config:
     )
     PDF_STORAGE_PATH = os.getenv("PDF_STORAGE_PATH") or os.path.join(os.getcwd(), "storage", "pdf")
     PDF_BASE_URL = os.getenv("PDF_BASE_URL") or "/resource/order/pdf-file"
+    PUBLIC_BASE_URL  = os.getenv("PUBLIC_BASE_URL") or None
+
