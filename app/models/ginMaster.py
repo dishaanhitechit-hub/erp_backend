@@ -12,6 +12,9 @@ class GinMaster(db.Model):
         db.Integer,
         primary_key=True
     )
+    ammdend_by=db.Column(db.text, nullable=True)
+
+
 
     gin_no = db.Column(
         db.String(50),
