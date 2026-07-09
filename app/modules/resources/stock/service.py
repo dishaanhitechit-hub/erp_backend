@@ -39,7 +39,7 @@ def get_stock_list(project_code, item_category=None):
         .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
         .filter(
             GrnMaster.project_code == project_code,
-            GrnMaster.workflow_status == "Final Approved",
+            GrnMaster.workflow_status == "Approved",
         )
     )
     if item_category:
@@ -65,7 +65,7 @@ def get_stock_list(project_code, item_category=None):
         .join(OrderItem, OrderItem.id == GinItem.order_item_id)
         .filter(
             GinMaster.project_code == project_code,
-            GinMaster.workflow_status == "Final Approved",
+            GinMaster.workflow_status == "Approved",
             OrderItem.item_code.in_(item_codes),
         )
     )
@@ -169,7 +169,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
         .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
         .filter(
             GrnMaster.project_code == project_code,
-            GrnMaster.workflow_status == "Final Approved",
+            GrnMaster.workflow_status == "Approved",
             GrnItem.item_code == item_code,
         )
     )
@@ -207,7 +207,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
         .join(OrderItem, OrderItem.id == GinItem.order_item_id)
         .filter(
             GinMaster.project_code == project_code,
-            GinMaster.workflow_status == "Final Approved",
+            GinMaster.workflow_status == "Approved",
             OrderItem.item_code == item_code,
             GinItem.order_item_id.isnot(None),
         )
