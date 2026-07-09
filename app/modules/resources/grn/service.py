@@ -357,6 +357,11 @@ def create_grn(data, user_id, files=None):
 
                 grn_id=grn.id,
                 order_item_id=order_item_id,
+                item_code=order_item.item_code,
+                unit=(
+                    order_item.item.unit.unit_name
+                    if order_item.item and order_item.item.unit else None
+                ),
                 grnl=generate_grnl_no(line_no),
                 current_received_qty=current_received_qty,
                 use_location=row.get("useLocation"),
@@ -940,6 +945,11 @@ def edit_grn(grn_id, data, user_id, files=None):
             db.session.add(GrnItem(
                 grn_id=grn.id,
                 order_item_id=order_item_id,
+                item_code=order_item.item_code,
+                unit=(
+                    order_item.item.unit.unit_name
+                    if order_item.item and order_item.item.unit else None
+                ),
                 grnl=generate_grnl_no(line_no),
                 current_received_qty=current_received_qty,
                 use_location=row.get("useLocation"),
