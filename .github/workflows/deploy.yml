@@ -18,15 +18,8 @@ jobs:
           script: |
             export FLASK_APP=run.py
             cd /srv/backend
-            git remote set-url origin https://dishaanhitechit-hub:${{ secrets.GH_PAT }}@github.com/dishaanhitechit-hub/erp_backend.git
             git pull origin master
             source venv/bin/activate
             pip install -r requirements.txt
-            flask db migrate -m "auto migration" || true
             flask db upgrade
-            git config user.email "dishaanhitechit.server@gmail.com"
-            git config user.name "PRAX Server"
-            git add migrations/
-            git diff --staged --quiet || git commit -m "server: auto migration $(date '+%Y-%m-%d %H:%M')"
-            git push origin master || true
             sudo systemctl restart backend.service
