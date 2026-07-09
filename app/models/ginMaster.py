@@ -12,7 +12,7 @@ class GinMaster(db.Model):
         db.Integer,
         primary_key=True
     )
-    ammdend_by=db.Column(db.text, nullable=True)
+    ammdend_by=db.Column(db.Text, nullable=True)
 
 
 
