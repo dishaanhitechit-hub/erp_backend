@@ -55,6 +55,9 @@ def create_app():
     from .modules.resources.gin.routes import gin_bp
     app.register_blueprint(gin_bp, url_prefix="/resource/gin")
 
+    from .modules.resources.stock.routes import stock_bp
+    app.register_blueprint(stock_bp, url_prefix="/resource/stock")
+
     from .modules.resources.srn.routes import srn_bp
     app.register_blueprint(srn_bp, url_prefix="/resource/srn")
 
