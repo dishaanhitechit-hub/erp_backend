@@ -149,19 +149,16 @@ def get_stock_list(project_code, item_category=None):
 
 
 # ══════════════════════════════════════════════════════════════════
-# STOCK ITEM DETAIL  —  GRN & GIN breakdown for one item
+# STOCK ITEM DETAIL  —  GRN & GIN breakdown, with search + date range
 # ══════════════════════════════════════════════════════════════════
 
-def get_stock_item_detail(project_code, item_code):
+def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
     """
-    For a single item, returns:
-      - grn_entries  : each Final-Approved GRN line that received this item
-      - gin_entries  : each Final-Approved GIN line that issued this item
-      - summary      : totals + balance qty/amount
+    Returns detail dict for one item_code with optional date-range filter
+    on GRN/GIN entries.
     """
-
     # ── GRN entries ──────────────────────────────────────────────
-    grn_rows = (
+    grn_q = (
         db.session.query(
             GrnMaster.grn_no,
             GrnMaster.grn_date,
@@ -175,14 +172,16 @@ def get_stock_item_detail(project_code, item_code):
             GrnMaster.workflow_status == "Final Approved",
             GrnItem.item_code == item_code,
         )
-        .order_by(GrnMaster.grn_date)
-        .all()
     )
+    if from_date:
+        grn_q = grn_q.filter(GrnMaster.grn_date >= from_date)
+    if to_date:
+        grn_q = grn_q.filter(GrnMaster.grn_date <= to_date)
 
     grn_entries = []
     total_received_qty = 0.0
     total_received_amount = 0.0
-    for r in grn_rows:
+    for r in grn_q.order_by(GrnMaster.grn_date).all():
         qty = float(r.current_received_qty or 0)
         rate = float(r.rate or 0)
         amount = round(qty * rate, 2)
@@ -197,7 +196,7 @@ def get_stock_item_detail(project_code, item_code):
         })
 
     # ── GIN entries ──────────────────────────────────────────────
-    gin_rows = (
+    gin_q = (
         db.session.query(
             GinMaster.gin_no,
             GinMaster.gin_date,
@@ -212,14 +211,16 @@ def get_stock_item_detail(project_code, item_code):
             OrderItem.item_code == item_code,
             GinItem.order_item_id.isnot(None),
         )
-        .order_by(GinMaster.gin_date)
-        .all()
     )
+    if from_date:
+        gin_q = gin_q.filter(GinMaster.gin_date >= from_date)
+    if to_date:
+        gin_q = gin_q.filter(GinMaster.gin_date <= to_date)
 
     gin_entries = []
     total_issued_qty = 0.0
     total_issued_amount = 0.0
-    for r in gin_rows:
+    for r in gin_q.order_by(GinMaster.gin_date).all():
         qty = float(r.issue_qty or 0)
         rate = float(r.rate or 0)
         amount = round(qty * rate, 2)
@@ -236,24 +237,62 @@ def get_stock_item_detail(project_code, item_code):
     # ── item master ──────────────────────────────────────────────
     item = db.session.query(Item).filter(Item.item_code == item_code).first()
 
-    summary = {
-        "item_code": item_code,
-        "item_name": item.item_name if item else None,
-        "unit": (
-            item.unit.unit_name
-            if item and item.unit
-            else None
-        ),
-        "total_received_qty": round(total_received_qty, 2),
-        "total_received_amount": round(total_received_amount, 2),
-        "total_issued_qty": round(total_issued_qty, 2),
-        "total_issued_amount": round(total_issued_amount, 2),
-        "stock_qty": round(total_received_qty - total_issued_qty, 2),
-        "stock_amount": round(total_received_amount - total_issued_amount, 2),
-    }
-
-    return res("Stock item detail fetched", {
-        "summary": summary,
+    return {
+        "summary": {
+            "item_code": item_code,
+            "item_name": item.item_name if item else None,
+            "unit": (
+                item.unit.unit_name
+                if item and item.unit
+                else None
+            ),
+            "total_received_qty": round(total_received_qty, 2),
+            "total_received_amount": round(total_received_amount, 2),
+            "total_issued_qty": round(total_issued_qty, 2),
+            "total_issued_amount": round(total_issued_amount, 2),
+            "stock_qty": round(total_received_qty - total_issued_qty, 2),
+            "stock_amount": round(total_received_amount - total_issued_amount, 2),
+        },
         "grn_entries": grn_entries,
         "gin_entries": gin_entries,
-    }, 200)
+    }
+
+
+def get_stock_item_detail(project_code, item_code=None, search=None,
+                          from_date=None, to_date=None):
+    """
+    Params:
+      item_code  – exact match (direct navigation)
+      search     – partial case-insensitive match on item_code OR item_name
+      from_date  – filter GRN/GIN entries on or after this date (YYYY-MM-DD)
+      to_date    – filter GRN/GIN entries on or before this date (YYYY-MM-DD)
+
+    If search is provided, returns detail for every matching item.
+    If item_code is provided (and no search), returns detail for that one item.
+    """
+    if search:
+        keyword = f"%{search}%"
+        matched_items = (
+            db.session.query(Item)
+            .filter(
+                db.or_(
+                    Item.item_code.ilike(keyword),
+                    Item.item_name.ilike(keyword),
+                )
+            )
+            .all()
+        )
+        if not matched_items:
+            return res("No items found matching search", [], 200)
+
+        result = [
+            _build_item_detail(project_code, i.item_code, from_date, to_date)
+            for i in matched_items
+        ]
+        return res("Stock item detail fetched", result, 200)
+
+    if item_code:
+        detail = _build_item_detail(project_code, item_code, from_date, to_date)
+        return res("Stock item detail fetched", detail, 200)
+
+    return res("item_code or search is required", [], 400)

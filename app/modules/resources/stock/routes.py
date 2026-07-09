@@ -40,9 +40,21 @@ def stock_list():
 @jwt_required()
 def stock_item_detail():
     project_code = request.args.get("project_code", "").strip()
-    item_code = request.args.get("item_code", "").strip()
+    item_code    = request.args.get("item_code", "").strip() or None
+    search       = request.args.get("search", "").strip() or None
+    from_date    = request.args.get("from_date", "").strip() or None
+    to_date      = request.args.get("to_date", "").strip() or None
 
-    if not project_code or not item_code:
-        return res("project_code and item_code are required", [], 400)
+    if not project_code:
+        return res("project_code is required", [], 400)
 
-    return get_stock_item_detail(project_code, item_code)
+    if not item_code and not search:
+        return res("item_code or search is required", [], 400)
+
+    return get_stock_item_detail(
+        project_code,
+        item_code=item_code,
+        search=search,
+        from_date=from_date,
+        to_date=to_date,
+    )
