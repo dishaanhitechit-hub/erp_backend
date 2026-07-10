@@ -336,129 +336,88 @@ files=None,
                 )
             )
 
-
-            indent_item=IndentItem.query.get(
-                indent_item_id
-            )
-
-
-            if not indent_item:
-
-                db.session.rollback()
-
-                return res(
-                    f"Indent item {indent_item_id} not found",
-                    [],
-                    404
-                )
-
-
-            previous_qty=(
-
-                db.session.query(
-
-                    func.coalesce(
-                        func.sum(
-                            OrderItem.qty
-                        ),
-                        0
-                    )
-
-                )
-
-                .filter(
-                    OrderItem.indent_item_id==
+            if indent_item_id:
+                # ── indent-linked item ────────────────────────
+                indent_item=IndentItem.query.get(
                     indent_item_id
                 )
 
-                .scalar()
+                if not indent_item:
+                    db.session.rollback()
+                    return res(
+                        f"Indent item {indent_item_id} not found",
+                        [],
+                        404
+                    )
 
-            )
-
-
-            remaining_qty=float(
-                indent_item.qty
-            )-float(
-                previous_qty
-            )
-
-
-            if requested_qty<=0:
-
-                db.session.rollback()
-
-                return res(
-                    f"Invalid qty for item {indent_item.item_code}",
-                    [],
-                    400
+                previous_qty=(
+                    db.session.query(
+                        func.coalesce(func.sum(OrderItem.qty), 0)
+                    )
+                    .filter(OrderItem.indent_item_id==indent_item_id)
+                    .scalar()
                 )
 
+                remaining_qty=float(indent_item.qty)-float(previous_qty)
 
-            if requested_qty>remaining_qty:
+                if requested_qty<=0:
+                    db.session.rollback()
+                    return res(
+                        f"Invalid qty for item {indent_item.item_code}",
+                        [],
+                        400
+                    )
 
-                db.session.rollback()
+                if requested_qty>remaining_qty:
+                    db.session.rollback()
+                    return res(
+                        f"Available qty only {remaining_qty} for item {indent_item.item_code}",
+                        [],
+                        400
+                    )
 
-                return res(
-                    f"Available qty only {remaining_qty} for item {indent_item.item_code}",
-                    [],
-                    400
-                )
+                item_code=indent_item.item_code
+                note=row.get("note") or indent_item.note
+                location=indent_item.location
+                balance_qty=remaining_qty-requested_qty
 
+            else:
+                # ── direct item (no indent) ───────────────────
+                item_code=row.get("itemCode")
+                if not item_code:
+                    db.session.rollback()
+                    return res("itemCode required when no indentItemId", [], 400)
 
-            rate=float(
-                row.get(
-                    "rate",
-                    0
-                )
-            )
+                item_exists=Item.query.filter_by(item_code=item_code).first()
+                if not item_exists:
+                    db.session.rollback()
+                    return res(f"Item {item_code} not found", [], 404)
 
-            gst_percent=float(
-                row.get(
-                    "gstPercent",
-                    0
-                )
-            )
+                if requested_qty<=0:
+                    db.session.rollback()
+                    return res(f"Invalid qty for item {item_code}", [], 400)
 
-            amount=(
-                requested_qty*
-                rate
-            )
+                note=row.get("note")
+                location=row.get("location")
+                balance_qty=0
 
-            gst_amount=(
-                amount*
-                gst_percent
-            )/100
-
+            rate=float(row.get("rate", 0))
+            gst_percent=float(row.get("gstPercent", 0))
+            amount=requested_qty*rate
+            gst_amount=(amount*gst_percent)/100
 
             order_item=OrderItem(
-
                 order_id=order.id,
-
-                indent_item_id=
-                indent_item_id,
-
-                item_code=
-                indent_item.item_code,
-
-                custom_note= row.get("note") or indent_item.note,
-
-                qty=
-                requested_qty,
-
-                balance_qty=
-                remaining_qty-requested_qty,
-                location=
-                indent_item.location,
-
+                indent_item_id=indent_item_id or None,
+                item_code=item_code,
+                custom_note=note,
+                qty=requested_qty,
+                balance_qty=balance_qty,
+                location=location,
                 rate=rate,
-
                 amount=amount,
-
-                gst_percent=
-                gst_percent,
-
-                gst_amount=
-                gst_amount
+                gst_percent=gst_percent,
+                gst_amount=gst_amount
             )
 
             db.session.add(
@@ -791,7 +750,7 @@ def get_order_details(
                 item.indent_item_id,
 
                 "indentNo":
-                item.indent_item.indent.indent_no,
+                item.indent_item.indent.indent_no if item.indent_item else None,
 
                 "itemCode":
                 item.item_code,
@@ -1928,32 +1887,58 @@ def edit_order(order_id, data, user_id, files=None):
             indent_item_id = row.get("indentItemId")
             qty = float(row.get("qty", 0))
 
-            indent_item = IndentItem.query.get(indent_item_id)
-            if not indent_item:
-                db.session.rollback()
-                return res("Indent item not found", [], 404)
+            if indent_item_id:
+                # ── indent-linked item ────────────────────────
+                indent_item = IndentItem.query.get(indent_item_id)
+                if not indent_item:
+                    db.session.rollback()
+                    return res("Indent item not found", [], 404)
 
-            # qty already used by OTHER orders (current order wiped above)
-            previous_qty = (
-                db.session.query(
-                    func.coalesce(func.sum(OrderItem.qty), 0)
+                previous_qty = (
+                    db.session.query(
+                        func.coalesce(func.sum(OrderItem.qty), 0)
+                    )
+                    .filter(OrderItem.indent_item_id == indent_item_id)
+                    .scalar()
                 )
-                .filter(OrderItem.indent_item_id == indent_item_id)
-                .scalar()
-            )
 
-            remaining_qty = float(indent_item.qty) - float(previous_qty)
+                remaining_qty = float(indent_item.qty) - float(previous_qty)
 
-            if qty <= 0:
-                db.session.rollback()
-                return res(f"Invalid qty for {indent_item.item_code}", [], 400)
+                if qty <= 0:
+                    db.session.rollback()
+                    return res(f"Invalid qty for {indent_item.item_code}", [], 400)
 
-            if qty > remaining_qty:
-                db.session.rollback()
-                return res(
-                    f"Only {remaining_qty} available for {indent_item.item_code}",
-                    [], 400
-                )
+                if qty > remaining_qty:
+                    db.session.rollback()
+                    return res(
+                        f"Only {remaining_qty} available for {indent_item.item_code}",
+                        [], 400
+                    )
+
+                item_code = indent_item.item_code
+                note = row.get("note") or indent_item.note
+                location = indent_item.location
+                balance_qty = remaining_qty - qty
+
+            else:
+                # ── direct item (no indent) ───────────────────
+                item_code = row.get("itemCode")
+                if not item_code:
+                    db.session.rollback()
+                    return res("itemCode required when no indentItemId", [], 400)
+
+                item_exists = Item.query.filter_by(item_code=item_code).first()
+                if not item_exists:
+                    db.session.rollback()
+                    return res(f"Item {item_code} not found", [], 404)
+
+                if qty <= 0:
+                    db.session.rollback()
+                    return res(f"Invalid qty for item {item_code}", [], 400)
+
+                note = row.get("note")
+                location = row.get("location")
+                balance_qty = 0
 
             rate = float(row.get("rate", 0))
             gst = float(row.get("gstPercent", 0))
@@ -1962,12 +1947,12 @@ def edit_order(order_id, data, user_id, files=None):
 
             db.session.add(OrderItem(
                 order_id=order.id,
-                indent_item_id=indent_item.id,
-                item_code=indent_item.item_code,
-                custom_note=row.get("note") or indent_item.note,
+                indent_item_id=indent_item_id or None,
+                item_code=item_code,
+                custom_note=note,
                 qty=qty,
-                balance_qty=remaining_qty - qty,
-                location=indent_item.location,
+                balance_qty=balance_qty,
+                location=location,
                 rate=rate,
                 amount=amount,
                 gst_percent=gst,
