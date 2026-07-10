@@ -20,7 +20,7 @@ def _fmt_date(d):
 # STOCK LIST  —  grouped by CC Code
 # ══════════════════════════════════════════════════════════════════
 
-def get_stock_list(project_code, item_category=None):
+def get_stock_list(project_code, item_category=None, page=1, limit=10):
 
     # ── received from GRN ────────────────────────────────────────
     grn_q = (
@@ -118,10 +118,10 @@ def get_stock_list(project_code, item_category=None):
             "stockAmount": stockAmount,
         })
 
-    # ── assign slNo ──────────────────────────────────────────────
-    result = []
+    # ── build full list with slNo ────────────────────────────────
+    all_groups = []
     for group_sl, group_data in enumerate(groups.values(), start=1):
-        result.append({
+        all_groups.append({
             "slNo":             group_sl,
             "ccCode":           group_data["ccCode"],
             "ccName":           group_data["ccName"],
@@ -132,14 +132,44 @@ def get_stock_list(project_code, item_category=None):
             ],
         })
 
-    return res("Stock list fetched", result, 200)
+    # ── paginate on CC code groups ───────────────────────────────
+    total_groups = len(all_groups)
+    total_pages  = max(1, -(-total_groups // limit))   # ceiling division
+    page         = max(1, min(page, total_pages))
+    start        = (page - 1) * limit
+    paged        = all_groups[start: start + limit]
+
+    return res("Stock list fetched", {
+        "pagination": {
+            "currentPage": page,
+            "totalPages":  total_pages,
+            "totalGroups": total_groups,
+            "limit":       limit,
+        },
+        "data": paged,
+    }, 200)
 
 
 # ══════════════════════════════════════════════════════════════════
 # STOCK ITEM DETAIL  —  GRN & GIN breakdown, with search + date range
 # ══════════════════════════════════════════════════════════════════
 
-def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
+def _paginate(entries, page, limit):
+    total      = len(entries)
+    total_pages = max(1, -(-total // limit))
+    page       = max(1, min(page, total_pages))
+    start      = (page - 1) * limit
+    return {
+        "currentPage": page,
+        "totalPages":  total_pages,
+        "total":       total,
+        "limit":       limit,
+        "entries":     entries[start: start + limit],
+    }
+
+
+def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
+                       grn_page=1, gin_page=1, entries_limit=10):
 
     # ── GRN entries ──────────────────────────────────────────────
     grn_q = (
@@ -227,23 +257,24 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
 
     return {
         "summary": {
-            "itemCode":           item_code,
-            "itemName":           item.item_name if item else None,
-            "unit":               item.unit.unit_name if item and item.unit else None,
-            "totalReceivedQty":   round(total_received_qty, 2),
+            "itemCode":            item_code,
+            "itemName":            item.item_name if item else None,
+            "unit":                item.unit.unit_name if item and item.unit else None,
+            "totalReceivedQty":    round(total_received_qty, 2),
             "totalReceivedAmount": round(total_received_amt, 2),
-            "totalIssuedQty":     round(total_issued_qty, 2),
-            "totalIssuedAmount":  round(total_issued_amt, 2),
-            "stockQty":           round(total_received_qty - total_issued_qty, 2),
-            "stockAmount":        round(total_received_amt - total_issued_amt, 2),
+            "totalIssuedQty":      round(total_issued_qty, 2),
+            "totalIssuedAmount":   round(total_issued_amt, 2),
+            "stockQty":            round(total_received_qty - total_issued_qty, 2),
+            "stockAmount":         round(total_received_amt - total_issued_amt, 2),
         },
-        "grnEntries": grn_entries,
-        "ginEntries": gin_entries,
+        "grnEntries": _paginate(grn_entries, grn_page, entries_limit),
+        "ginEntries": _paginate(gin_entries, gin_page, entries_limit),
     }
 
 
 def get_stock_item_detail(project_code, item_code=None, search=None,
-                          from_date=None, to_date=None):
+                          from_date=None, to_date=None,
+                          grn_page=1, gin_page=1, entries_limit=10):
 
     if search:
         keyword       = f"%{search}%"
@@ -261,13 +292,15 @@ def get_stock_item_detail(project_code, item_code=None, search=None,
             return res("No items found matching search", [], 200)
 
         result = [
-            _build_item_detail(project_code, i.item_code, from_date, to_date)
+            _build_item_detail(project_code, i.item_code, from_date, to_date,
+                               grn_page, gin_page, entries_limit)
             for i in matched_items
         ]
         return res("Stock item detail fetched", result, 200)
 
     if item_code:
-        detail = _build_item_detail(project_code, item_code, from_date, to_date)
+        detail = _build_item_detail(project_code, item_code, from_date, to_date,
+                                    grn_page, gin_page, entries_limit)
         return res("Stock item detail fetched", detail, 200)
 
     return res("itemCode or search is required", [], 400)

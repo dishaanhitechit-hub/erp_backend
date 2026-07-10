@@ -20,13 +20,15 @@ stock_bp = Blueprint("stock", __name__)
 @stock_bp.route("/list", methods=["GET"])
 @jwt_required()
 def stock_list():
-    project_code = request.args.get("project_code", "").strip()
+    project_code  = request.args.get("project_code", "").strip()
     item_category = request.args.get("item_category", "").strip() or None
+    page          = int(request.args.get("page", 1))
+    limit         = int(request.args.get("limit", 10))
 
     if not project_code:
         return res("project_code is required", [], 400)
 
-    return get_stock_list(project_code, item_category)
+    return get_stock_list(project_code, item_category, page, limit)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -39,11 +41,14 @@ def stock_list():
 @stock_bp.route("/item-detail", methods=["GET"])
 @jwt_required()
 def stock_item_detail():
-    project_code = request.args.get("project_code", "").strip()
-    item_code    = request.args.get("item_code", "").strip() or None
-    search       = request.args.get("search", "").strip() or None
-    from_date    = request.args.get("from_date", "").strip() or None
-    to_date      = request.args.get("to_date", "").strip() or None
+    project_code  = request.args.get("project_code", "").strip()
+    item_code     = request.args.get("item_code", "").strip() or None
+    search        = request.args.get("search", "").strip() or None
+    from_date     = request.args.get("from_date", "").strip() or None
+    to_date       = request.args.get("to_date", "").strip() or None
+    grn_page      = int(request.args.get("grn_page", 1))
+    gin_page      = int(request.args.get("gin_page", 1))
+    entries_limit = int(request.args.get("entries_limit", 10))
 
     if not project_code:
         return res("project_code is required", [], 400)
@@ -57,4 +62,7 @@ def stock_item_detail():
         search=search,
         from_date=from_date,
         to_date=to_date,
+        grn_page=grn_page,
+        gin_page=gin_page,
+        entries_limit=entries_limit,
     )
