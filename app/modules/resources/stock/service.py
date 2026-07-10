@@ -29,7 +29,7 @@ def get_stock_list(project_code, item_category=None):
     # ── received quantities & amounts from GRN ──────────────────
     grn_q = (
         db.session.query(
-            GrnItem.item_code.label("item_code"),
+            OrderItem.item_code.label("item_code"),
             func.coalesce(func.sum(GrnItem.current_received_qty), 0).label("total_received_qty"),
             func.coalesce(
                 func.sum(GrnItem.current_received_qty * OrderItem.rate), 0
@@ -45,12 +45,12 @@ def get_stock_list(project_code, item_category=None):
     if item_category:
         grn_q = grn_q.filter(GrnMaster.item_category == item_category)
 
-    grn_rows = grn_q.group_by(GrnItem.item_code).all()
+    grn_rows = grn_q.group_by(OrderItem.item_code).all()
 
     if not grn_rows:
         return res("Stock list fetched", [], 200)
 
-    item_codes = [r.item_code for r in grn_rows]
+    item_codes = [r.item_code for r in grn_rows if r.item_code]
 
     # ── issued quantities & amounts from GIN ────────────────────
     gin_q = (
@@ -163,6 +163,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
             GrnMaster.grn_no,
             GrnMaster.grn_date,
             GrnItem.current_received_qty,
+            GrnItem.store_location,
             OrderItem.rate,
         )
         .join(GrnItem, GrnItem.grn_id == GrnMaster.id)
@@ -170,7 +171,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
         .filter(
             GrnMaster.project_code == project_code,
             GrnMaster.workflow_status == "Approved",
-            GrnItem.item_code == item_code,
+            OrderItem.item_code == item_code,
         )
     )
     if from_date:
@@ -193,6 +194,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
             "received_qty": qty,
             "rate": rate,
             "amount": amount,
+            "store_location": r.store_location,
         })
 
     # ── GIN entries ──────────────────────────────────────────────
@@ -201,6 +203,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
             GinMaster.gin_no,
             GinMaster.gin_date,
             GinItem.issue_qty,
+            GinItem.item_used_location,
             OrderItem.rate,
         )
         .join(GinItem, GinItem.gin_id == GinMaster.id)
@@ -232,6 +235,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None):
             "issued_qty": qty,
             "rate": rate,
             "amount": amount,
+            "item_used_location": r.item_used_location,
         })
 
     # ── item master ──────────────────────────────────────────────
