@@ -441,6 +441,7 @@ def get_items_by_category(category_code):
         for row in items:
 
             result.append({
+                "id": row.id,
 
                 "itemCode": row.item_code,
 

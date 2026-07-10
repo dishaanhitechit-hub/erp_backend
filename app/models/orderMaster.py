@@ -274,7 +274,7 @@ class OrderItem(db.Model):
         db.ForeignKey(
             "indent_items.id"
         ),
-        nullable=False
+        nullable=True
     )
 
     item_code=db.Column(
