@@ -12,17 +12,17 @@ def register_maintenance_middleware(app):
         now = datetime.now().time()
 
         # HARD LOCK: 11:30 PM onwards — block all write operations
-        if now >= MAINTENANCE_HARD_LOCK:
-            if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-                return jsonify({
-                    "error": "maintenance",
-                    "message": "Server is going into maintenance. No changes allowed."
-                }), 503
+        # if now >= MAINTENANCE_HARD_LOCK:
+        #     if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+        #         return jsonify({
+        #             "error": "maintenance",
+        #             "message": "Server is going into maintenance. No changes allowed."
+        #         }), 503
 
         # SOFT LOCK: 11:00 PM — block new logins only
-        elif now >= MAINTENANCE_SOFT_LOCK:
-            if request.endpoint == 'auth.login':
-                return jsonify({
-                    "error": "maintenance",
-                    "message": "Maintenance starts soon. Login disabled."
-                }), 503
+        # elif now >= MAINTENANCE_SOFT_LOCK:
+        #     if request.endpoint == 'auth.login':
+        #         return jsonify({
+        #             "error": "maintenance",
+        #             "message": "Maintenance starts soon. Login disabled."
+        #         }), 503
