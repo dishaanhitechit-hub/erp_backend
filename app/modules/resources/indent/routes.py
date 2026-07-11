@@ -44,7 +44,9 @@ def items_by_category():
             "status": 400
         }, 400
 
-    return get_items_by_category(category_code)
+    asset_only = request.args.get("assetOnly", "false").lower() == "true"
+
+    return get_items_by_category(category_code, asset_only)
 
 @indent_bp.route("/create", methods=["POST"])
 @login_required

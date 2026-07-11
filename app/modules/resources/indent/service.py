@@ -13,6 +13,10 @@ from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
 from app.models.approval_path import *
 from app.cloudinary_uploader import *
+from app.models.cc_code import CCCode
+from app.models.category_group import GroupMaster
+from app.models.unit import Unit
+from sqlalchemy import func
 
 
 
@@ -427,18 +431,38 @@ def get_indent_details(indent_id):
 
         return res(str(e), [], 500)
 
-def get_items_by_category(category_code):
+def get_items_by_category(category_code, asset_only=False):
 
     try:
 
-        items = Item.query.filter_by(
-            category_code=category_code,
-            status="Active"
-        ).all()
+        query = (
+            db.session.query(
+                Item.id,
+                Item.item_code,
+                Item.item_name,
+                Item.item_description,
+                Item.gst_percentage,
+                Unit.short_name.label("unit_name")
+            )
+            .join(CCCode, CCCode.id == Item.cc_code_id)
+            .join(GroupMaster, GroupMaster.id == CCCode.group_id)
+            .outerjoin(Unit, Unit.id == Item.unit_id)
+            .filter(
+                Item.category_code == category_code,
+                Item.status == "Active"
+            )
+        )
+
+        if asset_only:
+            query = query.filter(GroupMaster.group_name == "FIXED ASSET")
+        else:
+            query = query.filter(GroupMaster.group_name != "FIXED ASSET")
+
+        rows = query.all()
 
         result = []
 
-        for row in items:
+        for row in rows:
 
             result.append({
                 "id": row.id,
@@ -449,10 +473,7 @@ def get_items_by_category(category_code):
 
                 "description": row.item_description,
 
-                "unit": (
-                    row.unit.short_name
-                    if row.unit else None
-                ),
+                "unit": row.unit_name,
 
                 "gst": (
                     float(row.gst_percentage)
