@@ -91,6 +91,7 @@ def generate_bvs_no():
     last = (
         db.session.query(BvsMaster.bvs_no)
         .order_by(BvsMaster.id.desc())
+        .with_for_update()
         .first()
     )
     if last:

@@ -91,6 +91,7 @@ def generate_bss_no():
     last = (
         db.session.query(BssMaster.bss_no)
         .order_by(BssMaster.id.desc())
+        .with_for_update()
         .first()
     )
     if last:
