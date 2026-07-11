@@ -82,8 +82,7 @@ def create_indent(data,files=None, created_by=None):
         if not items:
             return res("Indent items required", [], 400)
 
-        xtem= generate_indent_no(
-                data.get("projectCode"))
+        xtem= generate_indent_no()
         supporting_file = None
 
         indent_file = files.get(
