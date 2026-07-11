@@ -105,10 +105,10 @@ def get_pw_cc_code_summary(order_id: int) -> list:
 # ═══════════════════════════════════════════════════════════════════
 
 def generate_pw_order_no() -> str:
-
     last = (
         db.session.query(ProjectWorkOrderMaster.order_no)
         .order_by(ProjectWorkOrderMaster.id.desc())
+        .with_for_update()
         .first()
     )
 
@@ -121,7 +121,6 @@ def generate_pw_order_no() -> str:
         last_serial = 550000
 
     return str(last_serial + 1)
-
 
 # ═══════════════════════════════════════════════════════════════════
 # ITEM LIST  (multi-subcategory, direct from item master)

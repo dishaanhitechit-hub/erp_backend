@@ -112,50 +112,22 @@ def get_cc_code_summary(order_id):
 
 
 def generate_order_no():
-
-    last_order=(
-
-        db.session.query(
-
-            OrderMaster.order_no
-
-        )
-
-        .order_by(
-
-            OrderMaster.id.desc()
-
-        )
-
+    last_order = (
+        db.session.query(OrderMaster.order_no)
+        .order_by(OrderMaster.id.desc())
+        .with_for_update()   # locks the row until this transaction commits
         .first()
-
     )
-
 
     if last_order:
-
         try:
-
-            last_serial=int(
-
-                last_order[0]
-
-            )
-
+            last_serial = int(last_order[0])
         except:
-
-            last_serial=440000
-
+            last_serial = 440000
     else:
+        last_serial = 440000
 
-        last_serial=440000
-
-
-    return str(
-
-        last_serial+1
-
-    )
+    return str(last_serial + 1)
 
 
 

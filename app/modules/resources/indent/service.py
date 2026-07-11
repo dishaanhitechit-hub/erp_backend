@@ -23,32 +23,29 @@ from sqlalchemy import func
 # GENERATE INDENT NUMBER
 
 
-def generate_indent_no(project_code):
-
-    last_indent = (
-        db.session.query(
-            IndentMaster.indent_no
-        )
-        .filter(
-            IndentMaster.project_code == project_code
-        )
-        .order_by(
-            IndentMaster.id.desc()
-        )
+def generate_indent_no():
+    last = (
+        db.session.query(IndentMaster.indent_no)
+        .order_by(IndentMaster.id.desc())
+        .with_for_update()   # row-level lock — blocks concurrent reads until commit
         .first()
     )
 
-    if last_indent:
+    if last:
         try:
-            last_serial = int(
-                last_indent[0]
-            )
+            last_serial = int(last[0])
         except:
             last_serial = 350000
     else:
         last_serial = 350000
 
-    return str(last_serial + 1)
+    next_serial = last_serial + 1
+
+    # suffix width logic:
+    # 350001–359999  → suffix width 4
+    # 3500001–3599999 → suffix width 5 ... etc.
+    return str(next_serial)
+
 
 
 # CREATE INDENT
