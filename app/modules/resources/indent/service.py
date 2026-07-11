@@ -444,8 +444,8 @@ def get_items_by_category(category_code, asset_only=False):
                 Item.gst_percentage,
                 Unit.short_name.label("unit_name")
             )
-            .join(CCCode, CCCode.id == Item.cc_code_id)
-            .join(GroupMaster, GroupMaster.id == CCCode.group_id)
+            .outerjoin(CCCode, CCCode.id == Item.cc_code_id)
+            .outerjoin(GroupMaster, GroupMaster.id == CCCode.group_id)
             .outerjoin(Unit, Unit.id == Item.unit_id)
             .filter(
                 Item.category_code == category_code,
@@ -456,7 +456,10 @@ def get_items_by_category(category_code, asset_only=False):
         if asset_only:
             query = query.filter(GroupMaster.group_name == "FIXED ASSET")
         else:
-            query = query.filter(GroupMaster.group_name != "FIXED ASSET")
+            query = query.filter(
+                (GroupMaster.group_name != "FIXED ASSET") |
+                (GroupMaster.group_name == None)
+            )
 
         rows = query.all()
 

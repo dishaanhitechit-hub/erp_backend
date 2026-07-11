@@ -42,6 +42,7 @@ def items_by_category():
             "msg": "categoryCode is required",
             "data": [],
             "status": 400
+
         }, 400
 
     asset_only = request.args.get("assetOnly", "false").lower() == "true"
