@@ -454,10 +454,10 @@ def get_items_by_category(category_code, asset_only=False):
         )
 
         if asset_only:
-            query = query.filter(GroupMaster.group_name == "FIXED ASSET")
+            query = query.filter(GroupMaster.group_name == "Fixed Asset")
         else:
             query = query.filter(
-                (GroupMaster.group_name != "FIXED ASSET") |
+                (GroupMaster.group_name != "Fixed Asset") |
                 (GroupMaster.group_name == None)
             )
 

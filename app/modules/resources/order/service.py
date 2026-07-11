@@ -607,13 +607,13 @@ def get_indent_pending_qty_list(
         if asset_only:
 
             query = query.filter(
-            GroupMaster.group_name == "FIXED ASSET"
+            GroupMaster.group_name == "Fixed Asset"
         )
 
         else:
 
             query = query.filter(
-            GroupMaster.group_name != "FIXED ASSET"
+            GroupMaster.group_name != "Fixed Asset"
         )
 
         rows=(query .group_by(
