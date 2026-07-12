@@ -1699,151 +1699,130 @@ def create_project_location(request):
 
     body = request.get_json()
 
-    project_code = body.get("projectCode")
-    store_location = body.get("storeLocation")
-    use_location = body.get("useLocation")
+    project_code  = body.get("projectCode")
+    location_name = body.get("locationName")
+    location_type = body.get("locationType")
+
+    if not location_name or not location_type:
+        return res("locationName and locationType are required", [], 400)
 
     project = (
         Project.query
-        .filter_by(
-            project_code=project_code
-        )
+        .filter_by(project_code=project_code)
         .first()
     )
 
     if not project:
-        return res(
-            "Project not found",
-            [],
-            404
-        )
+        return res("Project not found", [], 404)
+
+    existing = ProjectLocation.query.filter_by(
+        project_code=project_code,
+        location_name=location_name,
+        location_type=location_type
+    ).first()
+
+    if existing:
+        return res("Location with same name and type already exists", [], 400)
 
     location = ProjectLocation(
         project_code=project_code,
-        store_location=store_location,
-        use_location=use_location
+        location_name=location_name,
+        location_type=location_type
     )
 
     db.session.add(location)
     db.session.commit()
 
-    data = [{
-        "id": location.id,
-        "projectCode": location.project_code,
-        "storeLocation": location.store_location,
-        "useLocation": location.use_location
-    }]
-
     return res(
         "Location created",
-        data,
+        [{
+            "id": location.id,
+            "projectCode": location.project_code,
+            "locationName": location.location_name,
+            "locationType": location.location_type
+        }],
         200
     )
 
-def update_project_location(
-        request,
-        location_id
-):
 
-    location = (
-        ProjectLocation.query
-        .get(location_id)
-    )
+def update_project_location(request, location_id):
+
+    location = ProjectLocation.query.get(location_id)
 
     if not location:
-        return res(
-            "Location not found",
-            [],
-            404
-        )
+        return res("Location not found", [], 404)
 
     body = request.get_json()
 
-    location.store_location = body.get(
-        "storeLocation",
-        location.store_location
-    )
+    new_name = body.get("locationName", location.location_name)
+    new_type = body.get("locationType", location.location_type)
 
-    location.use_location = body.get(
-        "useLocation",
-        location.use_location
-    )
+    duplicate = ProjectLocation.query.filter(
+        ProjectLocation.project_code == location.project_code,
+        ProjectLocation.location_name == new_name,
+        ProjectLocation.location_type == new_type,
+        ProjectLocation.id != location_id
+    ).first()
+
+    if duplicate:
+        return res("Location with same name and type already exists", [], 400)
+
+    location.location_name = new_name
+    location.location_type = new_type
 
     db.session.commit()
 
-    data = [{
-        "id": location.id,
-        "projectCode": location.project_code,
-        "storeLocation": location.store_location,
-        "useLocation": location.use_location
-    }]
-
     return res(
         "Location updated",
-        data,
+        [{
+            "id": location.id,
+            "projectCode": location.project_code,
+            "locationName": location.location_name,
+            "locationType": location.location_type
+        }],
         200
     )
+
 
 def get_project_locations(project_code):
 
     project = (
         Project.query
-        .filter_by(
-            project_code=project_code
-        )
+        .filter_by(project_code=project_code)
         .first()
     )
 
     if not project:
-        return res(
-            "Project not found",
-            [],
-            404
-        )
+        return res("Project not found", [], 404)
 
-    data = []
+    data = [
+        {
+            "id": loc.id,
+            "projectCode": loc.project_code,
+            "locationName": loc.location_name,
+            "locationType": loc.location_type
+        }
+        for loc in project.projects
+    ]
 
-    for location in project.projects:
+    return res("Location list fetched", data, 200)
 
-        data.append({
-            "id": location.id,
-            "projectCode": location.project_code,
-            "storeLocation": location.store_location,
-            "useLocation": location.use_location
-        })
-
-    return res(
-        "Location list fetched",
-        data,
-        200
-    )
 
 def delete_project_location(location_id):
 
-    location = (
-        ProjectLocation.query
-        .get(location_id)
-    )
+    location = ProjectLocation.query.get(location_id)
 
     if not location:
-        return res(
-            "Location not found",
-            [],
-            404
-        )
+        return res("Location not found", [], 404)
 
     data = [{
         "id": location.id,
         "projectCode": location.project_code,
-        "storeLocation": location.store_location,
-        "useLocation": location.use_location
+        "locationName": location.location_name,
+        "locationType": location.location_type
     }]
 
     db.session.delete(location)
     db.session.commit()
 
-    return res(
-        "Location deleted successfully",
-        data,
-        200
-    )
+    return res("Location deleted successfully", data, 200)
