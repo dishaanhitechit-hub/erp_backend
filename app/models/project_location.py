@@ -17,3 +17,4 @@ class ProjectLocation(db.Model):
     )
 
     pLocation = db.relationship('Project', backref="projects")
+
