@@ -237,7 +237,7 @@ def create_srn(data, user_id, files=None):
 
         allowed = is_creator(
             data.get("projectCode"),
-            "service_recieved_note",
+            "service_received_note",
             user_id
         )
         if not allowed:
@@ -517,7 +517,7 @@ def submit_srn(srn_id, submitted_by=None):
 
         first_level = get_first_approver(
             srn.project_code,
-            "service_recieved_note"
+            "service_received_note"
         )
 
         if not first_level:
@@ -534,7 +534,7 @@ def submit_srn(srn_id, submitted_by=None):
 
         create_history(
             project_code = srn.project_code,
-            module_code  = "service_recieved_note",
+            module_code  = "service_received_note",
             record_id    = srn.id,
             level_no     = srn.current_level,
             action       = "SUBMIT",
@@ -582,7 +582,7 @@ def approve_srn(srn_id, approved_by=None, comments=None):
 
         allowed = is_current_approver(
             srn.project_code,
-            "service_recieved_note",
+            "service_received_note",
             srn.current_level,
             approved_by
         )
@@ -591,14 +591,14 @@ def approve_srn(srn_id, approved_by=None, comments=None):
 
         next_level = get_next_approver(
             srn.project_code,
-            "service_recieved_note",
+            "service_received_note",
             srn.current_level
         )
 
         if next_level:
             create_history(
                 project_code = srn.project_code,
-                module_code  = "service_recieved_note",
+                module_code  = "service_received_note",
                 record_id    = srn.id,
                 level_no     = srn.current_level,
                 action       = "APPROVE",
@@ -610,7 +610,7 @@ def approve_srn(srn_id, approved_by=None, comments=None):
         else:
             create_history(
                 project_code = srn.project_code,
-                module_code  = "service_recieved_note",
+                module_code  = "service_received_note",
                 record_id    = srn.id,
                 level_no     = srn.current_level,
                 action       = "FINAL_APPROVE",
@@ -665,7 +665,7 @@ def reback_srn(srn_id, reback_by=None, comments=None):
 
         allowed = is_current_approver(
             srn.project_code,
-            "service_recieved_note",
+            "service_received_note",
             srn.current_level,
             reback_by
         )
@@ -680,7 +680,7 @@ def reback_srn(srn_id, reback_by=None, comments=None):
 
         create_history(
             project_code = srn.project_code,
-            module_code  = "service_recieved_note",
+            module_code  = "service_received_note",
             record_id    = srn.id,
             level_no     = srn.current_level,
             action       = "REBACK",
@@ -724,7 +724,7 @@ def reject_srn(srn_id, rejected_by=None, comments=None):
 
         allowed = is_current_approver(
             srn.project_code,
-            "service_recieved_note",
+            "service_received_note",
             srn.current_level,
             rejected_by
         )
@@ -741,7 +741,7 @@ def reject_srn(srn_id, rejected_by=None, comments=None):
 
         create_history(
             project_code = srn.project_code,
-            module_code  = "service_recieved_note",
+            module_code  = "service_received_note",
             record_id    = srn.id,
             level_no     = srn.current_level,
             action       = "REJECT",
@@ -785,7 +785,7 @@ def edit_srn(srn_id, data, user_id, files=None):
 
         allowed = is_creator(
             srn.project_code,
-            "service_recieved_note",
+            "service_received_note",
             user_id
         )
         if not allowed:
@@ -914,7 +914,7 @@ def get_srn_history(srn_id):
         if not srn:
             return res("SRN not found", [], 404)
 
-        rows = get_history("service_recieved_note", srn.id)
+        rows = get_history("service_received_note", srn.id)
 
         data = []
         for row in rows:
