@@ -1085,12 +1085,12 @@ def update_user(userId, request):
         "signature"
     )
 
-    if not file:
-        return res(
-            "Signature file is required",
-            [],
-            400
-        )
+    # if not file:
+    #     return res(
+    #         "Signature file is required",
+    #         [],
+    #         400
+    #     )
     supporting_file = (
 
         upload_file_to_bunny(
