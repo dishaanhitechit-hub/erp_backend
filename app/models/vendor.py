@@ -96,6 +96,11 @@ class Vendor(db.Model):
         nullable=True
     )
 
+    email = db.Column(
+        db.String(150),
+        nullable=True
+    )
+
     # =====================================
     # BANK DETAILS
     # =====================================
@@ -161,8 +166,26 @@ class Vendor(db.Model):
         nullable=True
     )
 
+    # =====================================
+    # SUPPLIER INFO
+    # =====================================
 
+    supplier_id = db.Column(
+        db.Integer,
+        db.ForeignKey("suppliers.id", ondelete="SET NULL"),
+        nullable=True
+    )  # primary linked supplier (for sync reference)
 
+    supplier_types = db.Column(db.JSON, nullable=True)        # ["materials", "work_force"]
+    nature_of_service = db.Column(db.String(200), nullable=True)
+    service_description = db.Column(db.Text, nullable=True)
+
+    linked_supplier = db.relationship(
+        "Supplier",
+        foreign_keys=[supplier_id],
+        backref="primary_vendors",
+        lazy=True
+    )
 
     # =====================================
     # STATUS + AUDIT

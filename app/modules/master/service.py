@@ -2,6 +2,7 @@
 # Service layer for Vendor Master
 import os
 import uuid
+import json
 from flask import g
 # from pandas.io.pytables import Term
 
@@ -16,6 +17,7 @@ from app.models.term_conditions import *
 from app.extensions import db
 from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
+from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
 
 
 
@@ -95,11 +97,16 @@ def create_vendor(request):
         primary_contact_number=data.get("primaryContactNumber"),
         designation=data.get("designation"),
         whatsapp_number=data.get("whatsappNumber"),
+        email=data.get("email"),
 
         bank_account_number=data.get("bankAccountNumber"),
         bank_name=data.get("bankName"),
         branch_name=data.get("branchName"),
         ifsc_code=data.get("ifscCode"),
+
+        supplier_types=json.loads(data.get("supplierTypes", "[]") or "[]"),
+        nature_of_service=data.get("natureOfService"),
+        service_description=data.get("serviceDescription"),
     )
 
     if hasattr(g, "current_user"):
@@ -142,8 +149,10 @@ def create_vendor(request):
     )
 
     db.session.add(vendor)
-    db.session.commit()
+    db.session.flush()
 
+    auto_create_or_link_supplier(vendor)
+    db.session.commit()
 
     data = [{
         "ledgerId": vendor.id,
@@ -207,6 +216,12 @@ def get_all_vendors():
         "gstnFile": vendor.gstn_file,
         "bankDetailsFile": vendor.bank_details_file,
 
+        "email": vendor.email,
+        "supplierId": vendor.supplier_id,
+        "supplierTypes": vendor.supplier_types or [],
+        "natureOfService": vendor.nature_of_service,
+        "serviceDescription": vendor.service_description,
+
         "status": vendor.status,
         "createdAt": vendor.created_at
         })
@@ -252,6 +267,12 @@ def get_vendor_by_id(ledgerId):
         "gstnFile": vendor.gstn_file,
         "bankDetailsFile": vendor.bank_details_file,
 
+        "email": vendor.email,
+        "supplierId": vendor.supplier_id,
+        "supplierTypes": vendor.supplier_types or [],
+        "natureOfService": vendor.nature_of_service,
+        "serviceDescription": vendor.service_description,
+
         "status": vendor.status,
         "createdAt": vendor.created_at
     }]
@@ -294,6 +315,13 @@ def update_vendor(vendorId, request):
     vendor.branch_name = data.get("branchName", vendor.branch_name)
     vendor.ifsc_code = data.get("ifscCode", vendor.ifsc_code)
 
+    vendor.email = data.get("email", vendor.email)
+
+    if "supplierTypes" in data:
+        vendor.supplier_types = json.loads(data.get("supplierTypes") or "[]")
+    vendor.nature_of_service = data.get("natureOfService", vendor.nature_of_service)
+    vendor.service_description = data.get("serviceDescription", vendor.service_description)
+
     # --------------------------------------
     # File Update
     # --------------------------------------
@@ -334,6 +362,8 @@ def update_vendor(vendorId, request):
         fileName="bank_details"
     )
 
+    sync_vendor_to_suppliers(vendor)
+    auto_create_or_link_supplier(vendor)
     db.session.commit()
 
     return res(

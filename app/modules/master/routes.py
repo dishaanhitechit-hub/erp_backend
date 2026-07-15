@@ -10,6 +10,11 @@ from app.middleware.auth_middleware import login_required
 from app.middleware.role_middleware import require_super_admin,require_admin
 
 from app.modules.master.service import *
+from app.modules.master.supplier_service import (
+    create_supplier, get_all_suppliers, get_supplier_by_id,
+    update_supplier, delete_supplier, link_ledger, unlink_ledger,
+    get_nature_of_service,
+)
 
 master_bp = Blueprint('master', __name__)
 UPLOAD_FOLDER = "/uploads/vendor"
@@ -51,6 +56,64 @@ def vendor_update(vendorId):
 @require_admin
 def vendor_delete(vendorId):
     return delete_vendor(vendorId)
+
+
+
+# ==========================================
+# SUPPLIER ROUTES
+# ==========================================
+
+@master_bp.route("/supplier/create", methods=["POST"])
+@login_required
+@require_admin
+def supplier_create():
+    return create_supplier(request)
+
+
+@master_bp.route("/supplier/list", methods=["GET"])
+@login_required
+def supplier_list():
+    return get_all_suppliers()
+
+
+@master_bp.route("/supplier/<int:supplierId>", methods=["GET"])
+@login_required
+def supplier_detail(supplierId):
+    return get_supplier_by_id(supplierId)
+
+
+@master_bp.route("/supplier/update/<int:supplierId>", methods=["PUT"])
+@login_required
+@require_admin
+def supplier_update(supplierId):
+    return update_supplier(supplierId, request)
+
+
+@master_bp.route("/supplier/delete/<int:supplierId>", methods=["DELETE"])
+@login_required
+@require_admin
+def supplier_delete(supplierId):
+    return delete_supplier(supplierId)
+
+
+@master_bp.route("/supplier/<int:supplierId>/link-ledger", methods=["POST"])
+@login_required
+@require_admin
+def supplier_link_ledger(supplierId):
+    return link_ledger(supplierId, request)
+
+
+@master_bp.route("/supplier/<int:supplierId>/unlink-ledger/<int:ledgerId>", methods=["DELETE"])
+@login_required
+@require_admin
+def supplier_unlink_ledger(supplierId, ledgerId):
+    return unlink_ledger(supplierId, ledgerId)
+
+
+@master_bp.route("/supplier/nature-of-service", methods=["GET"])
+@login_required
+def supplier_nature_of_service():
+    return get_nature_of_service()
 
 
 # ITEM ROUTES
