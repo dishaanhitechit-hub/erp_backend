@@ -1,5 +1,7 @@
 import json
 from flask import g, request as flask_request
+from sqlalchemy import cast
+from sqlalchemy.dialects.postgresql import JSONB
 from app.response import res
 from app.extensions import db
 from app.models.supplier import Supplier, SupplierLedgerMap
@@ -175,7 +177,9 @@ def get_all_suppliers():
 
     query = Supplier.query
     if supplier_type:
-        query = query.filter(Supplier.supplier_types.contains([supplier_type]))
+        query = query.filter(
+            cast(Supplier.supplier_types, JSONB).contains(cast(json.dumps([supplier_type]), JSONB))
+        )
     if search:
         query = query.filter(Supplier.supplier_name.ilike(f"%{search}%"))
 
