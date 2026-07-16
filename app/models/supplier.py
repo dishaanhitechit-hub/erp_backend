@@ -36,6 +36,15 @@ class Supplier(db.Model):
     service_description = db.Column(db.Text, nullable=True)
 
     # =====================================
+    # PROJECT SCOPE
+    # =====================================
+
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
+    project_code = db.Column(db.String(50), db.ForeignKey("projects.project_code"), nullable=True)
+
+    project = db.relationship("Project", foreign_keys=[project_id], backref="suppliers", lazy=True)
+
+    # =====================================
     # STATUS + AUDIT
     # =====================================
 

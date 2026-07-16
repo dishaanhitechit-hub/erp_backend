@@ -35,6 +35,11 @@ def login_required(fn):
             "role":
             claims.get(
                 "role"
+            ),
+
+            "projectId":
+            claims.get(
+                "projectId"
             )
         }
 

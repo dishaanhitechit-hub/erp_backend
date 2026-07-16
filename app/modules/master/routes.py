@@ -6,8 +6,8 @@ from flask import send_from_directory
 from flask_jwt_extended import get_jwt
 
 from app.middleware.auth_middleware import login_required
-
-from app.middleware.role_middleware import require_super_admin,require_admin
+from app.middleware.role_middleware import require_super_admin, require_admin
+from app.response import res
 
 from app.modules.master.service import *
 from app.modules.master.supplier_service import (
@@ -65,7 +65,6 @@ def vendor_delete(vendorId):
 
 @master_bp.route("/supplier/create", methods=["POST"])
 @login_required
-@require_admin
 def supplier_create():
     return create_supplier(request)
 
@@ -84,28 +83,24 @@ def supplier_detail(supplierId):
 
 @master_bp.route("/supplier/update/<int:supplierId>", methods=["PUT"])
 @login_required
-@require_admin
 def supplier_update(supplierId):
     return update_supplier(supplierId, request)
 
 
 @master_bp.route("/supplier/delete/<int:supplierId>", methods=["DELETE"])
 @login_required
-@require_admin
 def supplier_delete(supplierId):
     return delete_supplier(supplierId)
 
 
 @master_bp.route("/supplier/<int:supplierId>/link-ledger", methods=["POST"])
 @login_required
-@require_admin
 def supplier_link_ledger(supplierId):
     return link_ledger(supplierId, request)
 
 
 @master_bp.route("/supplier/<int:supplierId>/unlink-ledger/<int:ledgerId>", methods=["DELETE"])
 @login_required
-@require_admin
 def supplier_unlink_ledger(supplierId, ledgerId):
     return unlink_ledger(supplierId, ledgerId)
 
