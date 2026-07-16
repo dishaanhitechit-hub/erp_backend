@@ -1,6 +1,6 @@
 import json
 from flask import g, request as flask_request
-from sqlalchemy import cast
+from sqlalchemy import cast, text
 from sqlalchemy.dialects.postgresql import JSONB
 from app.response import res
 from app.extensions import db
@@ -178,8 +178,8 @@ def get_all_suppliers():
     query = Supplier.query
     if supplier_type:
         query = query.filter(
-            cast(Supplier.supplier_types, JSONB).op('@>')(
-                cast(json.dumps([supplier_type]), JSONB)
+            text("supplier_types::jsonb @> CAST(:val AS jsonb)").bindparams(
+                val=json.dumps([supplier_type])
             )
         )
     if search:
