@@ -177,7 +177,7 @@ class Vendor(db.Model):
     )  # primary linked supplier (for sync reference)
 
     supplier_types = db.Column(db.JSON, nullable=True)        # ["materials", "work_force"]
-    nature_of_service = db.Column(db.String(200), nullable=True)
+    nature_of_service = db.Column(db.JSON, nullable=True)
     service_description = db.Column(db.Text, nullable=True)
 
     linked_supplier = db.relationship(

@@ -109,7 +109,11 @@ def create_vendor(request):
             request.form.getlist("supplierTypes") or
             json.loads(data.get("supplierTypes", "[]") or "[]")
         ),
-        nature_of_service=data.get("natureOfService"),
+        nature_of_service=(
+            request.form.getlist("natureOfService[]") or
+            request.form.getlist("natureOfService") or
+            json.loads(data.get("natureOfService", "[]") or "[]")
+        ),
         service_description=data.get("serviceDescription"),
     )
 
@@ -224,7 +228,7 @@ def get_all_vendors():
         "email": vendor.email,
         "supplierId": vendor.supplier_id,
         "supplierTypes": vendor.supplier_types or [],
-        "natureOfService": vendor.nature_of_service,
+        "natureOfService": vendor.nature_of_service or [],
         "serviceDescription": vendor.service_description,
 
         "status": vendor.status,
@@ -275,7 +279,7 @@ def get_vendor_by_id(ledgerId):
         "email": vendor.email,
         "supplierId": vendor.supplier_id,
         "supplierTypes": vendor.supplier_types or [],
-        "natureOfService": vendor.nature_of_service,
+        "natureOfService": vendor.nature_of_service or [],
         "serviceDescription": vendor.service_description,
 
         "status": vendor.status,
@@ -330,7 +334,14 @@ def update_vendor(vendorId, request):
         vendor.supplier_types = supplier_types_list
     elif "supplierTypes" in data:
         vendor.supplier_types = json.loads(data.get("supplierTypes") or "[]")
-    vendor.nature_of_service = data.get("natureOfService", vendor.nature_of_service)
+    nature_of_service_list = (
+        request.form.getlist("natureOfService[]") or
+        request.form.getlist("natureOfService")
+    )
+    if nature_of_service_list:
+        vendor.nature_of_service = nature_of_service_list
+    elif "natureOfService" in data:
+        vendor.nature_of_service = json.loads(data.get("natureOfService") or "[]")
     vendor.service_description = data.get("serviceDescription", vendor.service_description)
 
     # --------------------------------------

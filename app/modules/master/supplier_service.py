@@ -123,7 +123,7 @@ def _supplier_dict(supplier):
         "whatsappNumber": supplier.whatsapp_number,
         "email": supplier.email,
         "supplierTypes": supplier.supplier_types or [],
-        "natureOfService": supplier.nature_of_service,
+        "natureOfService": supplier.nature_of_service or [],
         "serviceDescription": supplier.service_description,
         "linkedLedgers": ledgers,
         "projectId": supplier.project_id,
