@@ -151,7 +151,8 @@ def create_vendor(request):
     db.session.add(vendor)
     db.session.flush()
 
-    auto_create_or_link_supplier(vendor)
+    existing_supplier_id = data.get("supplierId")
+    auto_create_or_link_supplier(vendor, int(existing_supplier_id) if existing_supplier_id else None)
     db.session.commit()
 
     data = [{

@@ -171,10 +171,13 @@ def create_supplier(request):
 
 def get_all_suppliers():
     supplier_type = flask_request.args.get("supplierType")
+    search = flask_request.args.get("search", "").strip()
 
     query = Supplier.query
     if supplier_type:
         query = query.filter(Supplier.supplier_types.contains([supplier_type]))
+    if search:
+        query = query.filter(Supplier.supplier_name.ilike(f"%{search}%"))
 
     suppliers = query.order_by(Supplier.id.desc()).all()
     return res("supplier list fetched successfully", [_supplier_dict(s) for s in suppliers], 200)
@@ -315,13 +318,25 @@ def sync_supplier_to_vendors(supplier):
     # caller must commit
 
 
-def auto_create_or_link_supplier(vendor):
+def auto_create_or_link_supplier(vendor, existing_supplier_id=None):
     """
     Called after vendor create/update.
-    If vendor has no linked supplier, auto-create one from vendor data and link it.
+    - If existing_supplier_id provided: link vendor to that supplier (no new supplier created).
+    - If vendor has no linked supplier: auto-create a new supplier from vendor data and link it.
     """
+    if existing_supplier_id:
+        supplier = Supplier.query.get(existing_supplier_id)
+        if supplier:
+            existing_map = SupplierLedgerMap.query.filter_by(
+                supplier_id=existing_supplier_id, ledger_id=vendor.id
+            ).first()
+            if not existing_map:
+                db.session.add(SupplierLedgerMap(supplier_id=existing_supplier_id, ledger_id=vendor.id))
+            vendor.supplier_id = existing_supplier_id
+        return
+
     if vendor.supplier_id:
-        return  # already linked
+        return  # already linked, nothing to do
 
     supplier = Supplier(
         supplier_code=generate_supplier_code(),
