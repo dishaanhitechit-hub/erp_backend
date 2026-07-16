@@ -1,10 +1,9 @@
 import json
 from flask import g, request as flask_request
-from sqlalchemy import cast, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import text
 from app.response import res
 from app.extensions import db
-from app.models.supplier import Supplier, SupplierLedgerMap
+from app.models.supplier import Supplier, SupplierLedgerMap, SupplierProjectMap
 from app.models.vendor import Vendor
 from app.models.project import Project
 from app.modules.work_flow import is_creator
@@ -17,7 +16,6 @@ _SUPPLIER_MODULE_CODES = [
 
 
 def _check_supplier_creator(project_code, user_id):
-    """Return True if the user is creator for ANY of the 3 supplier module codes."""
     return any(is_creator(project_code, code, user_id) for code in _SUPPLIER_MODULE_CODES)
 
 
@@ -71,15 +69,15 @@ NATURE_OF_SERVICE_MAP = {
         "Lifting Equipment",
         "Compaction Equipment",
         "Concrete Equipment",
-        "Road Construction Equipment" ,
-        "Drilling ""and"" Foundation Equipment"
+        "Road Construction Equipment",
+        "Drilling and Foundation Equipment",
         "Material Handling Equipment",
         "Demolition Equipment",
         "Transportation Equipment",
         "Site Utility Equipment",
-        "Reinforcement ""&"" Fabrication Equipment",
+        "Reinforcement & Fabrication Equipment",
         "Surveying Equipment",
-        "Miscellaneous Equipment"
+        "Miscellaneous Equipment",
     ],
     "others": [],
 }
@@ -101,7 +99,6 @@ def generate_supplier_code():
 
 
 def _supplier_dict(supplier):
-    ledger_ids = [m.ledger_id for m in supplier.ledger_mappings]
     ledgers = []
     for m in supplier.ledger_mappings:
         v = m.vendor
@@ -111,6 +108,15 @@ def _supplier_dict(supplier):
                 "ledgerCode": v.ledger_code,
                 "ledgerName": v.ledger_name,
             })
+
+    projects = []
+    for pm in supplier.project_mappings:
+        projects.append({
+            "projectId": pm.project_id,
+            "projectCode": pm.project_code,
+            "assignedAt": pm.assigned_at,
+        })
+
     return {
         "supplierId": supplier.id,
         "supplierCode": supplier.supplier_code,
@@ -126,11 +132,15 @@ def _supplier_dict(supplier):
         "natureOfService": supplier.nature_of_service or [],
         "serviceDescription": supplier.service_description,
         "linkedLedgers": ledgers,
-        "projectId": supplier.project_id,
-        "projectCode": supplier.project_code,
+        "linkedProjects": projects,
         "status": supplier.status,
         "createdAt": supplier.created_at,
     }
+
+
+def _get_current_user():
+    cu = g.current_user if hasattr(g, "current_user") else {}
+    return cu.get("id"), cu.get("projectId")
 
 
 # ─────────────────────────────────────────
@@ -161,17 +171,20 @@ def get_nature_of_service():
 def create_supplier(request):
     data = request.json or {}
 
-    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    project_id = g.current_user.get("projectId") if hasattr(g, "current_user") else None
+    user_id, project_id = _get_current_user()
     project = Project.query.get(project_id) if project_id else None
     project_code = project.project_code if project else None
 
     if not _check_supplier_creator(project_code, user_id):
         return res("You are not authorized to create supplier", [], 403)
 
+    supplier_name = data.get("supplierName", "").strip()
+    if not supplier_name:
+        return res("supplierName is required", [], 400)
+
     supplier = Supplier(
         supplier_code=generate_supplier_code(),
-        supplier_name=data.get("supplierName", "").strip(),
+        supplier_name=supplier_name,
         registered_address=data.get("registeredAddress"),
         corporate_address=data.get("corporateAddress"),
         contact_person=data.get("contactPerson"),
@@ -180,26 +193,25 @@ def create_supplier(request):
         whatsapp_number=data.get("whatsappNumber"),
         email=data.get("email"),
         supplier_types=data.get("supplierTypes", []),
-        nature_of_service=data.get("natureOfService"),
+        nature_of_service=data.get("natureOfService", []),
         service_description=data.get("serviceDescription"),
+        created_by=user_id,
     )
 
-    if not supplier.supplier_name:
-        return res("supplierName is required", [], 400)
-
-    supplier.created_by = user_id
-    if project:
-        supplier.project_id = project.id
-        supplier.project_code = project.project_code
-
     db.session.add(supplier)
-    db.session.flush()  # get supplier.id before mapping
+    db.session.flush()
+
+    # Auto-assign to current project if project context exists
+    if project:
+        db.session.add(SupplierProjectMap(
+            supplier_id=supplier.id,
+            project_id=project.id,
+            project_code=project.project_code,
+        ))
 
     # Link ledger IDs if provided
-    ledger_ids = data.get("ledgerIds", [])
-    for lid in ledger_ids:
-        vendor = Vendor.query.get(lid)
-        if vendor:
+    for lid in data.get("ledgerIds", []):
+        if Vendor.query.get(lid):
             db.session.add(SupplierLedgerMap(supplier_id=supplier.id, ledger_id=lid))
 
     db.session.commit()
@@ -214,15 +226,18 @@ def get_all_suppliers():
     supplier_type = flask_request.args.get("supplierType")
     search = flask_request.args.get("search", "").strip()
 
-    project_id = g.current_user.get("projectId") if hasattr(g, "current_user") else None
+    user_id, project_id = _get_current_user()
 
     query = Supplier.query
     if project_id:
-        query = query.filter(Supplier.project_id == project_id)
+        query = query.join(
+            SupplierProjectMap,
+            SupplierProjectMap.supplier_id == Supplier.id
+        ).filter(SupplierProjectMap.project_id == project_id)
 
     if supplier_type:
         query = query.filter(
-            text("supplier_types::jsonb @> CAST(:val AS jsonb)").bindparams(
+            text("suppliers.supplier_types::jsonb @> CAST(:val AS jsonb)").bindparams(
                 val=json.dumps([supplier_type])
             )
         )
@@ -254,8 +269,11 @@ def update_supplier(supplier_id, request):
     if not supplier:
         return res("supplier not found", [], 404)
 
-    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    if not _check_supplier_creator(supplier.project_code, user_id):
+    user_id, project_id = _get_current_user()
+    project = Project.query.get(project_id) if project_id else None
+    project_code = project.project_code if project else None
+
+    if not _check_supplier_creator(project_code, user_id):
         return res("You are not authorized to update supplier", [], 403)
 
     supplier.supplier_name = data.get("supplierName", supplier.supplier_name)
@@ -266,11 +284,12 @@ def update_supplier(supplier_id, request):
     supplier.mobile_number = data.get("mobileNumber", supplier.mobile_number)
     supplier.whatsapp_number = data.get("whatsappNumber", supplier.whatsapp_number)
     supplier.email = data.get("email", supplier.email)
-    supplier.nature_of_service = data.get("natureOfService", supplier.nature_of_service)
     supplier.service_description = data.get("serviceDescription", supplier.service_description)
 
     if "supplierTypes" in data:
         supplier.supplier_types = data["supplierTypes"]
+    if "natureOfService" in data:
+        supplier.nature_of_service = data["natureOfService"]
 
     sync_supplier_to_vendors(supplier)
     db.session.commit()
@@ -286,13 +305,80 @@ def delete_supplier(supplier_id):
     if not supplier:
         return res("supplier not found", [], 404)
 
-    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    if not _check_supplier_creator(supplier.project_code, user_id):
+    user_id, project_id = _get_current_user()
+    project = Project.query.get(project_id) if project_id else None
+    project_code = project.project_code if project else None
+
+    if not _check_supplier_creator(project_code, user_id):
         return res("You are not authorized to delete supplier", [], 403)
 
     db.session.delete(supplier)
     db.session.commit()
     return res("supplier deleted successfully", [], 200)
+
+
+# ─────────────────────────────────────────
+# ASSIGN PROJECT TO SUPPLIER
+# ─────────────────────────────────────────
+
+def assign_project(supplier_id, request):
+    data = request.json or {}
+    project_id = data.get("projectId")
+    if not project_id:
+        return res("projectId is required", [], 400)
+
+    supplier = Supplier.query.get(supplier_id)
+    if not supplier:
+        return res("supplier not found", [], 404)
+
+    project = Project.query.get(project_id)
+    if not project:
+        return res("project not found", [], 404)
+
+    user_id, _ = _get_current_user()
+    if not _check_supplier_creator(project.project_code, user_id):
+        return res("You are not authorized to assign project", [], 403)
+
+    existing = SupplierProjectMap.query.filter_by(
+        supplier_id=supplier_id, project_id=project_id
+    ).first()
+    if existing:
+        return res("supplier already assigned to this project", [], 409)
+
+    db.session.add(SupplierProjectMap(
+        supplier_id=supplier_id,
+        project_id=project_id,
+        project_code=project.project_code,
+    ))
+    db.session.commit()
+    return res("project assigned successfully", [_supplier_dict(supplier)], 200)
+
+
+# ─────────────────────────────────────────
+# REMOVE PROJECT FROM SUPPLIER
+# ─────────────────────────────────────────
+
+def remove_project(supplier_id, project_id):
+    supplier = Supplier.query.get(supplier_id)
+    if not supplier:
+        return res("supplier not found", [], 404)
+
+    project = Project.query.get(project_id)
+    project_code = project.project_code if project else None
+
+    user_id, _ = _get_current_user()
+    if not _check_supplier_creator(project_code, user_id):
+        return res("You are not authorized to remove project", [], 403)
+
+    mapping = SupplierProjectMap.query.filter_by(
+        supplier_id=supplier_id, project_id=project_id
+    ).first()
+    if not mapping:
+        return res("mapping not found", [], 404)
+
+    db.session.delete(mapping)
+    db.session.commit()
+    return res("project removed successfully", [], 200)
 
 
 # ─────────────────────────────────────────
@@ -309,8 +395,11 @@ def link_ledger(supplier_id, request):
     if not supplier:
         return res("supplier not found", [], 404)
 
-    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    if not _check_supplier_creator(supplier.project_code, user_id):
+    user_id, project_id = _get_current_user()
+    project = Project.query.get(project_id) if project_id else None
+    project_code = project.project_code if project else None
+
+    if not _check_supplier_creator(project_code, user_id):
         return res("You are not authorized to link ledger", [], 403)
 
     vendor = Vendor.query.get(ledger_id)
@@ -337,8 +426,11 @@ def unlink_ledger(supplier_id, ledger_id):
     if not supplier:
         return res("supplier not found", [], 404)
 
-    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    if not _check_supplier_creator(supplier.project_code, user_id):
+    user_id, project_id = _get_current_user()
+    project = Project.query.get(project_id) if project_id else None
+    project_code = project.project_code if project else None
+
+    if not _check_supplier_creator(project_code, user_id):
         return res("You are not authorized to unlink ledger", [], 403)
 
     mapping = SupplierLedgerMap.query.filter_by(
@@ -353,12 +445,10 @@ def unlink_ledger(supplier_id, ledger_id):
 
 
 # ─────────────────────────────────────────
-# SYNC FROM VENDOR (called internally when vendor is updated)
-# Pushes common fields to all mapped suppliers
+# SYNC FUNCTIONS (called internally)
 # ─────────────────────────────────────────
 
 def sync_vendor_to_suppliers(vendor):
-    """Vendor → Supplier: push common + supplier-specific fields to all mapped suppliers."""
     mappings = SupplierLedgerMap.query.filter_by(ledger_id=vendor.id).all()
     for m in mappings:
         supplier = m.supplier
@@ -374,11 +464,9 @@ def sync_vendor_to_suppliers(vendor):
             supplier.supplier_types = vendor.supplier_types
             supplier.nature_of_service = vendor.nature_of_service
             supplier.service_description = vendor.service_description
-    # caller must commit
 
 
 def sync_supplier_to_vendors(supplier):
-    """Supplier → Vendor: push supplier-specific fields to all mapped vendors."""
     mappings = SupplierLedgerMap.query.filter_by(supplier_id=supplier.id).all()
     for m in mappings:
         vendor = m.vendor
@@ -386,15 +474,9 @@ def sync_supplier_to_vendors(supplier):
             vendor.supplier_types = supplier.supplier_types
             vendor.nature_of_service = supplier.nature_of_service
             vendor.service_description = supplier.service_description
-    # caller must commit
 
 
 def auto_create_or_link_supplier(vendor, existing_supplier_id=None):
-    """
-    Called after vendor create/update.
-    - If existing_supplier_id provided: link vendor to that supplier (no new supplier created).
-    - If vendor has no linked supplier: auto-create a new supplier from vendor data and link it.
-    """
     if existing_supplier_id:
         supplier = Supplier.query.get(existing_supplier_id)
         if supplier:
@@ -407,7 +489,7 @@ def auto_create_or_link_supplier(vendor, existing_supplier_id=None):
         return
 
     if vendor.supplier_id:
-        return  # already linked, nothing to do
+        return
 
     supplier = Supplier(
         supplier_code=generate_supplier_code(),
@@ -429,4 +511,3 @@ def auto_create_or_link_supplier(vendor, existing_supplier_id=None):
 
     db.session.add(SupplierLedgerMap(supplier_id=supplier.id, ledger_id=vendor.id))
     vendor.supplier_id = supplier.id
-    # caller must commit

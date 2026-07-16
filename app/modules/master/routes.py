@@ -13,7 +13,7 @@ from app.modules.master.service import *
 from app.modules.master.supplier_service import (
     create_supplier, get_all_suppliers, get_supplier_by_id,
     update_supplier, delete_supplier, link_ledger, unlink_ledger,
-    get_nature_of_service,
+    get_nature_of_service, assign_project, remove_project,
 )
 
 master_bp = Blueprint('master', __name__)
@@ -103,6 +103,18 @@ def supplier_link_ledger(supplierId):
 @login_required
 def supplier_unlink_ledger(supplierId, ledgerId):
     return unlink_ledger(supplierId, ledgerId)
+
+
+@master_bp.route("/supplier/<int:supplierId>/assign-project", methods=["POST"])
+@login_required
+def supplier_assign_project(supplierId):
+    return assign_project(supplierId, request)
+
+
+@master_bp.route("/supplier/<int:supplierId>/remove-project/<int:projectId>", methods=["DELETE"])
+@login_required
+def supplier_remove_project(supplierId, projectId):
+    return remove_project(supplierId, projectId)
 
 
 @master_bp.route("/supplier/nature-of-service", methods=["GET"])

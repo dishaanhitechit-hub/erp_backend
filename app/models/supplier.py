@@ -31,18 +31,9 @@ class Supplier(db.Model):
     # SUPPLIER SPECIFIC
     # =====================================
 
-    supplier_types = db.Column(db.JSON, nullable=True)       # ["materials", "work_force"]
+    supplier_types = db.Column(db.JSON, nullable=True)
     nature_of_service = db.Column(db.JSON, nullable=True)
     service_description = db.Column(db.Text, nullable=True)
-
-    # =====================================
-    # PROJECT SCOPE
-    # =====================================
-
-    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True)
-    project_code = db.Column(db.String(50), db.ForeignKey("projects.project_code"), nullable=True)
-
-    project = db.relationship("Project", foreign_keys=[project_id], backref="suppliers", lazy=True)
 
     # =====================================
     # STATUS + AUDIT
@@ -58,10 +49,11 @@ class Supplier(db.Model):
     created_by_user = db.relationship("User", backref="created_suppliers", lazy=True)
 
     # =====================================
-    # RELATIONSHIP TO LEDGER MAP
+    # RELATIONSHIPS
     # =====================================
 
     ledger_mappings = db.relationship("SupplierLedgerMap", backref="supplier", lazy=True, cascade="all, delete-orphan")
+    project_mappings = db.relationship("SupplierProjectMap", backref="supplier", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Supplier {self.supplier_code} - {self.supplier_name}>"
@@ -82,3 +74,22 @@ class SupplierLedgerMap(db.Model):
 
     def __repr__(self):
         return f"<SupplierLedgerMap supplier={self.supplier_id} ledger={self.ledger_id}>"
+
+
+class SupplierProjectMap(db.Model):
+    __tablename__ = "supplier_project_map"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_code = db.Column(db.String(50), nullable=True)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship("Project", lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("supplier_id", "project_id", name="uq_supplier_project"),
+    )
+
+    def __repr__(self):
+        return f"<SupplierProjectMap supplier={self.supplier_id} project={self.project_id}>"
