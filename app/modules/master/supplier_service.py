@@ -318,67 +318,69 @@ def delete_supplier(supplier_id):
 
 
 # ─────────────────────────────────────────
-# ASSIGN PROJECT TO SUPPLIER
+# BULK ASSIGN SUPPLIERS TO PROJECTS (admin only)
 # ─────────────────────────────────────────
 
-def assign_project(supplier_id, request):
+def bulk_assign_projects(request):
     data = request.json or {}
-    project_id = data.get("projectId")
-    if not project_id:
-        return res("projectId is required", [], 400)
+    supplier_ids = data.get("supplierIds", [])
+    project_ids = data.get("projectIds", [])
 
-    supplier = Supplier.query.get(supplier_id)
-    if not supplier:
-        return res("supplier not found", [], 404)
+    if not supplier_ids or not project_ids:
+        return res("supplierIds and projectIds are required", [], 400)
 
-    project = Project.query.get(project_id)
-    if not project:
-        return res("project not found", [], 404)
+    project_map = {p.id: p for p in Project.query.filter(Project.id.in_(project_ids)).all()}
+    supplier_ids_valid = [s.id for s in Supplier.query.filter(Supplier.id.in_(supplier_ids)).all()]
 
-    user_id, _ = _get_current_user()
-    if not _check_supplier_creator(project.project_code, user_id):
-        return res("You are not authorized to assign project", [], 403)
+    added = 0
+    skipped = 0
+    for sid in supplier_ids_valid:
+        for pid in project_ids:
+            project = project_map.get(pid)
+            if not project:
+                skipped += 1
+                continue
+            existing = SupplierProjectMap.query.filter_by(
+                supplier_id=sid, project_id=pid
+            ).first()
+            if existing:
+                skipped += 1
+                continue
+            db.session.add(SupplierProjectMap(
+                supplier_id=sid,
+                project_id=pid,
+                project_code=project.project_code,
+            ))
+            added += 1
 
-    existing = SupplierProjectMap.query.filter_by(
-        supplier_id=supplier_id, project_id=project_id
-    ).first()
-    if existing:
-        return res("supplier already assigned to this project", [], 409)
-
-    db.session.add(SupplierProjectMap(
-        supplier_id=supplier_id,
-        project_id=project_id,
-        project_code=project.project_code,
-    ))
     db.session.commit()
-    return res("project assigned successfully", [_supplier_dict(supplier)], 200)
+    return res("bulk assign completed", [{"added": added, "skipped": skipped}], 200)
 
 
 # ─────────────────────────────────────────
-# REMOVE PROJECT FROM SUPPLIER
+# BULK REMOVE SUPPLIERS FROM PROJECTS (admin only)
 # ─────────────────────────────────────────
 
-def remove_project(supplier_id, project_id):
-    supplier = Supplier.query.get(supplier_id)
-    if not supplier:
-        return res("supplier not found", [], 404)
+def bulk_remove_projects(request):
+    data = request.json or {}
+    supplier_ids = data.get("supplierIds", [])
+    project_ids = data.get("projectIds", [])
 
-    project = Project.query.get(project_id)
-    project_code = project.project_code if project else None
+    if not supplier_ids or not project_ids:
+        return res("supplierIds and projectIds are required", [], 400)
 
-    user_id, _ = _get_current_user()
-    if not _check_supplier_creator(project_code, user_id):
-        return res("You are not authorized to remove project", [], 403)
+    removed = 0
+    for sid in supplier_ids:
+        for pid in project_ids:
+            mapping = SupplierProjectMap.query.filter_by(
+                supplier_id=sid, project_id=pid
+            ).first()
+            if mapping:
+                db.session.delete(mapping)
+                removed += 1
 
-    mapping = SupplierProjectMap.query.filter_by(
-        supplier_id=supplier_id, project_id=project_id
-    ).first()
-    if not mapping:
-        return res("mapping not found", [], 404)
-
-    db.session.delete(mapping)
     db.session.commit()
-    return res("project removed successfully", [], 200)
+    return res("bulk remove completed", [{"removed": removed}], 200)
 
 
 # ─────────────────────────────────────────
