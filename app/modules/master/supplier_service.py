@@ -116,7 +116,7 @@ def get_nature_of_service():
     merged = []
     seen = set()
     for t in types_param.split(","):
-        key = t.strip().lower().replace("-", "_").replace(" ", "_")
+        key = t.strip()
         for item in NATURE_OF_SERVICE_MAP.get(key, []):
             if item not in seen:
                 seen.add(item)
