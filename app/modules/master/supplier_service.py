@@ -53,7 +53,21 @@ NATURE_OF_SERVICE_MAP = {
         "Welding Gang",
         "Wooden Carpentry Gang",
     ],
-    "Plant_Machinery": [],
+    "Plant_Machinery": [
+        "Earthmoving Equipment",
+        "Lifting Equipment",
+        "Compaction Equipment",
+        "Concrete Equipment",
+        "Road Construction Equipment" ,
+        "Drilling ""and"" Foundation Equipment"
+        "Material Handling Equipment",
+        "Demolition Equipment",
+        "Transportation Equipment",
+        "Site Utility Equipment",
+        "Reinforcement ""&"" Fabrication Equipment",
+        "Surveying Equipment",
+        "Miscellaneous Equipment"
+    ],
     "others": [],
 }
 
