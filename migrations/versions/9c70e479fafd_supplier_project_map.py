@@ -33,7 +33,8 @@ def upgrade():
         batch_op.alter_column('nature_of_service',
                existing_type=sa.VARCHAR(length=200),
                type_=sa.JSON(),
-               existing_nullable=True)
+               existing_nullable=True,
+               postgresql_using='nature_of_service::json')
         batch_op.drop_constraint(batch_op.f('suppliers_project_code_fkey'), type_='foreignkey')
         batch_op.drop_constraint(batch_op.f('suppliers_project_id_fkey'), type_='foreignkey')
         batch_op.drop_column('project_id')
@@ -43,7 +44,8 @@ def upgrade():
         batch_op.alter_column('nature_of_service',
                existing_type=sa.VARCHAR(length=200),
                type_=sa.JSON(),
-               existing_nullable=True)
+               existing_nullable=True,
+               postgresql_using='nature_of_service::json')
 
     # ### end Alembic commands ###
 
