@@ -45,7 +45,7 @@ class Vendor(db.Model):
     category_code = db.Column(
         db.String(50),
         db.ForeignKey("category_master.fixed_code"),
-        nullable=False
+        nullable=True
     )
 
     # =====================================
