@@ -104,7 +104,11 @@ def create_vendor(request):
         branch_name=data.get("branchName"),
         ifsc_code=data.get("ifscCode"),
 
-        supplier_types=json.loads(data.get("supplierTypes", "[]") or "[]"),
+        supplier_types=(
+            request.form.getlist("supplierTypes[]") or
+            request.form.getlist("supplierTypes") or
+            json.loads(data.get("supplierTypes", "[]") or "[]")
+        ),
         nature_of_service=data.get("natureOfService"),
         service_description=data.get("serviceDescription"),
     )
@@ -318,7 +322,13 @@ def update_vendor(vendorId, request):
 
     vendor.email = data.get("email", vendor.email)
 
-    if "supplierTypes" in data:
+    supplier_types_list = (
+        request.form.getlist("supplierTypes[]") or
+        request.form.getlist("supplierTypes")
+    )
+    if supplier_types_list:
+        vendor.supplier_types = supplier_types_list
+    elif "supplierTypes" in data:
         vendor.supplier_types = json.loads(data.get("supplierTypes") or "[]")
     vendor.nature_of_service = data.get("natureOfService", vendor.nature_of_service)
     vendor.service_description = data.get("serviceDescription", vendor.service_description)
