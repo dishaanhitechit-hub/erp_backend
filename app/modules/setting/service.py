@@ -814,7 +814,7 @@ def get_all_project(exclude_current: bool = False, current_project_code: str = N
         projects = query.all()
 
     else:
-        if role == "super_admin":
+        if role == "super_admin" or role == "admin":
             projects = Project.query.all()
         else:
             projects = (
