@@ -416,18 +416,10 @@ def create_pw_order(data, user_id, files=None):
         # ── terms ─────────────────────────────────────────────────
         for idx, row in enumerate(terms, start=1):
 
-            term = Term.query.get(row.get("termId"))
-            if not term:
-                db.session.rollback()
-                return res(
-                    f"Term {row.get('termId')} not found", [], 404
-                )
-
             custom_groups = row.get("termGroups")
             db.session.add(
                 ProjectWorkOrderTermsCondition(
                     order_id       = order.id,
-                    term_id        = term.term_id,
                     source_term_id = row.get("sourceTermId"),
                     custom_groups  = json.dumps(custom_groups) if custom_groups else None,
                     sequence_no    = row.get("sequenceNo", idx),
@@ -616,16 +608,10 @@ def edit_pw_order(order_id, data, user_id, files=None):
             terms = json.loads(terms)
 
         for idx, row in enumerate(terms, start=1):
-            term = Term.query.get(row.get("termId"))
-            if not term:
-                db.session.rollback()
-                return res(f"Term {row.get('termId')} not found", [], 404)
-
             custom_groups = row.get("termGroups")
             db.session.add(
                 ProjectWorkOrderTermsCondition(
                     order_id       = order.id,
-                    term_id        = term.term_id,
                     source_term_id = row.get("sourceTermId"),
                     custom_groups  = json.dumps(custom_groups) if custom_groups else None,
                     sequence_no    = row.get("sequenceNo", idx),
@@ -697,36 +683,14 @@ def get_pw_order_details(order_id: int):
 
         terms = []
         for t in order.terms_conditions:
-
-            if t.custom_groups:
-                try:
-                    groups = json.loads(t.custom_groups)
-                except Exception:
-                    groups = []
-            else:
-                groups = [
-                    {
-                        "groupId": g.group_id,
-                        "sortOrder": g.sort_order,
-                        "title": g.title,
-                        "description": g.description,
-                        "pointStyle": g.point_style,
-                        "points": [
-                            {"pointId": p.point_id, "sortOrder": p.sort_order, "text": p.text}
-                            for p in g.points
-                        ]
-                    }
-                    for g in t.term.term_groups
-                ]
-
+            try:
+                groups = json.loads(t.custom_groups) if t.custom_groups else []
+            except Exception:
+                groups = []
             terms.append({
-                "id":          t.id,
-                "termId":      t.term_id,
+                "termId":      t.id,
                 "sourceTermId": t.source_term_id,
                 "sequenceNo":  t.sequence_no,
-                "module":      t.term.module,
-                "subModule":   t.term.sub_module,
-                "termType":    t.term.term_type,
                 "termGroups":  groups,
             })
 

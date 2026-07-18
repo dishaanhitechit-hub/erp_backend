@@ -367,22 +367,16 @@ class ProjectWorkOrderTermsCondition(db.Model):
         nullable=False
     )
 
-    # ── Term Reference ────────────────────────────────────────────
-    term_id = db.Column(
-        db.Integer,
-        db.ForeignKey("terms.term_id"),
-        nullable=False
-    )
-
-    # JSON array of customised termGroups; null means use master groups as-is
-    custom_groups = db.Column(
-        db.Text
-    )
-
+    # FK to master terms table — for referential integrity only
     source_term_id = db.Column(
         db.Integer,
         db.ForeignKey("terms.term_id"),
         nullable=True
+    )
+
+    # JSON array of customised termGroups
+    custom_groups = db.Column(
+        db.Text
     )
 
     sequence_no = db.Column(
@@ -413,12 +407,6 @@ class ProjectWorkOrderTermsCondition(db.Model):
             "terms_conditions",
             cascade="all,delete-orphan"
         )
-    )
-
-    term = db.relationship(
-        "Term",
-        foreign_keys=[term_id],
-        lazy=True
     )
 
     creator = db.relationship(
