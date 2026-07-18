@@ -1352,106 +1352,171 @@ def delete_unit(unitId):
 
 # ______________________________
 
-def create_term(data,created=None):
-    term=TermConditions(
-        header=data.get("header"),
-        sub_header=data.get("sub_header"),
-        term_description=data.get("termDescription"),
-        category=data.get("category")
+from flask import request
+from app.models.term import Term, TermGroup, TermPoint, VALID_MODULES, MODULE_SUBMODULE_MAP, VALID_TERM_TYPES, VALID_POINT_STYLES
 
+
+def _validate_term_fields(data):
+    module = data.get("module")
+    sub_module = data.get("subModule")
+    term_type = data.get("termType")
+
+    if module not in VALID_MODULES:
+        return res(
+            f"Invalid module '{module}'. Allowed: {', '.join(VALID_MODULES)}",
+            [], 400
+        )
+
+    allowed_sub = MODULE_SUBMODULE_MAP.get(module, [])
+    if sub_module not in allowed_sub:
+        return res(
+            f"Invalid subModule '{sub_module}' for module '{module}'. Allowed: {', '.join(allowed_sub)}",
+            [], 400
+        )
+
+    if term_type not in VALID_TERM_TYPES:
+        return res(
+            f"Invalid termType '{term_type}'. Allowed: {', '.join(VALID_TERM_TYPES)}",
+            [], 400
+        )
+
+    for i, group in enumerate(data.get("termGroups", [])):
+        ps = group.get("pointStyle")
+        if ps not in VALID_POINT_STYLES:
+            return res(
+                f"Invalid pointStyle '{ps}' in termGroups[{i}]. Allowed: {', '.join(VALID_POINT_STYLES)}",
+                [], 400
+            )
+
+    return None
+
+
+def _serialize_term(term):
+    return {
+        "termId": term.term_id,
+        "module": term.module,
+        "subModule": term.sub_module,
+        "termType": term.term_type,
+        "termGroups": [
+            {
+                "groupId": g.group_id,
+                "sortOrder": g.sort_order,
+                "title": g.title,
+                "description": g.description,
+                "pointStyle": g.point_style,
+                "points": [
+                    {
+                        "pointId": p.point_id,
+                        "sortOrder": p.sort_order,
+                        "text": p.text
+                    }
+                    for p in g.points
+                ]
+            }
+            for g in term.term_groups
+        ]
+    }
+
+
+def create_term(data):
+    err = _validate_term_fields(data)
+    if err:
+        return err
+
+    term = Term(
+        module=data.get("module"),
+        sub_module=data.get("subModule"),
+        term_type=data.get("termType"),
     )
-    if hasattr(g, "current_user"):
-        term.created_by = g.current_user.get("id")
-    else:
-        term.created_by = None
-
     db.session.add(term)
-    db.session.commit()
-    data=[
-        {
-            "termId": term.id,
-            "header": term.header,
-            "sub_header": term.sub_header,
-            "term_description": term.term_description,
-            "category": term.category
-        }
-    ]
+    db.session.flush()
 
-    return res("Term created successfully", data, 200)
+    for g_data in data.get("termGroups", []):
+        group = TermGroup(
+            term_id=term.term_id,
+            sort_order=g_data.get("sortOrder", 0),
+            title=g_data.get("title"),
+            description=g_data.get("description"),
+            point_style=g_data.get("pointStyle"),
+        )
+        db.session.add(group)
+        db.session.flush()
+
+        for p_data in g_data.get("points", []):
+            db.session.add(TermPoint(
+                group_id=group.group_id,
+                sort_order=p_data.get("sortOrder", 0),
+                text=p_data.get("text"),
+            ))
+
+    db.session.commit()
+
+    return res("Term created successfully", [{"termId": term.term_id}], 201)
+
 
 def term_edit(termId, data):
-    term=TermConditions.query.get(termId)
-
+    term = Term.query.get(termId)
     if not term:
         return res("Term not found", [], 404)
 
-    term.header = data.get("header",term.header)
-    term.category=data.get("category",term.category)
-    term.sub_header = data.get("sub_header",term.sub_header)
-    term.term_description = data.get("term_description",term.term_description)
+    err = _validate_term_fields(data)
+    if err:
+        return err
+
+    term.module = data.get("module")
+    term.sub_module = data.get("subModule")
+    term.term_type = data.get("termType")
+
+    for g in list(term.term_groups):
+        db.session.delete(g)
+    db.session.flush()
+
+    for g_data in data.get("termGroups", []):
+        group = TermGroup(
+            term_id=term.term_id,
+            sort_order=g_data.get("sortOrder", 0),
+            title=g_data.get("title"),
+            description=g_data.get("description"),
+            point_style=g_data.get("pointStyle"),
+        )
+        db.session.add(group)
+        db.session.flush()
+
+        for p_data in g_data.get("points", []):
+            db.session.add(TermPoint(
+                group_id=group.group_id,
+                sort_order=p_data.get("sortOrder", 0),
+                text=p_data.get("text"),
+            ))
 
     db.session.commit()
 
-    data=[
-        {
-            "termId": term.id,
-            "header": term.header,
-            "sub_header": term.sub_header,
-            "term_description": term.term_description
-        }
-    ]
+    return res("Term updated successfully", [], 200)
 
-    return res("Term edited successfully", data, 200)
-from flask import request
+
 def get_all_terms():
+    query = Term.query
     module = request.args.get("module")
-    Query = TermConditions.query
     if module:
-        Query = Query.filter(TermConditions.category == module)
-    terms = Query.order_by(TermConditions.id.desc()).all()
-    data=[]
-    for t in terms:
-        data.append({
-            "termId": t.id,
-            "header": t.header,
-            "category":t.category,
-            "sub_header": t.sub_header,
-            "term_description": t.term_description
-        })
+        query = query.filter(Term.module == module)
+    terms = query.order_by(Term.term_id.desc()).all()
+    return res("All terms fetched successfully", [_serialize_term(t) for t in terms], 200)
 
-    return res("All terms fetched successfully", data, 200)
 
 def get_term_by_id(termId):
-    term=TermConditions.query.get(termId)
-
+    term = Term.query.get(termId)
     if not term:
         return res("Term not found", [], 404)
-    data=[{
-        "termId": term.id,
-        "header": term.header,
-        "category": term.category,
-        "sub_header": term.sub_header,
-        "term_description": term.term_description
-
-    }]
-
-    return res("Term fetched successfully", data, 200)
+    return res("Term fetched successfully", [_serialize_term(term)], 200)
 
 
 def delete_term(termId):
-    term = TermConditions.query.get(termId)
-
+    term = Term.query.get(termId)
     if not term:
         return res("Term not found", [], 404)
-
     db.session.delete(term)
     db.session.commit()
-
-    return res(
-        "Term deleted successfully",
-        [],
-        200
-    )
+    return res("Term deleted successfully", [], 200)
 
 
 # ==========================================

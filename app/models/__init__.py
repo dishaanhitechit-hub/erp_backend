@@ -23,6 +23,7 @@ from .approval_path import (ApprovalPath,
     ApprovalHistory,
     ModuleMaster)
 from .term_conditions import *
+from .term import Term, TermGroup, TermPoint
 
 # from .communication_models import (
 #     CommConversation, CommConversationMember,
