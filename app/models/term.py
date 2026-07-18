@@ -5,7 +5,7 @@ VALID_MODULES = ["Order", "Enquiry", "Despatch", "Delivery", "Rent"]
 
 MODULE_SUBMODULE_MAP = {
     "Order": [
-        "Purchase_Order", "Service_Order", "Work_Order",
+        "Purchases_Order", "Service_Order", "Work_Order",
         "Customer_Supply_Order", "Site_Transfer_Order"
     ],
     "Enquiry": ["Material_Enquiry", "Service_Enquiry"],
