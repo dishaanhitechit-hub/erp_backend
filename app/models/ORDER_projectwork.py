@@ -379,6 +379,12 @@ class ProjectWorkOrderTermsCondition(db.Model):
         db.Text
     )
 
+    source_term_id = db.Column(
+        db.Integer,
+        db.ForeignKey("terms.term_id"),
+        nullable=True
+    )
+
     sequence_no = db.Column(
         db.Integer,
         default=1

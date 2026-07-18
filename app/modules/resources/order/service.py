@@ -419,6 +419,7 @@ files=None,
                 OrderTermsCondition(
                     order_id=order.id,
                     term_id=term.term_id,
+                    source_term_id=row.get("sourceTermId"),
                     custom_groups=json.dumps(custom_groups) if custom_groups else None,
                     sequence_no=row.get("sequenceNo", idx),
                     created_by=user_id
@@ -791,6 +792,7 @@ def get_order_details(
             terms.append({
                 "id": t.id,
                 "termId": t.term_id,
+                "sourceTermId": t.source_term_id,
                 "sequenceNo": t.sequence_no,
                 "module": t.term.module,
                 "subModule": t.term.sub_module,
@@ -1946,6 +1948,7 @@ def edit_order(order_id, data, user_id, files=None):
             db.session.add(OrderTermsCondition(
                 order_id=order.id,
                 term_id=term.term_id,
+                source_term_id=row.get("sourceTermId"),
                 custom_groups=json.dumps(custom_groups) if custom_groups else None,
                 sequence_no=row.get("sequenceNo", idx),
                 created_by=user_id,

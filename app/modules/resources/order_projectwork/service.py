@@ -426,11 +426,12 @@ def create_pw_order(data, user_id, files=None):
             custom_groups = row.get("termGroups")
             db.session.add(
                 ProjectWorkOrderTermsCondition(
-                    order_id      = order.id,
-                    term_id       = term.term_id,
-                    custom_groups = json.dumps(custom_groups) if custom_groups else None,
-                    sequence_no   = row.get("sequenceNo", idx),
-                    created_by    = user_id,
+                    order_id       = order.id,
+                    term_id        = term.term_id,
+                    source_term_id = row.get("sourceTermId"),
+                    custom_groups  = json.dumps(custom_groups) if custom_groups else None,
+                    sequence_no    = row.get("sequenceNo", idx),
+                    created_by     = user_id,
                 )
             )
 
@@ -623,11 +624,12 @@ def edit_pw_order(order_id, data, user_id, files=None):
             custom_groups = row.get("termGroups")
             db.session.add(
                 ProjectWorkOrderTermsCondition(
-                    order_id      = order.id,
-                    term_id       = term.term_id,
-                    custom_groups = json.dumps(custom_groups) if custom_groups else None,
-                    sequence_no   = row.get("sequenceNo", idx),
-                    created_by    = user_id,
+                    order_id       = order.id,
+                    term_id        = term.term_id,
+                    source_term_id = row.get("sourceTermId"),
+                    custom_groups  = json.dumps(custom_groups) if custom_groups else None,
+                    sequence_no    = row.get("sequenceNo", idx),
+                    created_by     = user_id,
                 )
             )
 
@@ -718,13 +720,14 @@ def get_pw_order_details(order_id: int):
                 ]
 
             terms.append({
-                "id":        t.id,
-                "termId":    t.term_id,
-                "sequenceNo": t.sequence_no,
-                "module":    t.term.module,
-                "subModule": t.term.sub_module,
-                "termType":  t.term.term_type,
-                "termGroups": groups,
+                "id":          t.id,
+                "termId":      t.term_id,
+                "sourceTermId": t.source_term_id,
+                "sequenceNo":  t.sequence_no,
+                "module":      t.term.module,
+                "subModule":   t.term.sub_module,
+                "termType":    t.term.term_type,
+                "termGroups":  groups,
             })
 
         cc_summary = get_pw_cc_code_summary(order.id)
