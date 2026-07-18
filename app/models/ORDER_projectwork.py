@@ -370,12 +370,12 @@ class ProjectWorkOrderTermsCondition(db.Model):
     # ── Term Reference ────────────────────────────────────────────
     term_id = db.Column(
         db.Integer,
-        db.ForeignKey("term_conditions.id"),
+        db.ForeignKey("terms.term_id"),
         nullable=False
     )
 
-    # ── Optional User-edited Description ─────────────────────────
-    custom_description = db.Column(
+    # JSON array of customised termGroups; null means use master groups as-is
+    custom_groups = db.Column(
         db.Text
     )
 
@@ -410,7 +410,7 @@ class ProjectWorkOrderTermsCondition(db.Model):
     )
 
     term = db.relationship(
-        "TermConditions",
+        "Term",
         lazy=True
     )
 

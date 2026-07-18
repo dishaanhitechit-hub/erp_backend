@@ -371,13 +371,13 @@ class OrderTermsCondition(db.Model):
     term_id=db.Column(
         db.Integer,
         db.ForeignKey(
-            "term_conditions.id"
+            "terms.term_id"
         ),
         nullable=False
     )
 
-    # optional if user edits after selecting
-    custom_description=db.Column(
+    # JSON array of customised termGroups; null means use master groups as-is
+    custom_groups=db.Column(
         db.Text
     )
 
@@ -414,7 +414,7 @@ class OrderTermsCondition(db.Model):
 
 
     term=db.relationship(
-        "TermConditions",
+        "Term",
         lazy=True
     )
 

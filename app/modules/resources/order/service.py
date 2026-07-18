@@ -15,6 +15,7 @@ from app.response import res
 from app.cloudinary_uploader import *
 from app.modules.work_flow import *
 from app.models.term_conditions import *
+from app.models.term import Term
 from app.models.unit import Unit
 from app.models.category_group import *
 import json
@@ -402,9 +403,7 @@ files=None,
 
         for idx, row in enumerate(terms, start=1):
 
-            term = TermConditions.query.get(
-                row.get("termId")
-            )
+            term = Term.query.get(row.get("termId"))
 
             if not term:
                 db.session.rollback()
@@ -415,25 +414,13 @@ files=None,
                     404
                 )
 
+            custom_groups = row.get("termGroups")
             db.session.add(
-
                 OrderTermsCondition(
-
                     order_id=order.id,
-
-                    term_id=term.id,
-
-                    custom_description=
-                    row.get(
-                        "description"
-                    ) or None,
-
-                    sequence_no=
-                    row.get(
-                        "sequenceNo",
-                        idx
-                    ),
-
+                    term_id=term.term_id,
+                    custom_groups=json.dumps(custom_groups) if custom_groups else None,
+                    sequence_no=row.get("sequenceNo", idx),
                     created_by=user_id
                 )
             )
@@ -780,27 +767,35 @@ def get_order_details(
 
         for t in order.terms_conditions:
 
+            if t.custom_groups:
+                try:
+                    groups = json.loads(t.custom_groups)
+                except Exception:
+                    groups = []
+            else:
+                groups = [
+                    {
+                        "groupId": g.group_id,
+                        "sortOrder": g.sort_order,
+                        "title": g.title,
+                        "description": g.description,
+                        "pointStyle": g.point_style,
+                        "points": [
+                            {"pointId": p.point_id, "sortOrder": p.sort_order, "text": p.text}
+                            for p in g.points
+                        ]
+                    }
+                    for g in t.term.term_groups
+                ]
+
             terms.append({
-
-                "id":
-                t.id,
-
-                "termId":
-                t.term_id,
-
-                "header":
-                t.term.header,
-
-                "subHeader":
-                t.term.sub_header,
-
-                "description":
-                (
-                    t.custom_description
-                    or
-                    t.term.term_description
-                )
-
+                "id": t.id,
+                "termId": t.term_id,
+                "sequenceNo": t.sequence_no,
+                "module": t.term.module,
+                "subModule": t.term.sub_module,
+                "termType": t.term.term_type,
+                "termGroups": groups,
             })
         cc_summary = get_cc_code_summary(
             order.id
@@ -1942,16 +1937,16 @@ def edit_order(order_id, data, user_id, files=None):
 
         for idx, row in enumerate(terms, start=1):
 
-            term = TermConditions.query.get(row.get("termId"))
+            term = Term.query.get(row.get("termId"))
             if not term:
                 db.session.rollback()
                 return res(f"Term {row.get('termId')} not found", [], 404)
 
+            custom_groups = row.get("termGroups")
             db.session.add(OrderTermsCondition(
                 order_id=order.id,
-                term_id=term.id,
-                # caller can pass customised text; falls back to master in get_order_details
-                custom_description=row.get("description") or None,
+                term_id=term.term_id,
+                custom_groups=json.dumps(custom_groups) if custom_groups else None,
                 sequence_no=row.get("sequenceNo", idx),
                 created_by=user_id,
             ))

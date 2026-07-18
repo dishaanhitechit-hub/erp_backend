@@ -1497,8 +1497,11 @@ def term_edit(termId, data):
 def get_all_terms():
     query = Term.query
     module = request.args.get("module")
+    sub_module = request.args.get("subModule")
     if module:
         query = query.filter(Term.module == module)
+    if sub_module:
+        query = query.filter(Term.sub_module == sub_module)
     terms = query.order_by(Term.term_id.desc()).all()
     return res("All terms fetched successfully", [_serialize_term(t) for t in terms], 200)
 
