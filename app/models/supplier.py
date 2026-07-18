@@ -14,8 +14,9 @@ class Supplier(db.Model):
     # =====================================
 
     supplier_name = db.Column(db.String(200), nullable=False)
-    registered_address = db.Column(db.Text, nullable=True)
-    corporate_address = db.Column(db.Text, nullable=True)
+
+    registered_address = db.Column(db.Text,unique=True, nullable=True)
+    corporate_address = db.Column(db.Text,unique=True, nullable=True)
 
     # =====================================
     # CONTACT DETAILS
@@ -23,7 +24,7 @@ class Supplier(db.Model):
 
     contact_person = db.Column(db.String(150), nullable=True)
     designation = db.Column(db.String(100), nullable=True)
-    mobile_number = db.Column(db.String(20), nullable=True)
+    mobile_number = db.Column(db.String(20),unique=True, nullable=True)
     whatsapp_number = db.Column(db.String(20), nullable=True)
     email = db.Column(db.String(150), nullable=True)
 
