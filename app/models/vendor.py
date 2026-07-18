@@ -30,13 +30,11 @@ class Vendor(db.Model):
 
     registered_address = db.Column(
         db.Text,
-        unique=True,
         nullable=True
     )
 
     corporate_address = db.Column(
         db.Text,
-        unique=True,
         nullable=True
     )
 
@@ -56,13 +54,11 @@ class Vendor(db.Model):
 
     pan = db.Column(
         db.String(20),
-        unique=True,
         nullable=True
     )
 
     gstin = db.Column(
         db.String(30),
-        unique=True,
         nullable=True
     )
 
@@ -87,7 +83,6 @@ class Vendor(db.Model):
 
     primary_contact_number = db.Column(
         db.String(20),
-        unique=True,
         nullable=True
     )
 
