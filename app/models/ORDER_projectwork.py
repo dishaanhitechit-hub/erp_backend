@@ -417,6 +417,7 @@ class ProjectWorkOrderTermsCondition(db.Model):
 
     term = db.relationship(
         "Term",
+        foreign_keys=[term_id],
         lazy=True
     )
 

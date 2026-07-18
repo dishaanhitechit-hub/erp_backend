@@ -1,8 +1,8 @@
 """Order term
 
-Revision ID: a175cfa54817
+Revision ID: 66fd3ae6a94e
 Revises: 
-Create Date: 2026-07-18 17:29:48.635147
+Create Date: 2026-07-18 17:39:10.011829
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'a175cfa54817'
+revision = '66fd3ae6a94e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -27,16 +27,16 @@ def upgrade():
         batch_op.create_foreign_key(None, 'terms', ['source_term_id'], ['term_id'])
 
     with op.batch_alter_table('suppliers', schema=None) as batch_op:
+        batch_op.create_unique_constraint(None, ['registered_address'])
         batch_op.create_unique_constraint(None, ['corporate_address'])
         batch_op.create_unique_constraint(None, ['mobile_number'])
-        batch_op.create_unique_constraint(None, ['registered_address'])
 
     with op.batch_alter_table('vendors', schema=None) as batch_op:
-        batch_op.create_unique_constraint(None, ['gstin'])
-        batch_op.create_unique_constraint(None, ['primary_contact_number'])
-        batch_op.create_unique_constraint(None, ['pan'])
-        batch_op.create_unique_constraint(None, ['corporate_address'])
         batch_op.create_unique_constraint(None, ['registered_address'])
+        batch_op.create_unique_constraint(None, ['primary_contact_number'])
+        batch_op.create_unique_constraint(None, ['corporate_address'])
+        batch_op.create_unique_constraint(None, ['pan'])
+        batch_op.create_unique_constraint(None, ['gstin'])
 
     # ### end Alembic commands ###
 
