@@ -15,7 +15,7 @@ from app.modules.work_flow import (
     get_history,
 )
 
-_MODULE = "bill_recieved_register"
+_MODULE = "bill_recieve_register"
 
 
 def _fmt_date(d):
