@@ -761,10 +761,17 @@ def get_order_details(
             except Exception:
                 groups = []
 
+            term_type = None
+            if t.source_term_id:
+                master = Term.query.get(t.source_term_id)
+                if master:
+                    term_type = master.term_type
+
             terms.append({
                 "termId": t.id,
                 "sourceTermId": t.source_term_id,
                 "sequenceNo": t.sequence_no,
+                "termType": term_type,
                 "termGroups": groups,
             })
         cc_summary = get_cc_code_summary(
