@@ -141,23 +141,21 @@ def _fetch_details(module: str, ids: list, has_permission: bool) -> list:
         return []
     results = []
     for record_id in ids:
-        try:
-            resp = detail_fn(record_id)
-            data = resp.get_json()
-            if data and data.get("data"):
-                item = data["data"]
-                if isinstance(item, list) and item:
-                    record = item[0]
-                elif isinstance(item, dict):
-                    record = item
-                else:
-                    continue
-                if has_permission:
-                    results.append(record)
-                else:
-                    results.append(_limited_output(record, module))
-        except Exception:
+        resp = detail_fn(record_id)
+        data = resp.get_json()
+        if not data or not data.get("data"):
             continue
+        item = data["data"]
+        if isinstance(item, list) and item:
+            record = item[0]
+        elif isinstance(item, dict):
+            record = item
+        else:
+            continue
+        if has_permission:
+            results.append(record)
+        else:
+            results.append(_limited_output(record, module))
     return results
 
 
@@ -198,9 +196,10 @@ def natural_language_search():
         parsed = parse_query(query)
 
         # ── resolve permissions ────────────────────────────────────
-        is_admin = _is_super_admin(user_id)
-        allowed_projects = None if is_admin else _get_allowed_projects(user_id)
-        permitted_modules = None if is_admin else _get_permitted_modules(user_id)
+        user_id_int = int(user_id)
+        is_admin = _is_super_admin(user_id_int)
+        allowed_projects = None if is_admin else _get_allowed_projects(user_id_int) or None
+        permitted_modules = None if is_admin else _get_permitted_modules(user_id_int)
 
         # ── resolve modules ────────────────────────────────────────
         modules = parsed.get("modules") or [parsed.get("module")]
