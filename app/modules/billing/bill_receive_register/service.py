@@ -5,6 +5,7 @@ from datetime import datetime
 from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster
 from app.response import res
+from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -89,7 +90,7 @@ def get_orders_by_vendor(data):
 # 2. CREATE BRR
 # ══════════════════════════════════════════════════════════════════
 
-def create_brr(data, user_id):
+def create_brr(data, user_id, files=None):
     try:
         allowed = is_creator(data.get("projectCode"), _MODULE, user_id)
         if not allowed:
@@ -100,6 +101,18 @@ def create_brr(data, user_id):
         basic  = float(data.get("basicAmount") or 0)
         gst    = float(data.get("gstAmount")   or 0)
         total  = basic + gst
+
+        # ── file upload ────────────────────────────────────────
+        attached_doc = None
+        if files:
+            doc_file = files.get("attachedDoc")
+            if doc_file:
+                attached_doc = upload_file_to_bunny(
+                    file       = doc_file,
+                    mainFolder = "brr",
+                    subFolder  = brr_no,
+                    fileName   = "attached_doc"
+                )
 
         brr = BrrMaster(
             brr_no             = brr_no,
@@ -118,7 +131,7 @@ def create_brr(data, user_id):
             basic_amount       = basic,
             gst_amount         = gst,
             total_amount       = total,
-            attached_doc       = data.get("attachedDoc"),
+            attached_doc       = attached_doc,
             workflow_status    = "Draft",
             current_level      = 0,
             locked             = False,
@@ -130,7 +143,7 @@ def create_brr(data, user_id):
 
         return res(
             "BRR created",
-            {"brrId": brr.id, "brrNo": brr.brr_no},
+            {"brrId": brr.id, "brrNo": brr.brr_no, "attachedDoc": brr.attached_doc},
             201
         )
 
@@ -235,7 +248,7 @@ def get_brr_details(brr_id):
 # 5. EDIT BRR
 # ══════════════════════════════════════════════════════════════════
 
-def edit_brr(brr_id, data, user_id):
+def edit_brr(brr_id, data, user_id, files=None):
     try:
         brr = BrrMaster.query.get(brr_id)
         if not brr:
@@ -262,7 +275,6 @@ def edit_brr(brr_id, data, user_id):
             ("submissionDate",    "submission_date"),
             ("receivedThrough",   "received_through"),
             ("receivedReference", "received_reference"),
-            ("attachedDoc",       "attached_doc"),
         ]
         for key, attr in fields:
             if data.get(key) is not None:
@@ -275,6 +287,17 @@ def edit_brr(brr_id, data, user_id):
             brr.gst_amount   = gst
             brr.total_amount = basic + gst
 
+        # ── file update ────────────────────────────────────────
+        if files:
+            doc_file = files.get("attachedDoc")
+            if doc_file:
+                brr.attached_doc = upload_file_to_bunny(
+                    file       = doc_file,
+                    mainFolder = "brr",
+                    subFolder  = brr.brr_no,
+                    fileName   = "attached_doc"
+                )
+
         if brr.workflow_status == "Reback":
             brr.correction_sent_at = None
 
@@ -283,7 +306,7 @@ def edit_brr(brr_id, data, user_id):
 
         db.session.commit()
 
-        return res("BRR updated", {"brrId": brr.id, "brrNo": brr.brr_no}, 200)
+        return res("BRR updated", {"brrId": brr.id, "brrNo": brr.brr_no, "attachedDoc": brr.attached_doc}, 200)
 
     except Exception as e:
         db.session.rollback()

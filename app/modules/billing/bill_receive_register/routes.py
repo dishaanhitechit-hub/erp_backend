@@ -43,7 +43,7 @@ def api_brr_vendor_orders():
 def api_create_brr():
     user_id = get_jwt_identity()
     TransactionTracker.mark_open(user_id, "brr_create")
-    response = create_brr(data=request.get_json() or {}, user_id=user_id)
+    response = create_brr(data=dict(request.form), user_id=user_id, files=request.files)
     TransactionTracker.mark_closed(user_id)
     return response
 
@@ -83,7 +83,7 @@ def api_brr_details(brr_id):
 def api_edit_brr(brr_id):
     user_id = get_jwt_identity()
     TransactionTracker.mark_open(user_id, "brr_edit")
-    response = edit_brr(brr_id=brr_id, data=request.get_json() or {}, user_id=user_id)
+    response = edit_brr(brr_id=brr_id, data=dict(request.form), user_id=user_id, files=request.files)
     TransactionTracker.mark_closed(user_id)
     return response
 
