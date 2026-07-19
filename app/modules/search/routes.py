@@ -142,10 +142,21 @@ def _fetch_details(module: str, ids: list, has_permission: bool) -> list:
     results = []
     for record_id in ids:
         resp = detail_fn(record_id)
-        # handle both Response and (Response, status_code) tuple
+
+        # unwrap tuple (response, status_code)
         if isinstance(resp, tuple):
             resp = resp[0]
-        data = resp.get_json()
+
+        # get data dict from whatever form it comes in
+        if isinstance(resp, dict):
+            data = resp
+        elif hasattr(resp, "get_json"):
+            data = resp.get_json()
+        elif hasattr(resp, "json"):
+            data = resp.json
+        else:
+            continue
+
         if not data or not data.get("data"):
             continue
         item = data["data"]
