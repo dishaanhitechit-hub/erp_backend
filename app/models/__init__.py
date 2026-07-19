@@ -56,3 +56,4 @@ from .bssMaster import *
 from .machineryLogBook import *
 from .dcMaster import *
 from .bankCash import *
+from .search_history import SearchHistory

@@ -85,6 +85,9 @@ def create_app():
     from .modules.project_mgmt.register.concrete_registry.routes import concrete_registry_bp
     app.register_blueprint(concrete_registry_bp, url_prefix="/project-mgmt/register/concrete-registry")
 
+    from .modules.search.routes import search_bp
+    app.register_blueprint(search_bp, url_prefix="/search")
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
