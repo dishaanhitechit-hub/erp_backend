@@ -70,7 +70,7 @@ def _get_permitted_modules(user_id: int) -> list:
             FROM project_user_permissions pup
             JOIN project_user_roles pur ON pur.id = pup.project_user_role_id
             JOIN feature_pages fp ON fp.id = pup.page_id
-            JOIN sub_modules sm ON sm.id = fp.sub_module_id
+            JOIN sub_modules sm ON sm.id = fp.submodule_id
             WHERE pur.user_id = :uid AND pup.allowed = true
         """),
         {"uid": user_id}
