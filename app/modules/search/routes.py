@@ -66,7 +66,7 @@ def _get_permitted_modules(user_id: int) -> list:
     """Returns list of sub_module names the user has any permission on."""
     rows = db.session.execute(
         text("""
-            SELECT DISTINCT sm.name
+            SELECT DISTINCT sm.submodule_name
             FROM project_user_permissions pup
             JOIN project_user_roles pur ON pur.id = pup.project_user_role_id
             JOIN feature_pages fp ON fp.id = pup.page_id
