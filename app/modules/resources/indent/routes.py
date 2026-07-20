@@ -311,3 +311,17 @@ def history(indent_id):
     return get_indent_history(
         indent_id
     )
+
+
+# =========================================================
+# GET FULL INDENT DETAILS BY UUID
+# GET /resource/indent/uuid/<indent_uuid>
+# =========================================================
+
+@indent_bp.route(
+    "/uuid/<string:indent_uuid>",
+    methods=["GET"]
+)
+def indent_by_uuid(indent_uuid):
+
+    return get_indent_by_uuid(indent_uuid)

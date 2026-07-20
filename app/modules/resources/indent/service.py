@@ -1,4 +1,6 @@
 
+import uuid as _uuid
+from collections import defaultdict
 from datetime import datetime,date
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -82,7 +84,8 @@ def create_indent(data,files=None, created_by=None):
         if not items:
             return res("Indent items required", [], 400)
 
-        xtem= generate_indent_no()
+        xtem = generate_indent_no()
+        new_uuid = str(_uuid.uuid4())
         supporting_file = None
 
         indent_file = files.get(
@@ -119,8 +122,9 @@ def create_indent(data,files=None, created_by=None):
 
         indent = IndentMaster(
 
-            indent_no= xtem,
-            supporting_file= supporting_file,
+            indent_no=xtem,
+            indent_uuid=new_uuid,
+            supporting_file=supporting_file,
             project_code=data.get(
                 "projectCode"
             ),
@@ -246,7 +250,8 @@ def create_indent(data,files=None, created_by=None):
             "Indent created successfully",
             {
                 "indentId": indent.id,
-                "indentNo": indent.indent_no
+                "indentNo": indent.indent_no,
+                "uuid": indent.indent_uuid
             },
             200
         )
@@ -382,7 +387,7 @@ def get_indent_details(indent_id):
             "id": indent.id,
 
             "indentNo": indent.indent_no,
-
+            "uuid": indent.indent_uuid,
             "projectCode": indent.project_code,
 
             "categoryCode": indent.category_code,
@@ -1521,3 +1526,242 @@ def get_indent_history(
             [],
             500
         )
+
+
+# =========================================================
+# GET FULL INDENT DETAILS BY UUID
+# =========================================================
+
+def get_indent_by_uuid(indent_uuid):
+    """
+    Returns complete indent details identified by its UUID.
+    All foreign keys are resolved to human-readable names.
+    Items are grouped by item_code with qty totalled.
+    GST breakup is calculated per GST slab.
+    History contains full action trail with user names.
+    """
+    try:
+
+        indent = IndentMaster.query.filter_by(
+            indent_uuid=indent_uuid
+        ).first()
+
+        if not indent:
+            return res("Invalid UUID.Try Again ", [], 404)
+
+        # --------------------------------------------------
+        # PROJECT  (resolve FK → human fields)
+        # --------------------------------------------------
+        project = indent.project
+        project_info = None
+        if project:
+            project_info = {
+                "projectCode":            project.project_code,
+                "projectName":            project.project_name,
+                "clientName":             project.client_name,
+                "projectDetails":         project.project_details,
+                "registeredAddress":      project.registered_address,
+                "billingAddress":         project.billing_address,
+                "shippingAddress":        project.shipping_address,
+                "state":                  project.state,
+                "stateCode":              project.state_code,
+                "gstn":                   project.gstn,
+                "projectManager":         project.project_manager,
+                "commercialManager":      project.commercial_manager,
+                "projMgmtContact":        project.proj_mgmt_contact_number,
+                "projMgmtEmail":          project.proj_mgmt_email_id,
+                "commMgmtContact":        project.comm_mgmt_contact_number,
+                "commMgmtEmail":          project.comm_mgmt_email_id,
+                "initialOrderValue":      project.initial_order_value,
+                "revisedOrderValue":      project.revised_order_value,
+                "scheduleDate":           str(project.schedule_date) if project.schedule_date else None,
+                "scheduleCompletionDate": str(project.schedule_completion_date) if project.schedule_completion_date else None,
+                "originalStartDate":      str(project.original_start_date) if project.original_start_date else None,
+                "extendedCompleteDate":   str(project.extended_complete_date) if project.extended_complete_date else None,
+                "projectStatus":          project.status,
+            }
+
+        # --------------------------------------------------
+        # CATEGORY  (resolve FK → human fields)
+        # --------------------------------------------------
+        category = indent.category
+        category_info = None
+        if category:
+            category_info = {
+                "categoryCode": category.fixed_code,
+                "categoryName": category.category_name,
+            }
+
+        # --------------------------------------------------
+        # USERS  (resolve all user FKs → names)
+        # --------------------------------------------------
+        def _username(user_obj):
+            return user_obj.username if user_obj else None
+
+        creator_name   = _username(indent.creator)
+        approver_name  = _username(indent.approver)
+        rejector_name  = _username(indent.rejector)
+        submitter_name = _username(indent.submitted_user)
+
+        # --------------------------------------------------
+        # ITEMS  (group by item_code, sum qty)
+        # --------------------------------------------------
+        # key = item_code → accumulate qty, carry item meta
+        grouped = defaultdict(lambda: {
+            "itemCode":        None,
+            "itemName":        None,
+            "itemDescription": None,
+            "hsnSac":          None,
+            "unit":            None,
+            "gstPercentage":   0.0,
+            "totalQty":        0.0,
+            "itemStatus":      None,
+            "location":        None,
+            "note":            None,
+            "lineIds":         []
+        })
+
+        for row in indent.indent_items:
+            itm   = row.item
+            code  = row.item_code
+            entry = grouped[code]
+
+            entry["itemCode"]  = code
+            entry["lineIds"].append(row.id)
+
+            if itm:
+                entry["itemName"]        = itm.item_name
+                entry["itemDescription"] = itm.item_description
+                entry["hsnSac"]          = itm.hsn_sac
+                entry["gstPercentage"]   = (
+                    float(itm.gst_percentage)
+                    if itm.gst_percentage is not None
+                    else 0.0
+                )
+                if itm.unit:
+                    entry["unit"] = itm.unit.short_name
+
+            entry["totalQty"]   += float(row.qty)
+            entry["itemStatus"]  = row.item_status
+            entry["location"]    = row.location or entry["location"]
+            entry["note"]        = row.note or entry["note"]
+
+        items_list = list(grouped.values())
+
+        # --------------------------------------------------
+        # GST BREAKUP  (group items by GST slab)
+        # qty-based only — no price in indent stage
+        # --------------------------------------------------
+        gst_slab_map = defaultdict(lambda: {
+            "gstPercentage": 0.0,
+            "itemCount":     0,
+            "totalQty":      0.0,
+            "hsnList":       []
+        })
+
+        for itm_row in items_list:
+            slab_key = str(itm_row["gstPercentage"])
+            slab = gst_slab_map[slab_key]
+            slab["gstPercentage"] = itm_row["gstPercentage"]
+            slab["itemCount"]    += 1
+            slab["totalQty"]     += itm_row["totalQty"]
+            hsn = itm_row.get("hsnSac")
+            if hsn and hsn not in slab["hsnList"]:
+                slab["hsnList"].append(hsn)
+
+        gst_breakup = sorted(
+            list(gst_slab_map.values()),
+            key=lambda x: x["gstPercentage"]
+        )
+
+        # Summary totals
+        total_items_count = len(items_list)
+        total_qty_all     = sum(i["totalQty"] for i in items_list)
+
+        # --------------------------------------------------
+        # HISTORY  (full action trail)
+        # --------------------------------------------------
+        history_rows = get_history("indent", indent.id)
+        history_list = []
+        for h in history_rows:
+            history_list.append({
+                "historyId":  h.id,
+                "action":     h.action,
+                "level":      h.level_no,
+                "comments":   h.comments,
+                "actionBy":   h.user.username if h.user else None,
+                "actionAt":   h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else None,
+            })
+
+        # --------------------------------------------------
+        # COMPOSE FULL RESPONSE
+        # --------------------------------------------------
+        response = {
+
+            # ── Identity ──────────────────────────────────
+            "id":          indent.id,
+            "uuid":        indent.indent_uuid,
+            "indentNo":    indent.indent_no,
+
+            # ── Project (full details, FK resolved) ───────
+            "project":     project_info,
+
+            # ── Category (FK resolved) ────────────────────
+            "category":    category_info,
+
+            # ── Indent basic fields ───────────────────────
+            "indentDate":        str(indent.indent_date) if indent.indent_date else None,
+            "priority":          indent.priority,
+            "requiredWithin":    str(indent.required_within) if indent.required_within else None,
+            "indentPlacedBy":    indent.indent_placed_by,
+            "siteRegSerialNo":   indent.site_reg_serial_no,
+            "saleOrderNo":       indent.sale_order_no,
+            "remarks":           indent.remarks,
+            "supportingFile":    indent.supporting_file,
+
+            # ── Status flags ─────────────────────────────
+            "workflowStatus":    indent.workflow_status,
+            "orderStatus":       indent.order_status,
+            "recordStatus":      indent.status,
+            "currentLevel":      indent.current_level,
+            "locked":            indent.locked,
+
+            # ── People (all FKs resolved to names) ───────
+            "createdBy":         creator_name,
+            "approvedBy":        approver_name,
+            "rejectedBy":        rejector_name,
+            "submittedBy":       submitter_name,
+
+            # ── Workflow timestamps ───────────────────────
+            "createdAt":         indent.created_at.strftime("%Y-%m-%d %H:%M:%S") if indent.created_at else None,
+            "updatedAt":         indent.updated_at.strftime("%Y-%m-%d %H:%M:%S") if indent.updated_at else None,
+            "submittedAt":       indent.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if indent.submitted_at else None,
+            "finalApprovedAt":   indent.final_approved_at.strftime("%Y-%m-%d %H:%M:%S") if indent.final_approved_at else None,
+            "rejectedAt":        indent.rejected_at.strftime("%Y-%m-%d %H:%M:%S") if indent.rejected_at else None,
+            "correctionSentAt":  indent.correction_sent_at.strftime("%Y-%m-%d %H:%M:%S") if indent.correction_sent_at else None,
+
+            # ── Items (grouped + totalled per item_code) ──
+            "items":             items_list,
+
+            # ── Totals summary ────────────────────────────
+            "summary": {
+                "totalUniqueItems": total_items_count,
+                "totalQtyAllItems": round(total_qty_all, 2),
+                "note": "No unit price recorded at indent stage — monetary totals not applicable"
+            },
+
+            # ── GST breakup (by slab, qty-based) ─────────
+            "gstBreakup":        gst_breakup,
+
+            # ── Full workflow history ─────────────────────
+            "history":           history_list,
+        }
+
+        return res(
+            "Indent details fetched successfully",
+            response,
+            200
+        )
+
+    except Exception as e:
+        return res(str(e), [], 500)

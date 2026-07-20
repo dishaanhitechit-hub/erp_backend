@@ -27,6 +27,13 @@ class IndentMaster(db.Model):
         nullable=False
     )
 
+    indent_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+
     # FK → projects.project_code
     project_code = db.Column(
         db.String(50),
