@@ -1559,26 +1559,26 @@ def get_indent_by_uuid(indent_uuid):
                 "projectCode":            project.project_code,
                 "projectName":            project.project_name,
                 "clientName":             project.client_name,
-                "projectDetails":         project.project_details,
-                "registeredAddress":      project.registered_address,
-                "billingAddress":         project.billing_address,
-                "shippingAddress":        project.shipping_address,
-                "state":                  project.state,
-                "stateCode":              project.state_code,
-                "gstn":                   project.gstn,
-                "projectManager":         project.project_manager,
-                "commercialManager":      project.commercial_manager,
-                "projMgmtContact":        project.proj_mgmt_contact_number,
-                "projMgmtEmail":          project.proj_mgmt_email_id,
-                "commMgmtContact":        project.comm_mgmt_contact_number,
-                "commMgmtEmail":          project.comm_mgmt_email_id,
-                "initialOrderValue":      project.initial_order_value,
-                "revisedOrderValue":      project.revised_order_value,
-                "scheduleDate":           str(project.schedule_date) if project.schedule_date else None,
-                "scheduleCompletionDate": str(project.schedule_completion_date) if project.schedule_completion_date else None,
-                "originalStartDate":      str(project.original_start_date) if project.original_start_date else None,
-                "extendedCompleteDate":   str(project.extended_complete_date) if project.extended_complete_date else None,
-                "projectStatus":          project.status,
+                # "projectDetails":         project.project_details,
+                # "registeredAddress":      project.registered_address,
+                # "billingAddress":         project.billing_address,
+                # "shippingAddress":        project.shipping_address,
+                # "state":                  project.state,
+                # "stateCode":              project.state_code,
+                # "gstn":                   project.gstn,
+                # "projectManager":         project.project_manager,
+                # "commercialManager":      project.commercial_manager,
+                # "projMgmtContact":        project.proj_mgmt_contact_number,
+                # "projMgmtEmail":          project.proj_mgmt_email_id,
+                # "commMgmtContact":        project.comm_mgmt_contact_number,
+                # "commMgmtEmail":          project.comm_mgmt_email_id,
+                # "initialOrderValue":      project.initial_order_value,
+                # "revisedOrderValue":      project.revised_order_value,
+                # "scheduleDate":           str(project.schedule_date) if project.schedule_date else None,
+                # "scheduleCompletionDate": str(project.schedule_completion_date) if project.schedule_completion_date else None,
+                # "originalStartDate":      str(project.original_start_date) if project.original_start_date else None,
+                # "extendedCompleteDate":   str(project.extended_complete_date) if project.extended_complete_date else None,
+                # "projectStatus":          project.status,
             }
 
         # --------------------------------------------------
@@ -1711,20 +1711,20 @@ def get_indent_by_uuid(indent_uuid):
 
             # ── Indent basic fields ───────────────────────
             "indentDate":        str(indent.indent_date) if indent.indent_date else None,
-            "priority":          indent.priority,
+            # "priority":          indent.priority,
             "requiredWithin":    str(indent.required_within) if indent.required_within else None,
             "indentPlacedBy":    indent.indent_placed_by,
             "siteRegSerialNo":   indent.site_reg_serial_no,
             "saleOrderNo":       indent.sale_order_no,
             "remarks":           indent.remarks,
-            "supportingFile":    indent.supporting_file,
+            # "supportingFile":    indent.supporting_file,
 
             # ── Status flags ─────────────────────────────
             "workflowStatus":    indent.workflow_status,
             "orderStatus":       indent.order_status,
             "recordStatus":      indent.status,
             "currentLevel":      indent.current_level,
-            "locked":            indent.locked,
+            # "locked":            indent.locked,
 
             # ── People (all FKs resolved to names) ───────
             "createdBy":         creator_name,
@@ -1744,17 +1744,17 @@ def get_indent_by_uuid(indent_uuid):
             "items":             items_list,
 
             # ── Totals summary ────────────────────────────
-            "summary": {
-                "totalUniqueItems": total_items_count,
-                "totalQtyAllItems": round(total_qty_all, 2),
-                "note": "No unit price recorded at indent stage — monetary totals not applicable"
-            },
+            # "summary": {
+            #     "totalUniqueItems": total_items_count,
+            #     "totalQtyAllItems": round(total_qty_all, 2),
+            #     "note": "No unit price recorded at indent stage — monetary totals not applicable"
+            # },
 
             # ── GST breakup (by slab, qty-based) ─────────
-            "gstBreakup":        gst_breakup,
+            # "gstBreakup":        gst_breakup,
 
             # ── Full workflow history ─────────────────────
-            "history":           history_list,
+            # "history":           history_list,
         }
 
         return res(
