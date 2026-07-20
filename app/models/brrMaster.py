@@ -38,6 +38,8 @@ class BrrMaster(db.Model):
     party_bill_no = db.Column(db.String(100), nullable=True)
     party_date    = db.Column(db.Date,        nullable=True)
 
+    booked_amount = db.Column(db.Numeric(18, 4), default=0)
+
     # Receipt details
     received_category  = db.Column(db.String(200), nullable=True)
     submitted_by_name  = db.Column(db.String(200), nullable=True)

@@ -189,6 +189,9 @@ def get_brr_list(data):
                 "basicAmount":     float(row.basic_amount or 0),
                 "totalAmount":     float(row.total_amount or 0),
                 "workflowStatus":  row.workflow_status,
+                "orderDate": _fmt_date(row.order.order_date) if row.order else None,
+                "partyDate": _fmt_date(row.party_date),
+                "bookedAmount":row.book_amount
             }
             for row in rows
         ]
