@@ -191,7 +191,7 @@ def get_brr_list(data):
                 "workflowStatus":  row.workflow_status,
                 "orderDate": _fmt_date(row.order.order_date) if row.order else None,
                 "partyDate": _fmt_date(row.party_date),
-                "bookedAmount":row.book_amount
+                "bookedAmount":row.booked_amount
             }
             for row in rows
         ]
