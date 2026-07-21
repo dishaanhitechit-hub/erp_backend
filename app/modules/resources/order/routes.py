@@ -383,6 +383,5 @@ def api_serve_pdf(relative_path):
 # ==========================================
 
 @order_bp.route("/uuid/<string:order_uuid>", methods=["GET"])
-@jwt_required()
 def api_order_by_uuid(order_uuid):
     return get_order_by_uuid(order_uuid)

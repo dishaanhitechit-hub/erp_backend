@@ -234,6 +234,5 @@ def api_pw_order_history(order_id):
 # ══════════════════════════════════════════════════════════════════
 
 @pw_order_bp.route("/uuid/<string:order_uuid>", methods=["GET"])
-@jwt_required()
 def api_pw_order_by_uuid(order_uuid):
     return get_pw_order_by_uuid(order_uuid)
