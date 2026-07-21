@@ -718,6 +718,7 @@ def get_pw_order_details(order_id: int):
         data = {
             "id":               order.id,
             "orderNo":          order.order_no,
+            "uuid": order.order_uuid,
             "projectCode":      order.project_code,
             "projectName":      (
                 order.project.project_name if order.project else None

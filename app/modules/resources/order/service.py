@@ -782,7 +782,7 @@ def get_order_details(
 
             "id":
             order.id,
-
+            "uuid": order.order_uuid,
             "orderNo":
             order.order_no,
 
