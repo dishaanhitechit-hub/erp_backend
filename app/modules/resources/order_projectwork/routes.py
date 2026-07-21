@@ -19,6 +19,7 @@ from app.modules.resources.order_projectwork.service import (
     reject_pw_order,
     delete_pw_order,
     get_pw_order_history,
+    get_pw_order_by_uuid,
 )
 
 pw_order_bp = Blueprint("pw_order", __name__)
@@ -225,3 +226,14 @@ def api_delete_pw_order(order_id):
 def api_pw_order_history(order_id):
     """GET /api/pw-order/history/<order_id>"""
     return get_pw_order_history(order_id)
+
+
+# ══════════════════════════════════════════════════════════════════
+# GET FULL SERVICE ORDER DETAILS BY UUID
+# GET /api/pw-order/uuid/<order_uuid>
+# ══════════════════════════════════════════════════════════════════
+
+@pw_order_bp.route("/uuid/<string:order_uuid>", methods=["GET"])
+@jwt_required()
+def api_pw_order_by_uuid(order_uuid):
+    return get_pw_order_by_uuid(order_uuid)

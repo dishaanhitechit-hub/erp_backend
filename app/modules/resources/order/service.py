@@ -1,3 +1,5 @@
+import uuid as _uuid
+from collections import defaultdict
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -207,7 +209,8 @@ files=None,
                 400
             )
 
-        xtemp=generate_order_no()
+        xtemp = generate_order_no()
+        new_uuid = str(_uuid.uuid4())
         print("Before upload:", time.time() - start)
         supporting_file = (
 
@@ -233,6 +236,7 @@ files=None,
         order=OrderMaster(
 
             order_no=xtemp,
+            order_uuid=new_uuid,
 
             project_code=data.get(
                 "projectCode"
@@ -435,14 +439,10 @@ files=None,
         return res(
             "Order created",
             {
-                "orderId":
-                order.id,
-
-                "orderNo":
-                order.order_no,
-
-                "ccSummary":
-                cc_summary
+                "orderId":   order.id,
+                "orderNo":   order.order_no,
+                "uuid":      order.order_uuid,
+                "ccSummary": cc_summary
             },
             201
         )
@@ -1762,6 +1762,278 @@ def get_order_history(
             500
         )
 
+
+
+# =========================================================
+# GET FULL ORDER DETAILS BY UUID
+# =========================================================
+
+def get_order_by_uuid(order_uuid):
+    try:
+        order = OrderMaster.query.filter_by(order_uuid=order_uuid).first()
+        if not order:
+            return res("Order not found", [], 404)
+
+        # ── Project (FK resolved) ──────────────────────────────────
+        project = order.project
+        project_info = None
+        if project:
+            project_info = {
+                "projectCode":            project.project_code,
+                "projectName":            project.project_name,
+                "clientName":             project.client_name,
+                "projectDetails":         project.project_details,
+                "registeredAddress":      project.registered_address,
+                "billingAddress":         project.billing_address,
+                "shippingAddress":        project.shipping_address,
+                "state":                  project.state,
+                "stateCode":              project.state_code,
+                "gstn":                   project.gstn,
+                "projectManager":         project.project_manager,
+                "commercialManager":      project.commercial_manager,
+                "projMgmtContact":        project.proj_mgmt_contact_number,
+                "projMgmtEmail":          project.proj_mgmt_email_id,
+                "commMgmtContact":        project.comm_mgmt_contact_number,
+                "commMgmtEmail":          project.comm_mgmt_email_id,
+                "initialOrderValue":      project.initial_order_value,
+                "revisedOrderValue":      project.revised_order_value,
+                "scheduleDate":           str(project.schedule_date) if project.schedule_date else None,
+                "scheduleCompletionDate": str(project.schedule_completion_date) if project.schedule_completion_date else None,
+                "originalStartDate":      str(project.original_start_date) if project.original_start_date else None,
+                "extendedCompleteDate":   str(project.extended_complete_date) if project.extended_complete_date else None,
+                "projectStatus":          project.status,
+            }
+
+        # ── Sub-category (FK resolved) ─────────────────────────────
+        sub_cat = CategoryMaster.query.filter_by(fixed_code=order.sub_code).first()
+        sub_category_info = {
+            "subCategoryCode": order.sub_code,
+            "subCategoryName": sub_cat.category_name if sub_cat else None,
+        }
+
+        # ── Vendor (FK resolved) ───────────────────────────────────
+        vendor = order.vendor
+        vendor_info = None
+        if vendor:
+            vendor_info = {
+                "vendorId":          vendor.id,
+                "ledgerCode":        vendor.ledger_code,
+                "ledgerName":        vendor.ledger_name,
+                "gstin":             vendor.gstin,
+                "pan":               vendor.pan,
+                "stateName":         vendor.state_name,
+                "stateCode":         vendor.state_code,
+                "registeredAddress": vendor.registered_address,
+                "primaryContact":    vendor.primary_contact_person,
+                "primaryPhone":      vendor.primary_contact_number,
+            }
+
+        # ── Transfer project (FK resolved) ─────────────────────────
+        transfer_project_info = None
+        if order.transfer_site_project:
+            tp = order.transfer_site_project
+            transfer_project_info = {
+                "projectCode": tp.project_code,
+                "projectName": tp.project_name,
+                "clientName":  tp.client_name,
+            }
+
+        # ── Party name (resolved via category logic) ───────────────
+        party_name = _resolve_party_name(order)
+
+        # ── People (all user FKs resolved) ────────────────────────
+        def _uname(u): return u.username if u else None
+        creator_name  = _uname(order.creator)
+        approver_name = _uname(order.approver)
+        rejector_name = _uname(order.rejector)
+        submitter_name = _uname(order.submitter)
+        updater_name  = _uname(order.updater)
+
+        # ── Items (full detail per line, with totals) ──────────────
+        items_list = []
+        for item in order.items:
+            itm = item.item
+            qty        = float(item.qty or 0)
+            rate       = float(item.rate or 0)
+            amount     = float(item.amount or 0)
+            gst_pct    = float(item.gst_percent or 0)
+            gst_amount = float(item.gst_amount or 0)
+            items_list.append({
+                "lineId":        item.id,
+                "itemCode":      item.item_code,
+                "itemName":      itm.item_name if itm else None,
+                "itemDescription": itm.item_description if itm else None,
+                "hsnSac":        itm.hsn_sac if itm else None,
+                "unit":          itm.unit.short_name if itm and itm.unit else None,
+                "indentItemId":  item.indent_item_id,
+                "indentNo":      (
+                    item.indent_item.indent.indent_no
+                    if item.indent_item and item.indent_item.indent
+                    else None
+                ),
+                "customNote":    item.custom_note,
+                "location":      item.location,
+                "qty":           qty,
+                "amendQty":      float(item.amend_qty or 0),
+                "usedQty":       float(item.used_qty or 0),
+                "balanceQty":    float(item.balance_qty or 0),
+                "rate":          rate,
+                "basicAmount":   amount,
+                "gstPercent":    gst_pct,
+                "gstAmount":     gst_amount,
+                "lineTotal":     round(amount + gst_amount, 2),
+                "itemStatus":    item.item_status,
+            })
+
+        # ── GST breakup by slab ────────────────────────────────────
+        gst_slab_map = defaultdict(lambda: {
+            "gstPercent": 0.0,
+            "itemCount":  0,
+            "basicAmount": 0.0,
+            "gstAmount":  0.0,
+            "totalAmount": 0.0,
+            "hsnList":    []
+        })
+        for row in items_list:
+            key  = str(row["gstPercent"])
+            slab = gst_slab_map[key]
+            slab["gstPercent"]  = row["gstPercent"]
+            slab["itemCount"]  += 1
+            slab["basicAmount"] = round(slab["basicAmount"] + row["basicAmount"], 4)
+            slab["gstAmount"]   = round(slab["gstAmount"]   + row["gstAmount"],   4)
+            slab["totalAmount"] = round(slab["totalAmount"]  + row["lineTotal"],   4)
+            hsn = row.get("hsnSac")
+            if hsn and hsn not in slab["hsnList"]:
+                slab["hsnList"].append(hsn)
+
+        gst_breakup = sorted(gst_slab_map.values(), key=lambda x: x["gstPercent"])
+
+        # ── Terms & conditions (parsed) ────────────────────────────
+        terms_list = []
+        for t in order.terms_conditions:
+            try:
+                groups = json.loads(t.custom_groups) if t.custom_groups else []
+            except Exception:
+                groups = []
+            term_type = None
+            if t.source_term_id:
+                master = Term.query.get(t.source_term_id)
+                if master:
+                    term_type = master.term_type
+            terms_list.append({
+                "termId":      t.id,
+                "sourceTermId": t.source_term_id,
+                "sequenceNo":  t.sequence_no,
+                "termType":    term_type,
+                "termGroups":  groups,
+                "status":      t.status,
+            })
+
+        # ── CC-code summary ────────────────────────────────────────
+        cc_summary = get_cc_code_summary(order.id)
+
+        # ── History ────────────────────────────────────────────────
+        history_list = []
+        for h in get_history("order", order.id):
+            history_list.append({
+                "historyId": h.id,
+                "action":    h.action,
+                "level":     h.level_no,
+                "comments":  h.comments,
+                "actionBy":  h.user.username if h.user else None,
+                "actionAt":  h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else None,
+            })
+
+        # ── Financial totals ───────────────────────────────────────
+        total_basic  = float(order.basic_amount or 0)
+        total_gst    = float(order.gst_amount or 0)
+        total_amount = float(order.total_amount or 0)
+        booked       = float(order.booked_amount or 0)
+
+        response = {
+            # ── Identity ──────────────────────────────────────────
+            "id":        order.id,
+            "uuid":      order.order_uuid,
+            "orderNo":   order.order_no,
+
+            # ── Project (FK resolved) ──────────────────────────────
+            "project":   project_info,
+
+            # ── Sub-category (FK resolved) ─────────────────────────
+            "subCategory": sub_category_info,
+
+            # ── Category & cost head ───────────────────────────────
+            "categoryCode": order.category_code,
+            "costHead":     order.cost_head,
+
+            # ── Vendor (FK resolved) ───────────────────────────────
+            "vendor":    vendor_info,
+            "partyName": party_name,
+
+            # ── Transfer site (FK resolved, if applicable) ─────────
+            "transferSiteProject": transfer_project_info,
+
+            # ── Order header fields ────────────────────────────────
+            "orderDate":      str(order.order_date) if order.order_date else None,
+            "quotationNo":    order.quotation_no,
+            "quotationDate":  order.quotation_date.strftime("%Y-%m-%d") if order.quotation_date else None,
+            "validityDate":   str(order.validity_date) if order.validity_date else None,
+            "billingAddress": order.billing_address,
+            "shippingAddress": order.shipping_address,
+            "contactPerson":  order.contact_person,
+            "contactNumber":  order.contact_number,
+            "orderMessage":   order.order_message,
+            "orderFile":      order.supporting_file,
+
+            # ── Status ────────────────────────────────────────────
+            "workflowStatus": order.workflow_status,
+            "recordStatus":   order.status,
+            "currentLevel":   order.current_level,
+            "locked":         order.locked,
+
+            # ── People (all FKs resolved) ──────────────────────────
+            "createdBy":   creator_name,
+            "submittedBy": submitter_name,
+            "approvedBy":  approver_name,
+            "rejectedBy":  rejector_name,
+            "updatedBy":   updater_name,
+
+            # ── Timestamps ────────────────────────────────────────
+            "createdAt":        order.created_at.strftime("%Y-%m-%d %H:%M:%S") if order.created_at else None,
+            "updatedAt":        order.updated_at.strftime("%Y-%m-%d %H:%M:%S") if order.updated_at else None,
+            "submittedAt":      order.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if order.submitted_at else None,
+            "finalApprovedAt":  order.final_approved_at.strftime("%Y-%m-%d %H:%M:%S") if order.final_approved_at else None,
+            "rejectedAt":       order.rejected_at.strftime("%Y-%m-%d %H:%M:%S") if order.rejected_at else None,
+            "correctionSentAt": order.correction_sent_at.strftime("%Y-%m-%d %H:%M:%S") if order.correction_sent_at else None,
+
+            # ── Financials ────────────────────────────────────────
+            "financials": {
+                "basicAmount":  total_basic,
+                "gstAmount":    total_gst,
+                "totalAmount":  total_amount,
+                "bookedAmount": booked,
+            },
+
+            # ── GST breakup by slab ────────────────────────────────
+            "gstBreakup": gst_breakup,
+
+            # ── CC-code summary ────────────────────────────────────
+            "ccSummary": cc_summary,
+
+            # ── Items (every line, full detail) ───────────────────
+            "items": items_list,
+
+            # ── Terms & conditions ─────────────────────────────────
+            "termsConditions": terms_list,
+
+            # ── Workflow history ───────────────────────────────────
+            "history": history_list,
+        }
+
+        return res("Order details fetched successfully", response, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
 
 
 def edit_order(order_id, data, user_id, files=None):

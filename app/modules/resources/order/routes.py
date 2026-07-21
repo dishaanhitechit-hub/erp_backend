@@ -15,7 +15,8 @@ from app.modules.resources.order.service import (
     reject_order,
     delete_order,
     get_order_history,
-    edit_order
+    edit_order,
+    get_order_by_uuid,
 )
 
 # [PDF] — ReportLab direct-PDF service (pixel-perfect, no DOCX/LibreOffice needed)
@@ -374,3 +375,14 @@ def api_verify_pdf_raw(token):
 @order_bp.route("/pdf-file/<path:relative_path>", methods=["GET"])
 def api_serve_pdf(relative_path):
     return serve_pdf_file(relative_path)
+
+
+# ==========================================
+# GET FULL ORDER DETAILS BY UUID
+# GET /api/order/uuid/<order_uuid>
+# ==========================================
+
+@order_bp.route("/uuid/<string:order_uuid>", methods=["GET"])
+@jwt_required()
+def api_order_by_uuid(order_uuid):
+    return get_order_by_uuid(order_uuid)

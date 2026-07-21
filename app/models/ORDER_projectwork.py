@@ -38,6 +38,13 @@ class ProjectWorkOrderMaster(db.Model):
         nullable=False
     )
 
+    order_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+
     # ── Project & Category ─────────────────────────────────────────
     project_code = db.Column(
         db.String(50),
