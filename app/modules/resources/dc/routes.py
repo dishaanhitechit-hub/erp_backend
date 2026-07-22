@@ -1,6 +1,3 @@
-# app/modules/resources/dc/routes.py
-# Delivery Challan routes
-
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
