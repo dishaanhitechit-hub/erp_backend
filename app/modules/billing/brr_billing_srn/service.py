@@ -20,7 +20,7 @@ from app.modules.work_flow import (
     get_history,
 )
 
-_MODULE = "billing_by_brr_srn"
+_MODULE = "billing_by_srn"
 
 
 # ══════════════════════════════════════════════════════════════════
