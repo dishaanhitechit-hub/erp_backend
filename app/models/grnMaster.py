@@ -19,6 +19,13 @@ class GrnMaster(db.Model):
         nullable=False
     )
 
+    grn_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+
     grn_date = db.Column(
         db.Date,
         nullable=False

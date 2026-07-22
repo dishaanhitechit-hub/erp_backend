@@ -2,6 +2,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+from collections import defaultdict
+import uuid as _uuid
 
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
@@ -260,7 +262,8 @@ def create_gin(data, user_id, files=None):
         if not items:
             return res("No items provided", [], 400)
 
-        gin_no = generate_gin_no()
+        gin_no   = generate_gin_no()
+        new_uuid = str(_uuid.uuid4())
 
         attached_doc = None
         if files:
@@ -275,6 +278,7 @@ def create_gin(data, user_id, files=None):
 
         gin = GinMaster(
             gin_no=gin_no,
+            gin_uuid=new_uuid,
             gin_date=data.get("ginDate"),
             project_code=data.get("projectCode"),
             issue_category=data.get("issueCategory"),
@@ -343,7 +347,7 @@ def create_gin(data, user_id, files=None):
 
         return res(
             "GIN created",
-            {"ginId": gin.id, "ginNo": gin.gin_no},
+            {"ginId": gin.id, "ginNo": gin.gin_no, "uuid": gin.gin_uuid},
             201
         )
 
@@ -914,6 +918,152 @@ def get_gin_history(gin_id):
             })
 
         return res("GIN history fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# GET FULL GIN DETAILS BY UUID
+# ══════════════════════════════════════════════════════════════════
+
+def get_gin_by_uuid(gin_uuid):
+    try:
+        gin = GinMaster.query.filter_by(gin_uuid=gin_uuid).first()
+        if not gin:
+            return res("GIN not found", [], 404)
+
+        # ── project ───────────────────────────────────────────────
+        proj = gin.project
+        project_info = None
+        if proj:
+            project_info = {
+                "projectCode":   proj.project_code,
+                "projectName":   proj.project_name if hasattr(proj, "project_name") else None,
+                "clientName":    proj.client_name  if hasattr(proj, "client_name")  else None,
+                "projectStatus": proj.status        if hasattr(proj, "status")       else None,
+            }
+
+        # ── order ─────────────────────────────────────────────────
+        order_info = None
+        if gin.order:
+            order_info = {
+                "orderId":  gin.order.id,
+                "orderNo":  gin.order.order_no,
+                "orderDate": _fmt_date(gin.order.order_date),
+            }
+
+        # ── vendor ────────────────────────────────────────────────
+        vendor_info = None
+        if gin.vendor:
+            v = gin.vendor
+            vendor_info = {
+                "vendorId":          v.id,
+                "ledgerCode":        v.ledger_code            if hasattr(v, "ledger_code")            else None,
+                "ledgerName":        v.ledger_name            if hasattr(v, "ledger_name")            else None,
+                "gstin":             v.gstin                  if hasattr(v, "gstin")                  else None,
+                "pan":               v.pan                    if hasattr(v, "pan")                    else None,
+                "stateName":         v.state_name             if hasattr(v, "state_name")             else None,
+                "registeredAddress": v.registered_address     if hasattr(v, "registered_address")     else None,
+                "primaryContact":    v.primary_contact        if hasattr(v, "primary_contact")        else None,
+            }
+
+        # ── users ─────────────────────────────────────────────────
+        def _uname(rel): return rel.username if rel else None
+
+        # ── items ─────────────────────────────────────────────────
+        items = []
+        total_issue_qty = 0.0
+        for gi in gin.items:
+            oi = gi.order_item
+            item_name = hsn_sac = unit = None
+            order_qty  = 0.0
+            if oi:
+                if oi.item:
+                    item_name = oi.item.item_name
+                    hsn_sac   = oi.item.hsn_sac   if hasattr(oi.item, "hsn_sac") else None
+                    unit      = oi.item.unit.unit_name if oi.item.unit else None
+                order_qty = float(oi.qty or 0)
+
+            issue_qty  = float(gi.issue_qty or 0)
+            stock_qty  = _stock_qty(gi.order_item_id) if gi.order_item_id else 0.0
+            total_issue_qty += issue_qty
+
+            items.append({
+                "ginItemId":       gi.id,
+                "ginl":            gi.ginl,
+                "orderItemId":     gi.order_item_id,
+                "itemName":        item_name,
+                "hsnSac":          hsn_sac,
+                "unit":            unit,
+                "orderQty":        order_qty,
+                "issueQty":        issue_qty,
+                "stockQty":        stock_qty,
+                "stockLocation":   gi.stock_location,
+                "itemUsedLocation": gi.item_used_location,
+            })
+
+        # ── history ───────────────────────────────────────────────
+        history_rows = get_history("goods_issue_note", gin.id)
+        history = []
+        for row in history_rows:
+            history.append({
+                "id":        row.id,
+                "action":    row.action,
+                "level":     row.level_no,
+                "comments":  row.comments,
+                "actionBy":  row.user.username if row.user else None,
+                "createdAt": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
+            })
+
+        data = {
+            "uuid":              gin.gin_uuid,
+            "ginId":             gin.id,
+            "ginNo":             gin.gin_no,
+            "ginDate":           _fmt_date(gin.gin_date),
+            "workflowStatus":    gin.workflow_status,
+            "status":            gin.status,
+            "currentLevel":      gin.current_level,
+            "locked":            gin.locked,
+
+            "issueCategory":     gin.issue_category,
+            "itemCategory":      gin.item_category,
+            "costHead":          gin.cost_head,
+            "costFactor":        gin.cost_factor,
+            "site":              gin.site,
+            "despatchFrom":      gin.despatch_from,
+            "shippingTo":        gin.shipping_to,
+            "recommendationBy":  gin.recommendation_by,
+            "issueSlipNo":       gin.issue_slip_no,
+            "handedOverTo":      gin.handed_over_to,
+            "attachedDoc":       gin.attached_doc,
+
+            "project":           project_info,
+            "order":             order_info,
+            "vendor":            vendor_info,
+
+            "createdBy":         _uname(gin.creator),
+            "submittedBy":       _uname(gin.submitter),
+            "approvedBy":        _uname(gin.approver),
+            "rejectedBy":        _uname(gin.rejector),
+            "updatedBy":         _uname(gin.updater),
+
+            "createdAt":         _fmt_date(gin.created_at),
+            "updatedAt":         _fmt_date(gin.updated_at),
+            "submittedAt":       _fmt_date(gin.submitted_at),
+            "finalApprovedAt":   _fmt_date(gin.final_approved_at),
+            "rejectedAt":        _fmt_date(gin.rejected_at),
+            "correctionSentAt":  _fmt_date(gin.correction_sent_at),
+
+            "items":             items,
+            "summary": {
+                "totalItems":    len(items),
+                "totalIssueQty": round(total_issue_qty, 2),
+            },
+            "history":           history,
+        }
+
+        return res("GIN details fetched", data, 200)
 
     except Exception as e:
         return res(str(e), [], 500)

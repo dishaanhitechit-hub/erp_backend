@@ -16,6 +16,7 @@ from app.modules.resources.srn.service import (
     reject_srn,
     edit_srn,
     get_srn_history,
+    get_srn_by_uuid,
 )
 
 srn_bp = Blueprint("srn", __name__)
@@ -204,3 +205,13 @@ def api_edit_srn(srn_id):
 def api_srn_history(srn_id):
 
     return get_srn_history(srn_id)
+
+
+# ==========================================
+# GET FULL SRN DETAILS BY UUID
+# GET /api/srn/uuid/<srn_uuid>
+# ==========================================
+
+@srn_bp.route("/uuid/<string:srn_uuid>", methods=["GET"])
+def api_srn_by_uuid(srn_uuid):
+    return get_srn_by_uuid(srn_uuid)

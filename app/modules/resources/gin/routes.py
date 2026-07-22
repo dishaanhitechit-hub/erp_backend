@@ -16,6 +16,7 @@ from app.modules.resources.gin.service import (
     reject_gin,
     edit_gin,
     get_gin_history,
+    get_gin_by_uuid,
 )
 
 gin_bp = Blueprint("gin", __name__)
@@ -204,3 +205,13 @@ def api_edit_gin(gin_id):
 def api_gin_history(gin_id):
 
     return get_gin_history(gin_id)
+
+
+# ==========================================
+# GET FULL GIN DETAILS BY UUID
+# GET /api/gin/uuid/<gin_uuid>
+# ==========================================
+
+@gin_bp.route("/uuid/<string:gin_uuid>", methods=["GET"])
+def api_gin_by_uuid(gin_uuid):
+    return get_gin_by_uuid(gin_uuid)

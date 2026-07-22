@@ -4,6 +4,8 @@ from datetime import datetime
 
 from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster
+from app.models.brgMaster import BrgMaster
+from app.models.brsMaster import BrsMaster
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -176,25 +178,55 @@ def get_brr_list(data):
 
         rows = query.order_by(BrrMaster.id.desc()).all()
 
-        result = [
-            {
-                "id":              row.id,
-                "brrNo":           row.brr_no,
-                "brrDate":         _fmt_date(row.brr_date),
-                "projectCode":     row.project_code,
-                "partyName":       row.vendor.ledger_name if row.vendor else None,
-                "orderCategory":   row.order_category,
-                "orderNo":         row.order.order_no    if row.order  else None,
-                "partyBillNo":     row.party_bill_no,
-                "basicAmount":     float(row.basic_amount or 0),
-                "totalAmount":     float(row.total_amount or 0),
-                "workflowStatus":  row.workflow_status,
-                "orderDate": _fmt_date(row.order.order_date) if row.order else None,
-                "partyDate": _fmt_date(row.party_date),
-                "bookedAmount":row.booked_amount
-            }
-            for row in rows
-        ]
+        result = []
+        for row in rows:
+
+            grn_billings = [
+                {
+                    "brgId":          b.id,
+                    "brgNo":          b.brg_no,
+                    "brgDate":        _fmt_date(b.brg_date),
+                    "workflowStatus": b.workflow_status,
+                    "basicAmount":    float(b.basic_amount or 0),
+                    "gstAmount":      float(b.gst_amount   or 0),
+                    "totalAmount":    float(b.total_amount  or 0),
+                    "itemCount":      len(b.items),
+                }
+                for b in BrgMaster.query.filter_by(brr_id=row.id).order_by(BrgMaster.id.asc()).all()
+            ]
+
+            srn_billings = [
+                {
+                    "brsId":          b.id,
+                    "brsNo":          b.brs_no,
+                    "brsDate":        _fmt_date(b.brs_date),
+                    "workflowStatus": b.workflow_status,
+                    "basicAmount":    float(b.basic_amount or 0),
+                    "gstAmount":      float(b.gst_amount   or 0),
+                    "totalAmount":    float(b.total_amount  or 0),
+                    "itemCount":      len(b.items),
+                }
+                for b in BrsMaster.query.filter_by(brr_id=row.id).order_by(BrsMaster.id.asc()).all()
+            ]
+
+            result.append({
+                "id":             row.id,
+                "brrNo":          row.brr_no,
+                "brrDate":        _fmt_date(row.brr_date),
+                "projectCode":    row.project_code,
+                "partyName":      row.vendor.ledger_name if row.vendor else None,
+                "orderCategory":  row.order_category,
+                "orderNo":        row.order.order_no    if row.order  else None,
+                "partyBillNo":    row.party_bill_no,
+                "basicAmount":    float(row.basic_amount or 0),
+                "totalAmount":    float(row.total_amount or 0),
+                "workflowStatus": row.workflow_status,
+                "orderDate":      _fmt_date(row.order.order_date) if row.order else None,
+                "partyDate":      _fmt_date(row.party_date),
+                "bookedAmount":   row.booked_amount,
+                "grnBillings":    grn_billings,
+                "srnBillings":    srn_billings,
+            })
 
         return res("BRR list fetched", result, 200)
 

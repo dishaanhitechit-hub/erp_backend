@@ -53,6 +53,9 @@ from .drawingRegister import *
 from .srnMaster import *
 from .bvsMaster import *
 from .bssMaster import *
+from .brrMaster import BrrMaster
+from .brgMaster import BrgMaster, BrgItem
+from .brsMaster import BrsMaster, BrsItem
 from .machineryLogBook import *
 from .dcMaster import *
 from .bankCash import *

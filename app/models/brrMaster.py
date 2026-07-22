@@ -28,9 +28,18 @@ class BrrMaster(db.Model):
 
     order_category = db.Column(db.String(100), nullable=True)
 
+    # "GRN" → order_master, "SRN" → pw_order_master
+    order_type = db.Column(db.String(10), nullable=True)
+
     order_id = db.Column(
         db.Integer,
         db.ForeignKey("order_master.id"),
+        nullable=True
+    )
+
+    pw_order_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pw_order_master.id"),
         nullable=True
     )
 
@@ -77,9 +86,10 @@ class BrrMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project = db.relationship("Project", backref="brr_list")
-    vendor  = db.relationship("Vendor",  backref="brr_list")
-    order   = db.relationship("OrderMaster", backref="brr_list")
+    project  = db.relationship("Project",               backref="brr_list")
+    vendor   = db.relationship("Vendor",                backref="brr_list")
+    order    = db.relationship("OrderMaster",           backref="brr_list")
+    pw_order = db.relationship("ProjectWorkOrderMaster", backref="brr_list")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])

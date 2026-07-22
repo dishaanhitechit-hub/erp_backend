@@ -16,6 +16,13 @@ class SrnMaster(db.Model):
         nullable=False
     )
 
+    srn_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+
     srn_date = db.Column(db.Date, nullable=False)
 
     project_code = db.Column(

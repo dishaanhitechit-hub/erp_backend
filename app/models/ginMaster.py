@@ -22,6 +22,13 @@ class GinMaster(db.Model):
         nullable=False
     )
 
+    gin_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+
     gin_date = db.Column(
         db.Date,
         nullable=False

@@ -2,6 +2,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+from collections import defaultdict
+import uuid as _uuid
 import json
 
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster, ProjectWorkOrderItem
@@ -250,7 +252,8 @@ def create_srn(data, user_id, files=None):
         if not items:
             return res("No items provided", [], 400)
 
-        srn_no = generate_srn_no()
+        srn_no   = generate_srn_no()
+        new_uuid = str(_uuid.uuid4())
 
         attached_doc = None
         if files:
@@ -281,6 +284,7 @@ def create_srn(data, user_id, files=None):
 
         srn = SrnMaster(
             srn_no                = srn_no,
+            srn_uuid              = new_uuid,
             srn_date              = data.get("srnDate"),
             project_code          = data.get("projectCode"),
             received_category     = data.get("receivedCategory"),
@@ -350,7 +354,7 @@ def create_srn(data, user_id, files=None):
 
         return res(
             "SRN created",
-            {"srnId": srn.id, "srnNo": srn.srn_no},
+            {"srnId": srn.id, "srnNo": srn.srn_no, "uuid": srn.srn_uuid},
             201
         )
 
@@ -931,6 +935,167 @@ def get_srn_history(srn_id):
             })
 
         return res("SRN history fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# GET FULL SRN DETAILS BY UUID
+# ══════════════════════════════════════════════════════════════════
+
+def get_srn_by_uuid(srn_uuid):
+    try:
+        srn = SrnMaster.query.filter_by(srn_uuid=srn_uuid).first()
+        if not srn:
+            return res("SRN not found", [], 404)
+
+        # ── project ───────────────────────────────────────────────
+        proj = srn.project
+        project_info = None
+        if proj:
+            project_info = {
+                "projectCode":   proj.project_code,
+                "projectName":   proj.project_name if hasattr(proj, "project_name") else None,
+                "clientName":    proj.client_name  if hasattr(proj, "client_name")  else None,
+                "projectStatus": proj.status        if hasattr(proj, "status")       else None,
+            }
+
+        # ── pw order ──────────────────────────────────────────────
+        order_info = None
+        if srn.order:
+            try:
+                sub_codes_list = json.loads(srn.order.sub_codes) if srn.order.sub_codes else []
+            except Exception:
+                sub_codes_list = []
+            order_info = {
+                "orderId":          srn.order.id,
+                "orderNo":          srn.order.order_no,
+                "orderDate":        _fmt_date(srn.order.order_date),
+                "subCategoryCodes": sub_codes_list,
+            }
+
+        # ── vendor ────────────────────────────────────────────────
+        vendor_info = None
+        if srn.vendor:
+            v = srn.vendor
+            vendor_info = {
+                "vendorId":          v.id,
+                "ledgerCode":        v.ledger_code            if hasattr(v, "ledger_code")            else None,
+                "ledgerName":        v.ledger_name            if hasattr(v, "ledger_name")            else None,
+                "gstin":             v.gstin                  if hasattr(v, "gstin")                  else None,
+                "pan":               v.pan                    if hasattr(v, "pan")                    else None,
+                "stateName":         v.state_name             if hasattr(v, "state_name")             else None,
+                "registeredAddress": v.registered_address     if hasattr(v, "registered_address")     else None,
+                "primaryContact":    v.primary_contact        if hasattr(v, "primary_contact")        else None,
+            }
+
+        # ── item_category (JSON list) ─────────────────────────────
+        try:
+            item_category_list = json.loads(srn.item_category) if srn.item_category else []
+        except Exception:
+            item_category_list = []
+
+        # ── users ─────────────────────────────────────────────────
+        def _uname(rel): return rel.username if rel else None
+
+        # ── items ─────────────────────────────────────────────────
+        items = []
+        total_received = 0.0
+
+        for si in srn.items:
+            poi = si.pw_order_item
+            item_name = unit = None
+            order_qty = 0.0
+
+            if poi:
+                if poi.item:
+                    item_name = poi.item.item_name
+                    unit      = poi.item.unit.unit_name if poi.item.unit else None
+                order_qty = float(poi.qty or 0)
+
+            recv_qty       = float(si.current_received_qty or 0)
+            pre_qty        = _pre_received_qty(si.pw_order_item_id) if si.pw_order_item_id else 0.0
+            balance_qty    = order_qty - pre_qty
+            total_received += recv_qty
+
+            items.append({
+                "srnItemId":          si.id,
+                "srnl":               si.srnl,
+                "pwOrderItemId":      si.pw_order_item_id,
+                "itemName":           item_name,
+                "unit":               unit,
+                "orderQty":           order_qty,
+                "preReceivedQty":     round(pre_qty, 2),
+                "balanceQty":         round(balance_qty, 2),
+                "currentReceivedQty": recv_qty,
+                "useLocation":        si.use_location,
+                "storeLocation":      si.store_location,
+            })
+
+        # ── history ───────────────────────────────────────────────
+        history_rows = get_history("service_received_note", srn.id)
+        history = []
+        for row in history_rows:
+            history.append({
+                "id":        row.id,
+                "action":    row.action,
+                "level":     row.level_no,
+                "comments":  row.comments,
+                "actionBy":  row.user.username if row.user else None,
+                "createdAt": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
+            })
+
+        data = {
+            "uuid":              srn.srn_uuid,
+            "srnId":             srn.id,
+            "srnNo":             srn.srn_no,
+            "srnDate":           _fmt_date(srn.srn_date),
+            "workflowStatus":    srn.workflow_status,
+            "status":            srn.status,
+            "currentLevel":      srn.current_level,
+            "locked":            srn.locked,
+
+            "receivedCategory":    srn.received_category,
+            "itemCategory":        item_category_list,
+            "costHead":            srn.cost_head,
+            "billingAddress":      srn.billing_address,
+            "shippingAddress":     srn.shipping_address,
+            "challanNo":           srn.challan_no,
+            "partyBillNo":         srn.party_bill_no,
+            "partyBillDate":       _fmt_date(srn.party_bill_date),
+            "deliverVehicleNo":    srn.deliver_vehicle_no,
+            "deliveredConcern":    srn.delivered_concern,
+            "unloadingDatetime":   _fmt_date(srn.unloading_datetime),
+            "physicallyVerifiedBy": srn.physically_verified_by,
+            "attachedDoc":         srn.attached_doc,
+
+            "project":           project_info,
+            "order":             order_info,
+            "vendor":            vendor_info,
+
+            "createdBy":         _uname(srn.creator),
+            "submittedBy":       _uname(srn.submitter),
+            "approvedBy":        _uname(srn.approver),
+            "rejectedBy":        _uname(srn.rejector),
+            "updatedBy":         _uname(srn.updater),
+
+            "createdAt":         _fmt_date(srn.created_at),
+            "updatedAt":         _fmt_date(srn.updated_at),
+            "submittedAt":       _fmt_date(srn.submitted_at),
+            "finalApprovedAt":   _fmt_date(srn.final_approved_at),
+            "rejectedAt":        _fmt_date(srn.rejected_at),
+            "correctionSentAt":  _fmt_date(srn.correction_sent_at),
+
+            "items":             items,
+            "summary": {
+                "totalItems":       len(items),
+                "totalReceivedQty": round(total_received, 2),
+            },
+            "history":           history,
+        }
+
+        return res("SRN details fetched", data, 200)
 
     except Exception as e:
         return res(str(e), [], 500)

@@ -22,6 +22,7 @@ from app.modules.resources.grn.service import (
     reject_grn,
     edit_grn,
     get_grn_history,
+    get_grn_by_uuid,
 )
 
 grn_bp = Blueprint("grn", __name__)
@@ -273,3 +274,13 @@ def api_verify_grn_pdf(token):
 @grn_bp.route("/pdf-file/<path:relative_path>", methods=["GET"])
 def api_serve_grn_pdf(relative_path):
     return serve_grn_pdf_file(relative_path)
+
+
+# ==========================================
+# GET FULL GRN DETAILS BY UUID
+# GET /api/grn/uuid/<grn_uuid>
+# ==========================================
+
+@grn_bp.route("/uuid/<string:grn_uuid>", methods=["GET"])
+def api_grn_by_uuid(grn_uuid):
+    return get_grn_by_uuid(grn_uuid)

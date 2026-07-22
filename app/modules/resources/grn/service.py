@@ -2,6 +2,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+from collections import defaultdict
+import uuid as _uuid
 
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
@@ -278,7 +280,8 @@ def create_grn(data, user_id, files=None):
         if not items:
             return res("No items provided", [], 400)
 
-        grn_no = generate_grn_no()
+        grn_no   = generate_grn_no()
+        new_uuid = str(_uuid.uuid4())
 
         # ── file upload ────────────────────────────────────────
         attached_doc = None
@@ -295,6 +298,7 @@ def create_grn(data, user_id, files=None):
         grn = GrnMaster(
 
             grn_no=grn_no,
+            grn_uuid=new_uuid,
             grn_date=data.get("grnDate"),
             project_code=data.get("projectCode"),
             received_category=data.get("receivedCategory"),
@@ -375,7 +379,7 @@ def create_grn(data, user_id, files=None):
 
         return res(
             "GRN created",
-            {"grnId": grn.id, "grnNo": grn.grn_no},
+            {"grnId": grn.id, "grnNo": grn.grn_no, "uuid": grn.grn_uuid},
             201
         )
 
@@ -1007,6 +1011,204 @@ def get_grn_history(grn_id):
             })
 
         return res("GRN history fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# GET FULL GRN DETAILS BY UUID
+# ══════════════════════════════════════════════════════════════════
+
+def get_grn_by_uuid(grn_uuid):
+    try:
+        grn = GrnMaster.query.filter_by(grn_uuid=grn_uuid).first()
+        if not grn:
+            return res("GRN not found", [], 404)
+
+        # ── project ───────────────────────────────────────────────
+        proj = grn.project
+        project_info = None
+        if proj:
+            project_info = {
+                "projectCode":   proj.project_code,
+                "projectName":   proj.project_name if hasattr(proj, "project_name") else None,
+                "clientName":    proj.client_name  if hasattr(proj, "client_name")  else None,
+                "projectStatus": proj.status        if hasattr(proj, "status")       else None,
+            }
+
+        # ── order ─────────────────────────────────────────────────
+        order_info = None
+        if grn.order:
+            order_info = {
+                "orderId":  grn.order.id,
+                "orderNo":  grn.order.order_no,
+                "orderDate": _fmt_date(grn.order.order_date),
+            }
+
+        # ── vendor ────────────────────────────────────────────────
+        vendor_info = None
+        if grn.vendor:
+            v = grn.vendor
+            vendor_info = {
+                "vendorId":          v.id,
+                "ledgerCode":        v.ledger_code            if hasattr(v, "ledger_code")            else None,
+                "ledgerName":        v.ledger_name            if hasattr(v, "ledger_name")            else None,
+                "gstin":             v.gstin                  if hasattr(v, "gstin")                  else None,
+                "pan":               v.pan                    if hasattr(v, "pan")                    else None,
+                "stateName":         v.state_name             if hasattr(v, "state_name")             else None,
+                "registeredAddress": v.registered_address     if hasattr(v, "registered_address")     else None,
+                "primaryContact":    v.primary_contact        if hasattr(v, "primary_contact")        else None,
+            }
+
+        # ── users ─────────────────────────────────────────────────
+        def _uname(rel): return rel.username if rel else None
+
+        # ── items + GST breakup ───────────────────────────────────
+        items = []
+        gst_slabs = defaultdict(lambda: {"qty": 0.0, "basicAmount": 0.0, "gstAmount": 0.0, "totalAmount": 0.0, "hsnSacCodes": set()})
+        total_basic   = 0.0
+        total_gst     = 0.0
+        total_received = 0.0
+
+        for gi in grn.items:
+            oi = gi.order_item
+            item_name = hsn_sac = unit = None
+            order_qty = 0.0
+            rate = gst_pct = basic_amt = gst_amt = line_total = 0.0
+
+            if oi:
+                if oi.item:
+                    item_name = oi.item.item_name
+                    hsn_sac   = oi.item.hsn_sac if hasattr(oi.item, "hsn_sac") else None
+                    unit      = oi.item.unit.unit_name if oi.item.unit else None
+                order_qty = float(oi.qty or 0)
+                rate      = float(oi.rate or 0)      if hasattr(oi, "rate")      else 0.0
+                gst_pct   = float(oi.gst_percent or 0) if hasattr(oi, "gst_percent") else 0.0
+
+            recv_qty   = float(gi.current_received_qty or 0)
+            basic_amt  = round(recv_qty * rate, 2)
+            gst_amt    = round(basic_amt * gst_pct / 100, 2)
+            line_total = round(basic_amt + gst_amt, 2)
+
+            total_basic    += basic_amt
+            total_gst      += gst_amt
+            total_received += recv_qty
+
+            if gst_pct > 0 or basic_amt > 0:
+                slab = gst_slabs[gst_pct]
+                slab["qty"]         += recv_qty
+                slab["basicAmount"] += basic_amt
+                slab["gstAmount"]   += gst_amt
+                slab["totalAmount"] += line_total
+                if hsn_sac:
+                    slab["hsnSacCodes"].add(hsn_sac)
+
+            indent_no = None
+            if oi and hasattr(oi, "indent_item") and oi.indent_item and oi.indent_item.indent:
+                indent_no = oi.indent_item.indent.indent_no
+
+            items.append({
+                "grnItemId":          gi.id,
+                "grnl":               gi.grnl,
+                "orderItemId":        gi.order_item_id,
+                "indentNo":           indent_no,
+                "itemCode":           gi.item_code,
+                "itemName":           item_name,
+                "hsnSac":             hsn_sac,
+                "unit":               gi.unit or unit,
+                "orderQty":           order_qty,
+                "preReceivedQty":     float(gi.pre_received_qty or 0),
+                "balanceQty":         float(gi.balance_qty or 0),
+                "currentReceivedQty": float(gi.current_received_qty or 0),
+                "rate":               rate,
+                "basicAmount":        basic_amt,
+                "gstPercent":         gst_pct,
+                "gstAmount":          gst_amt,
+                "lineTotal":          line_total,
+                "useLocation":        gi.use_location,
+                "storeLocation":      gi.store_location,
+                "note":               gi.note,
+            })
+
+        gst_breakup = []
+        for pct, slab in sorted(gst_slabs.items()):
+            gst_breakup.append({
+                "gstPercent":  pct,
+                "qty":         round(slab["qty"], 2),
+                "basicAmount": round(slab["basicAmount"], 2),
+                "gstAmount":   round(slab["gstAmount"], 2),
+                "totalAmount": round(slab["totalAmount"], 2),
+                "hsnSacCodes": sorted(slab["hsnSacCodes"]),
+            })
+
+        # ── history ───────────────────────────────────────────────
+        history_rows = get_history("goods_received_note", grn.id)
+        history = []
+        for row in history_rows:
+            history.append({
+                "id":        row.id,
+                "action":    row.action,
+                "level":     row.level_no,
+                "comments":  row.comments,
+                "actionBy":  row.user.username if row.user else None,
+                "createdAt": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
+            })
+
+        data = {
+            "uuid":              grn.grn_uuid,
+            "grnId":             grn.id,
+            "grnNo":             grn.grn_no,
+            "grnDate":           _fmt_date(grn.grn_date),
+            "workflowStatus":    grn.workflow_status,
+            "status":            grn.status,
+            "currentLevel":      grn.current_level,
+            "locked":            grn.locked,
+
+            "receivedCategory":    grn.received_category,
+            "itemCategory":        grn.item_category,
+            "costHead":            grn.cost_head,
+            "billingAddress":      grn.billing_address,
+            "shippingAddress":     grn.shipping_address,
+            "challanNo":           grn.challan_no,
+            "partyBillNo":         grn.party_bill_no,
+            "partyBillDate":       _fmt_date(grn.party_bill_date),
+            "deliverVehicleNo":    grn.deliver_vehicle_no,
+            "deliveredConcern":    grn.delivered_concern,
+            "unloadingDatetime":   _fmt_date(grn.unloading_datetime),
+            "physicallyVerifiedBy": grn.physically_verified_by,
+            "attachedDoc":         grn.attached_doc,
+            "pdfUrl":              grn.pdf_url,
+
+            "project":           project_info,
+            "order":             order_info,
+            "vendor":            vendor_info,
+
+            "createdBy":         _uname(grn.creator),
+            "submittedBy":       _uname(grn.submitter),
+            "approvedBy":        _uname(grn.approver),
+            "rejectedBy":        _uname(grn.rejector),
+            "updatedBy":         _uname(grn.updater),
+
+            "createdAt":         _fmt_date(grn.created_at),
+            "updatedAt":         _fmt_date(grn.updated_at),
+            "submittedAt":       _fmt_date(grn.submitted_at),
+            "finalApprovedAt":   _fmt_date(grn.final_approved_at),
+            "rejectedAt":        _fmt_date(grn.rejected_at),
+
+            "items":             items,
+            "gstBreakup":        gst_breakup,
+            "summary": {
+                "totalItems":         len(items),
+                "totalReceivedQty":   round(total_received, 2),
+                "totalBasicAmount":   round(total_basic, 2),
+                "totalGstAmount":     round(total_gst, 2),
+                "totalAmount":        round(total_basic + total_gst, 2),
+            },
+            "history":           history,
+        }
+
+        return res("GRN details fetched", data, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
