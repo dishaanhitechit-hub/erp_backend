@@ -173,23 +173,37 @@ def get_items_by_brr(brr_id):
         remaining    = max(brr_total - billed_total, 0)
 
         base = {
-            "brrId":           brr.id,
-            "brrNo":           brr.brr_no,
-            "billingType":     billing_type,
-            "brrTotal":        brr_total,
-            "billedSoFar":     billed_total,
-            "remainingAmount": remaining,
-            "orderId":         order.id,
-            "orderNo":         order.order_no,
-            "orderDate":       _fmt_date(order.order_date),
-            "vendorId":        order.vendor_id,
-            "partyName":       vendor.ledger_name        if vendor else None,
-            "partyAddress":    vendor.registered_address if vendor else None,
-            "partyGstn":       vendor.gstin              if vendor else None,
-            "projectCode":     order.project_code,
-            "site":            order.project_code,
-            "billingAddress":  order.billing_address,
-            "shippingAddress": order.shipping_address,
+            # BRR
+            "brrId":             brr.id,
+            "brrNo":             brr.brr_no,
+            "brrDate":           _fmt_date(brr.brr_date),
+            "brrPartyBillNo":    brr.party_bill_no,
+            "brrPartyDate":      _fmt_date(brr.party_date),
+            "brrBasicAmount":    float(brr.basic_amount or 0),
+            "brrGstAmount":      float(brr.gst_amount   or 0),
+            "brrTotal":          brr_total,
+            "brrWorkflowStatus": brr.workflow_status,
+            "orderCategory":     brr.order_category,
+            "billingType":       billing_type,
+            "billedSoFar":       billed_total,
+            "remainingAmount":   remaining,
+
+            # Order header
+            "orderId":          order.id,
+            "orderNo":          order.order_no,
+            "orderDate":        _fmt_date(order.order_date),
+            "orderBasicAmount": float(order.basic_amount or 0),
+            "orderTotalAmount": float(order.total_amount  or 0),
+            "projectCode":      order.project_code,
+            "site":             order.project_code,
+            "billingAddress":   order.billing_address,
+            "shippingAddress":  order.shipping_address,
+
+            # Vendor
+            "vendorId":     order.vendor_id,
+            "partyName":    vendor.ledger_name        if vendor else None,
+            "partyAddress": vendor.registered_address if vendor else None,
+            "partyGstn":    vendor.gstin              if vendor else None,
         }
 
         if billing_type == "GRN":
@@ -606,37 +620,54 @@ def get_brb_details(brb_id):
             order_sub_codes = []
 
         data = {
-            "id":               brb.id,
-            "brbNo":            brb.brb_no,
-            "brbDate":          _fmt_date(brb.brb_date),
-            "billingType":      brb.billing_type,
-            "projectCode":      brb.project_code,
-            "brrId":            brb.brr_id,
-            "brrNo":            brb.brr.brr_no             if brb.brr else None,
-            "vendorId":         order.vendor_id             if order   else None,
-            "partyName":        vendor.ledger_name          if vendor  else None,
-            "partyAddress":     vendor.registered_address   if vendor  else None,
-            "partyGstn":        vendor.gstin                if vendor  else None,
-            "orderId":          order.id                    if order   else None,
-            "orderNo":          order.order_no              if order   else None,
-            "orderDate":        _fmt_date(order.order_date) if order   else None,
-            "orderCategory":    brb.brr.order_category      if brb.brr else None,
+            # BRB
+            "id":             brb.id,
+            "brbNo":          brb.brb_no,
+            "brbDate":        _fmt_date(brb.brb_date),
+            "billingType":    brb.billing_type,
+            "itemCategory":   cat_list,
+            "costHead":       brb.cost_head,
+            "partyBillNo":    brb.party_bill_no,
+            "partyDate":      _fmt_date(brb.party_date),
+            "basicAmount":    float(brb.basic_amount or 0),
+            "gstAmount":      float(brb.gst_amount   or 0),
+            "totalAmount":    float(brb.total_amount  or 0),
+            "workflowStatus": brb.workflow_status,
+            "currentLevel":   brb.current_level,
+            "locked":         brb.locked,
+
+            # BRR
+            "brrId":             brr.id                        if brr else None,
+            "brrNo":             brr.brr_no                    if brr else None,
+            "brrDate":           _fmt_date(brr.brr_date)       if brr else None,
+            "brrPartyBillNo":    brr.party_bill_no              if brr else None,
+            "brrPartyDate":      _fmt_date(brr.party_date)     if brr else None,
+            "brrBasicAmount":    float(brr.basic_amount or 0)  if brr else 0,
+            "brrGstAmount":      float(brr.gst_amount   or 0)  if brr else 0,
+            "brrTotalAmount":    float(brr.total_amount  or 0) if brr else 0,
+            "brrWorkflowStatus": brr.workflow_status            if brr else None,
+            "projectCode":       brr.project_code               if brr else None,
+            "orderCategory":     brr.order_category             if brr else None,
+
+            # Vendor
+            "vendorId":     vendor.id                  if vendor else None,
+            "partyName":    vendor.ledger_name         if vendor else None,
+            "partyAddress": vendor.registered_address  if vendor else None,
+            "partyGstn":    vendor.gstin               if vendor else None,
+
+            # Order header
+            "orderId":          order.id                       if order else None,
+            "orderNo":          order.order_no                 if order else None,
+            "orderDate":        _fmt_date(order.order_date)    if order else None,
+            "billingAddress":   order.billing_address           if order else None,
+            "shippingAddress":  order.shipping_address          if order else None,
+            "orderBasicAmount": float(order.basic_amount or 0) if order else 0,
+            "orderTotalAmount": float(order.total_amount  or 0) if order else 0,
             "subCategoryCodes": order_sub_codes,
-            "itemCategory":     cat_list,
-            "costHead":         brb.cost_head,
-            "partyBillNo":      brb.party_bill_no,
-            "partyDate":        _fmt_date(brb.party_date),
-            "site":             order.project_code          if order   else None,
-            "billingAddress":   order.billing_address       if order   else None,
-            "shippingAddress":  order.shipping_address      if order   else None,
-            "basicAmount":      float(brb.basic_amount or 0),
-            "gstAmount":        float(brb.gst_amount   or 0),
-            "totalAmount":      float(brb.total_amount  or 0),
-            "workflowStatus":   brb.workflow_status,
-            "currentLevel":     brb.current_level,
-            "locked":           brb.locked,
-            "items":            items,
-            "ccSummary":        _cc_summary(brb.id, brb.billing_type),
+
+            # Billed items + CC summary
+            "items":     items,
+            "ccSummary": _cc_summary(brb.id, brb.billing_type),
         }
 
         return res("Billing details fetched", data, 200)
