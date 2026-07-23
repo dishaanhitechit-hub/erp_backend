@@ -301,16 +301,6 @@ def get_items_by_brr(brr_id):
 
 def create_brb(data, user_id):
     try:
-        allowed = is_creator(data.get("projectCode"), _module(data), user_id)
-        if not allowed:
-            return res("You are not authorised to create billing", [], 403)
-
-        items = data.get("items", [])
-        if isinstance(items, str):
-            items = json.loads(items)
-        if not items:
-            return res("No items provided", [], 400)
-
         brr_id = data.get("brrId")
         if not brr_id:
             return res("brrId required", [], 400)
@@ -327,17 +317,24 @@ def create_brb(data, user_id):
         if not order:
             return res("BRR has no order linked", [], 400)
 
-        # item_category handling
-        raw_cat = data.get("itemCategory") or []
-        if isinstance(raw_cat, str):
+        allowed = is_creator(data.get("projectCode"), get_module_code(billing_type), user_id)
+        if not allowed:
+            return res("You are not authorised to create billing", [], 403)
+
+        items = data.get("items", [])
+        if isinstance(items, str):
+            items = json.loads(items)
+        if not items:
+            return res("No items provided", [], 400)
+
+        # item_category derived from order FK
+        if billing_type == "SRN":
             try:
-                cat_list = json.loads(raw_cat)
+                cat_list = json.loads(order.sub_codes) if order.sub_codes else []
             except Exception:
-                cat_list = [c.strip() for c in raw_cat.split(",") if c.strip()]
-        elif isinstance(raw_cat, list):
-            cat_list = raw_cat
+                cat_list = []
         else:
-            cat_list = []
+            cat_list = [order.category_code] if order.category_code else []
 
         brb = BrbMaster(
             brb_no        = _generate_brb_no(),
@@ -348,9 +345,9 @@ def create_brb(data, user_id):
             vendor_id     = order.vendor_id,
             order_id      = order.id,
             item_category = json.dumps(cat_list) if cat_list else None,
-            cost_head     = data.get("costHead"),
-            party_bill_no = data.get("partyBillNo"),
-            party_date    = data.get("partyDate") or None,
+            cost_head     = order.cost_head,
+            party_bill_no = brr.party_bill_no,
+            party_date    = brr.party_date,
             workflow_status = "Draft",
             current_level   = 0,
             locked          = False,
@@ -463,10 +460,13 @@ def create_brb(data, user_id):
         return res(
             "Billing created",
             {
-                "brbId":      brb.id,
-                "brbNo":      brb.brb_no,
+                "brbId":       brb.id,
+                "brbNo":       brb.brb_no,
+                "brrId":       brr.id,
+                "brrNo":       brr.brr_no,
+                "projectCode": brr.project_code,
                 "billingType": billing_type,
-                "ccSummary":  _cc_summary(brb.id, billing_type),
+                "ccSummary":   _cc_summary(brb.id, billing_type),
             },
             201
         )
