@@ -4,7 +4,9 @@ from datetime import datetime
 
 from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster
+from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.models.brbMaster import BrbMaster
+from app.modules.billing.constants import get_billing_type
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -50,36 +52,102 @@ def generate_brr_no():
 
 def get_orders_by_vendor(data):
     try:
-        vendor_id    = data.get("vendorId")
-        project_code = data.get("projectCode")
+        vendor_id     = data.get("vendorId")
+        project_code  = data.get("projectCode")
+        order_category = data.get("orderCategory")
 
         if not vendor_id:
             return res("vendorId required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
-        query = OrderMaster.query.filter(
-            OrderMaster.vendor_id    == vendor_id,
-            OrderMaster.project_code == project_code,
-            OrderMaster.workflow_status == "Approved"
-        )
+        billing_type = get_billing_type(order_category) if order_category else None
 
-        if data.get("orderCategory"):
-            query = query.filter(OrderMaster.category_code == data.get("orderCategory"))
+        result = []
 
-        rows = query.order_by(OrderMaster.id.desc()).all()
+        if billing_type == "SRN":
+            # SRN categories → pw_order_master
+            query = ProjectWorkOrderMaster.query.filter(
+                ProjectWorkOrderMaster.vendor_id     == vendor_id,
+                ProjectWorkOrderMaster.project_code  == project_code,
+                ProjectWorkOrderMaster.workflow_status == "Approved",
+            )
+            if order_category:
+                query = query.filter(ProjectWorkOrderMaster.category_code == order_category)
+            rows = query.order_by(ProjectWorkOrderMaster.id.desc()).all()
+            result = [
+                {
+                    "id":           row.id,
+                    "orderNo":      row.order_no,
+                    "orderDate":    _fmt_date(row.order_date),
+                    "categoryCode": row.category_code,
+                    "basicAmount":  float(row.basic_amount or 0),
+                    "totalAmount":  float(row.total_amount or 0),
+                    "billingType":  "SRN",
+                }
+                for row in rows
+            ]
 
-        result = [
-            {
-                "id":           row.id,
-                "orderNo":      row.order_no,
-                "orderDate":    _fmt_date(row.order_date),
-                "categoryCode": row.category_code,
-                "basicAmount":  float(row.basic_amount or 0),
-                "totalAmount":  float(row.total_amount or 0),
-            }
-            for row in rows
-        ]
+        elif billing_type == "GRN":
+            # GRN categories → order_master
+            query = OrderMaster.query.filter(
+                OrderMaster.vendor_id     == vendor_id,
+                OrderMaster.project_code  == project_code,
+                OrderMaster.workflow_status == "Approved",
+            )
+            if order_category:
+                query = query.filter(OrderMaster.category_code == order_category)
+            rows = query.order_by(OrderMaster.id.desc()).all()
+            result = [
+                {
+                    "id":           row.id,
+                    "orderNo":      row.order_no,
+                    "orderDate":    _fmt_date(row.order_date),
+                    "categoryCode": row.category_code,
+                    "basicAmount":  float(row.basic_amount or 0),
+                    "totalAmount":  float(row.total_amount or 0),
+                    "billingType":  "GRN",
+                }
+                for row in rows
+            ]
+
+        else:
+            # No category filter → query both tables and merge
+            grn_rows = OrderMaster.query.filter(
+                OrderMaster.vendor_id     == vendor_id,
+                OrderMaster.project_code  == project_code,
+                OrderMaster.workflow_status == "Approved",
+            ).order_by(OrderMaster.id.desc()).all()
+
+            srn_rows = ProjectWorkOrderMaster.query.filter(
+                ProjectWorkOrderMaster.vendor_id     == vendor_id,
+                ProjectWorkOrderMaster.project_code  == project_code,
+                ProjectWorkOrderMaster.workflow_status == "Approved",
+            ).order_by(ProjectWorkOrderMaster.id.desc()).all()
+
+            result = [
+                {
+                    "id":           row.id,
+                    "orderNo":      row.order_no,
+                    "orderDate":    _fmt_date(row.order_date),
+                    "categoryCode": row.category_code,
+                    "basicAmount":  float(row.basic_amount or 0),
+                    "totalAmount":  float(row.total_amount or 0),
+                    "billingType":  "GRN",
+                }
+                for row in grn_rows
+            ] + [
+                {
+                    "id":           row.id,
+                    "orderNo":      row.order_no,
+                    "orderDate":    _fmt_date(row.order_date),
+                    "categoryCode": row.category_code,
+                    "basicAmount":  float(row.basic_amount or 0),
+                    "totalAmount":  float(row.total_amount or 0),
+                    "billingType":  "SRN",
+                }
+                for row in srn_rows
+            ]
 
         return res("Orders fetched", result, 200)
 
