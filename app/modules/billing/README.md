@@ -2,43 +2,54 @@
 
 ## Overview
 
-Billing flow through BRR (Bill Receive Register):
-
 ```
 BRR (Bill Receive Register)
- ├── BRG — BRR Billing GRN  (purchase order → GRN items)
- └── BRS — BRR Billing SRN  (project-work order → SRN items)
+ └── BRB — BRR Billing  (unified for GRN and SRN, driven by order category)
 ```
 
-A BRR is created first. Once a BRR is approved, billing (BRG or BRS) is raised against the order linked to that BRR. The BRR list now returns all BRG and BRS records nested inside each BRR row.
+BRR is created first and linked to an order. The order's **category** automatically determines whether billing works through GRN items or SRN items — no separate BRG/BRS endpoints exist anymore.
+
+---
+
+## Category → Billing Type Rule
+
+| Order Category          | Billing Type | Order Table       | Items From  |
+|-------------------------|--------------|-------------------|-------------|
+| `Purchases_Order`       | GRN          | `order_master`    | `grn_items` |
+| `Customer_Supply_Order` | GRN          | `order_master`    | `grn_items` |
+| `Site_Transfer_Order`   | GRN          | `order_master`    | `grn_items` |
+| `Hire_Order`            | SRN          | `pw_order_master` | `srn_items` |
+| `Job_Contract_Order`    | SRN          | `pw_order_master` | `srn_items` |
+| `Work_Order`            | SRN          | `pw_order_master` | `srn_items` |
 
 ---
 
 ## Serial Number Ranges
 
-| Document | Base   | Example    |
-|----------|--------|------------|
-| BRR      | 900000 | `900001`   |
-| BRG      | 910000 | `910001`   |
-| BRS      | 920000 | `920001`   |
+| Document | Base   | Example  |
+|----------|--------|----------|
+| BRR      | 900000 | `900001` |
+| BRB      | 910000 | `910001` |
 
 ---
 
-## Module Codes (for approval path setup)
+## Module Codes (approval path setup)
 
-| Document | Module Code            |
-|----------|------------------------|
-| BRR      | `bill_receive_register` |
-| BRG      | `billing_by_brr_grn`   |
-| BRS      | `billing_by_brr_srn`   |
+| Document       | Module Code             |
+|----------------|-------------------------|
+| BRR            | `bill_receive_register` |
+| BRB (GRN type) | `billing_by_grn`        |
+| BRB (SRN type) | `billing_by_srn`        |
 
 ---
 
 ## Workflow States
 
-`Draft` → `Pending_L1` → `Pending_L2` → ... → `Approved`
-                                              ↘ `Reback` → (edit) → resubmit
-                                              ↘ `Rejected`
+```
+Draft → Pending_L1 → Pending_L2 → ... → Approved
+                                      ↘ Reback → (edit) → resubmit
+                                      ↘ Rejected
+```
 
 ---
 
@@ -52,24 +63,24 @@ A BRR is created first. Once a BRR is approved, billing (BRG or BRS) is raised a
 
 ### GET `/billing/brr/vendor-orders`
 
-Fetch approved orders for a vendor + project (filter panel).
+Fetch approved orders for a vendor + project (order dropdown when creating BRR).
 
 **Query params:**
-| Param         | Required | Description              |
-|---------------|----------|--------------------------|
-| `vendorId`    | Yes      |                          |
-| `projectCode` | Yes      |                          |
-| `orderCategory` | No     | Filter by category code  |
+| Param           | Required | Description       |
+|-----------------|----------|-------------------|
+| `vendorId`      | Yes      |                   |
+| `projectCode`   | Yes      |                   |
+| `orderCategory` | No       | Filter by category |
 
 **Response:**
 ```json
 {
   "data": [
     {
-      "id": 1,
-      "orderNo": "810001",
+      "id": 30,
+      "orderNo": "440022",
       "orderDate": "2025-01-05",
-      "categoryCode": "CIVIL",
+      "categoryCode": "Purchases_Order",
       "basicAmount": 50000,
       "totalAmount": 59000
     }
@@ -81,27 +92,26 @@ Fetch approved orders for a vendor + project (filter panel).
 
 ### POST `/billing/brr/create`
 
-Create a new BRR. Accepts `multipart/form-data` (supports file upload).
+Create a new BRR. Accepts `multipart/form-data`.
 
 **Form fields:**
-| Field              | Type   | Required | Description                    |
-|--------------------|--------|----------|--------------------------------|
-| `projectCode`      | string | Yes      |                                |
-| `vendorId`         | int    | No       |                                |
-| `orderCategory`    | string | No       |                                |
-| `orderId`          | int    | No       | FK → `order_master` (GRN)      |
-| `pwOrderId`        | int    | No       | FK → `pw_order_master` (SRN)   |
-| `orderType`        | string | No       | `"GRN"` or `"SRN"`             |
-| `partyBillNo`      | string | No       |                                |
-| `partyDate`        | date   | No       |                                |
-| `receivedCategory` | string | No       |                                |
-| `submittedByName`  | string | No       |                                |
-| `submissionDate`   | date   | No       |                                |
-| `receivedThrough`  | string | No       |                                |
-| `receivedReference`| string | No       |                                |
-| `basicAmount`      | number | No       |                                |
-| `gstAmount`        | number | No       |                                |
-| `attachedDoc`      | file   | No       | Uploaded to CDN                |
+| Field               | Type   | Required | Description                              |
+|---------------------|--------|----------|------------------------------------------|
+| `projectCode`       | string | Yes      |                                          |
+| `vendorId`          | int    | No       |                                          |
+| `orderCategory`     | string | No       | Must match one of the defined categories |
+| `orderId`           | int    | No       | FK → `order_master` (GRN categories)     |
+| `pwOrderId`         | int    | No       | FK → `pw_order_master` (SRN categories)  |
+| `partyBillNo`       | string | No       |                                          |
+| `partyDate`         | date   | No       |                                          |
+| `receivedCategory`  | string | No       |                                          |
+| `submittedByName`   | string | No       |                                          |
+| `submissionDate`    | date   | No       |                                          |
+| `receivedThrough`   | string | No       |                                          |
+| `receivedReference` | string | No       |                                          |
+| `basicAmount`       | number | No       |                                          |
+| `gstAmount`         | number | No       |                                          |
+| `attachedDoc`       | file   | No       |                                          |
 
 **Response `201`:**
 ```json
@@ -112,15 +122,9 @@ Create a new BRR. Accepts `multipart/form-data` (supports file upload).
 
 ### GET `/billing/brr/list`
 
-List BRRs with nested GRN and SRN billing records.
+List BRRs with nested billing records split by type.
 
-**Query params:**
-| Param            | Required |
-|------------------|----------|
-| `projectCode`    | Yes      |
-| `vendorId`       | No       |
-| `workflowStatus` | No       |
-| `search`         | No       |
+**Query params:** `projectCode` (required), `vendorId`, `workflowStatus`, `search`
 
 **Response:**
 ```json
@@ -132,21 +136,19 @@ List BRRs with nested GRN and SRN billing records.
       "brrDate": "2025-01-10",
       "projectCode": "PRJ001",
       "partyName": "ABC Suppliers",
-      "orderCategory": "CIVIL",
-      "orderNo": "810001",
+      "orderCategory": "Purchases_Order",
+      "orderNo": "440022",
       "orderDate": "2025-01-05",
       "partyBillNo": "INV-001",
-      "partyDate": "2025-01-09",
       "basicAmount": 50000,
       "totalAmount": 59000,
-      "bookedAmount": 59000,
       "workflowStatus": "Approved",
-
       "grnBillings": [
         {
-          "brgId": 1,
-          "brgNo": "910001",
-          "brgDate": "2025-01-11",
+          "brbId": 1,
+          "brbNo": "910001",
+          "brbDate": "2025-01-11",
+          "billingType": "GRN",
           "workflowStatus": "Approved",
           "basicAmount": 30000,
           "gstAmount": 5400,
@@ -154,19 +156,7 @@ List BRRs with nested GRN and SRN billing records.
           "itemCount": 3
         }
       ],
-
-      "srnBillings": [
-        {
-          "brsId": 1,
-          "brsNo": "920001",
-          "brsDate": "2025-01-12",
-          "workflowStatus": "Draft",
-          "basicAmount": 20000,
-          "gstAmount": 3600,
-          "totalAmount": 23600,
-          "itemCount": 2
-        }
-      ]
+      "srnBillings": []
     }
   ]
 }
@@ -176,7 +166,7 @@ List BRRs with nested GRN and SRN billing records.
 
 ### GET `/billing/brr/details/<brr_id>`
 
-Full BRR details (header only, no billing lines).
+Full BRR header details.
 
 ---
 
@@ -187,8 +177,6 @@ Edit a Draft or Reback BRR. Accepts `multipart/form-data`.
 ---
 
 ### POST `/billing/brr/submit/<brr_id>`
-
-Submit BRR for approval.
 
 ---
 
@@ -212,37 +200,44 @@ Submit BRR for approval.
 
 ### GET `/billing/brr/history/<brr_id>`
 
-Approval history for a BRR.
-
 ---
 
 ---
 
-# 2. BRG — BRR Billing GRN
+# 2. BRB — BRR Billing (Unified)
 
-Bills GRN items against a BRR that is linked to a purchase order (`order_master`).
+Handles both GRN and SRN billing in a single set of endpoints.
+`billingType` (`"GRN"` or `"SRN"`) is derived automatically from the BRR's `orderCategory`.
 
-**Base URL:** `/billing/brg`
+**Base URL:** `/billing/brb`
 
 ---
 
-### GET `/billing/brg/grns-by-brr/<brr_id>`
+### GET `/billing/brb/items-by-brr/<brr_id>`
 
-Fetches the purchase order and all its approved GRNs from the given BRR. Returns available qty per GRN line (already-billed BRG qty is deducted).
+Fetches available items for billing under a BRR.
+- GRN category BRR → returns `grns[]` with GRN items and available qty
+- SRN category BRR → returns `srns[]` with SRN items and available qty
 
-**Response:**
+Also returns BRR budget summary.
+
+**Response (GRN example):**
 ```json
 {
   "data": {
     "brrId": 1,
     "brrNo": "900001",
-    "orderId": 5,
-    "orderNo": "810001",
+    "billingType": "GRN",
+    "brrTotal": 59000,
+    "billedSoFar": 20000,
+    "remainingAmount": 39000,
+    "orderId": 30,
+    "orderNo": "440022",
     "orderDate": "2025-01-05",
     "vendorId": 10,
     "partyName": "ABC Suppliers",
-    "partyAddress": "...",
-    "partyGstn": "22AAAAA...",
+    "partyAddress": "123 Main St",
+    "partyGstn": "22AAAAA0000A1Z5",
     "projectCode": "PRJ001",
     "site": "PRJ001",
     "billingAddress": "...",
@@ -274,125 +269,25 @@ Fetches the purchase order and all its approved GRNs from the given BRR. Returns
 }
 ```
 
----
-
-### POST `/billing/brg/create`
-
-**Body (JSON):**
-```json
-{
-  "brrId": 1,
-  "brgDate": "2025-01-11",
-  "projectCode": "PRJ001",
-  "vendorId": 10,
-  "orderId": 5,
-  "receivedCategory": "CIVIL",
-  "itemCategory": "CEMENT",
-  "costHead": "MATERIAL",
-  "partyBillNo": "INV-001",
-  "partyDate": "2025-01-09",
-  "site": "PRJ001",
-  "billingAddress": "...",
-  "shippingAddress": "...",
-  "items": [
-    { "grnItemId": 12, "billingQty": 60 }
-  ]
-}
-```
-
-**Response `201`:**
-```json
-{
-  "brgId": 1,
-  "brgNo": "910001",
-  "ccSummary": [
-    { "ccCode": "CC01", "ccName": "Civil", "basicAmount": 21000, "gstAmount": 3780, "totalAmount": 24780 }
-  ]
-}
-```
-
-> `rate` and `gstPercent` are pulled automatically from the order item — do not send them in the request.
-
----
-
-### GET `/billing/brg/list`
-
-**Query params:**
-| Param            | Required |
-|------------------|----------|
-| `projectCode`    | Yes      |
-| `vendorId`       | No       |
-| `brrId`          | No       |
-| `orderId`        | No       |
-| `workflowStatus` | No       |
-| `search`         | No       |
-
----
-
-### GET `/billing/brg/details/<brg_id>`
-
-Full BRG details including all item lines, CC summary, and available qty per line.
-
----
-
-### PUT `/billing/brg/edit/<brg_id>`
-
-Edit a Draft or Reback BRG. Same JSON body as create (items are wiped and rebuilt).
-
----
-
-### POST `/billing/brg/submit/<brg_id>`
-
----
-
-### POST `/billing/brg/approve/<brg_id>`
-
-**Body:** `{ "comments": "..." }`
-
----
-
-### POST `/billing/brg/reback/<brg_id>`
-
-**Body:** `{ "comments": "..." }` *(required)*
-
----
-
-### POST `/billing/brg/reject/<brg_id>`
-
-**Body:** `{ "comments": "..." }` *(required)*
-
----
-
-### GET `/billing/brg/history/<brg_id>`
-
----
-
----
-
-# 3. BRS — BRR Billing SRN
-
-Bills SRN items against a BRR that is linked to a project-work order (`pw_order_master`).
-
-**Base URL:** `/billing/brs`
-
----
-
-### GET `/billing/brs/srns-by-brr/<brr_id>`
-
-Fetches the PW order and all its approved SRNs from the given BRR.
-
-**Response:**
+**Response (SRN example):**
 ```json
 {
   "data": {
-    "brrId": 1,
-    "brrNo": "900001",
+    "brrId": 2,
+    "brrNo": "900002",
+    "billingType": "SRN",
+    "brrTotal": 30000,
+    "billedSoFar": 0,
+    "remainingAmount": 30000,
     "orderId": 7,
     "orderNo": "820001",
     "orderDate": "2025-01-06",
-    "vendorId": 10,
+    "vendorId": 11,
     "partyName": "XYZ Works",
+    "partyAddress": "...",
+    "partyGstn": "...",
     "projectCode": "PRJ001",
+    "site": "PRJ001",
     "subCategoryCodes": ["SVC", "LABOUR"],
     "billingAddress": "...",
     "shippingAddress": "...",
@@ -424,86 +319,244 @@ Fetches the PW order and all its approved SRNs from the given BRR.
 
 ---
 
-### POST `/billing/brs/create`
+### POST `/billing/brb/create`
 
-**Body (JSON):**
+**Body (JSON) — GRN billing:**
 ```json
 {
   "brrId": 1,
-  "brsDate": "2025-01-12",
+  "brbDate": "2025-01-11",
   "projectCode": "PRJ001",
-  "vendorId": 10,
-  "orderId": 7,
-  "receivedCategory": "CIVIL",
+  "itemCategory": ["CEMENT"],
+  "costHead": "MATERIAL",
+  "partyBillNo": "INV-001",
+  "partyDate": "2025-01-09",
+  "items": [
+    { "grnItemId": 12, "billingQty": 60 }
+  ]
+}
+```
+
+**Body (JSON) — SRN billing:**
+```json
+{
+  "brrId": 2,
+  "brbDate": "2025-01-12",
+  "projectCode": "PRJ001",
   "itemCategory": ["SVC", "LABOUR"],
   "costHead": "LABOUR",
   "partyBillNo": "INV-002",
   "partyDate": "2025-01-11",
-  "site": "PRJ001",
-  "billingAddress": "...",
-  "shippingAddress": "...",
   "items": [
     { "srnItemId": 8, "billingQty": 500 }
   ]
 }
 ```
 
-> `itemCategory` can be a JSON array or comma-separated string. `rate` and `gstPercent` are pulled from the PW order item automatically.
+> `billingType`, `vendorId`, `orderId`, `billingAddress`, `shippingAddress` — all auto-derived from BRR → Order chain. Do NOT send them.
+
+> `rate` and `gstPercent` are pulled from the order item automatically. Do NOT send them.
+
+**Validations:**
+- `billingQty` must not exceed `availableQty` per item
+- Total amount must not exceed `remainingAmount` on the BRR
 
 **Response `201`:**
 ```json
 {
-  "brsId": 1,
-  "brsNo": "920001",
+  "brbId": 1,
+  "brbNo": "910001",
+  "billingType": "GRN",
   "ccSummary": [
-    { "ccCode": "CC02", "ccName": "Labour", "basicAmount": 22500, "gstAmount": 4050, "totalAmount": 26550 }
+    {
+      "ccCode": "CC01",
+      "ccName": "Civil",
+      "basicAmount": 21000,
+      "gstAmount": 3780,
+      "totalAmount": 24780
+    }
   ]
 }
 ```
 
 ---
 
-### GET `/billing/brs/list`
+### GET `/billing/brb/list`
 
-**Query params:** `projectCode` (required), `vendorId`, `brrId`, `orderId`, `workflowStatus`, `search`
+**Query params:**
+| Param            | Required | Description          |
+|------------------|----------|----------------------|
+| `projectCode`    | Yes      |                      |
+| `billingType`    | No       | `"GRN"` or `"SRN"`  |
+| `vendorId`       | No       |                      |
+| `brrId`          | No       |                      |
+| `orderId`        | No       |                      |
+| `workflowStatus` | No       |                      |
+| `search`         | No       | Search by BRB number |
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "brbNo": "910001",
+      "brbDate": "2025-01-11",
+      "billingType": "GRN",
+      "projectCode": "PRJ001",
+      "brrNo": "900001",
+      "orderNo": "440022",
+      "partyName": "ABC Suppliers",
+      "itemCategory": ["CEMENT"],
+      "costHead": "MATERIAL",
+      "partyBillNo": "INV-001",
+      "basicAmount": 21000,
+      "totalAmount": 24780,
+      "workflowStatus": "Draft"
+    }
+  ]
+}
+```
 
 ---
 
-### GET `/billing/brs/details/<brs_id>`
+### GET `/billing/brb/details/<brb_id>`
 
-Full BRS details including all item lines and CC summary.
+Full BRB details. All vendor/order/address fields derived from BRR → Order chain.
+
+**Response:**
+```json
+{
+  "data": {
+    "id": 1,
+    "brbNo": "910001",
+    "brbDate": "2025-01-11",
+    "billingType": "GRN",
+    "projectCode": "PRJ001",
+    "brrId": 1,
+    "brrNo": "900001",
+    "vendorId": 10,
+    "partyName": "ABC Suppliers",
+    "partyAddress": "123 Main St",
+    "partyGstn": "22AAAAA0000A1Z5",
+    "orderId": 30,
+    "orderNo": "440022",
+    "orderDate": "2025-01-05",
+    "orderCategory": "Purchases_Order",
+    "site": "PRJ001",
+    "billingAddress": "...",
+    "shippingAddress": "...",
+    "itemCategory": ["CEMENT"],
+    "costHead": "MATERIAL",
+    "partyBillNo": "INV-001",
+    "partyDate": "2025-01-09",
+    "basicAmount": 21000,
+    "gstAmount": 3780,
+    "totalAmount": 24780,
+    "workflowStatus": "Draft",
+    "currentLevel": 0,
+    "locked": false,
+    "items": [
+      {
+        "id": 1,
+        "grnItemId": 12,
+        "grnId": 3,
+        "grnNo": "830001",
+        "grnDate": "2025-01-08",
+        "grnl": "GRNL001",
+        "itemCode": "ITM001",
+        "itemName": "Cement",
+        "itemUnit": "Bag",
+        "receivedQty": 100,
+        "alreadyBilled": 60,
+        "availableQty": 0,
+        "billingQty": 60,
+        "rate": 350,
+        "amount": 21000,
+        "gstPercent": 18,
+        "gstAmount": 3780
+      }
+    ],
+    "ccSummary": [
+      {
+        "ccCode": "CC01",
+        "ccName": "Civil",
+        "basicAmount": 21000,
+        "gstAmount": 3780,
+        "totalAmount": 24780
+      }
+    ]
+  }
+}
+```
+
+> For SRN billing, items contain `srnItemId`, `srnId`, `srnNo`, `srnDate`, `srnl` instead of GRN fields.
 
 ---
 
-### PUT `/billing/brs/edit/<brs_id>`
+### PUT `/billing/brb/edit/<brb_id>`
 
-Edit a Draft or Reback BRS. Same JSON body as create.
+Edit a Draft or Reback BRB. Items are wiped and rebuilt from scratch.
+
+**Editable fields only:**
+```json
+{
+  "brbDate": "2025-01-12",
+  "partyBillNo": "INV-001-REV",
+  "partyDate": "2025-01-10",
+  "itemCategory": ["CEMENT", "STEEL"],
+  "costHead": "MATERIAL",
+  "items": [
+    { "grnItemId": 12, "billingQty": 50 }
+  ]
+}
+```
+
+> `billingType`, `vendorId`, `orderId`, `billingAddress`, `shippingAddress` are not editable — always derived from the BRR → Order chain.
 
 ---
 
-### POST `/billing/brs/submit/<brs_id>`
+### POST `/billing/brb/submit/<brb_id>`
+
+Submit for approval. Internally uses `billing_by_grn` or `billing_by_srn` module code depending on `billingType`.
 
 ---
 
-### POST `/billing/brs/approve/<brs_id>`
+### POST `/billing/brb/approve/<brb_id>`
 
 **Body:** `{ "comments": "..." }`
 
 ---
 
-### POST `/billing/brs/reback/<brs_id>`
+### POST `/billing/brb/reback/<brb_id>`
 
 **Body:** `{ "comments": "..." }` *(required)*
 
 ---
 
-### POST `/billing/brs/reject/<brs_id>`
+### POST `/billing/brb/reject/<brb_id>`
 
 **Body:** `{ "comments": "..." }` *(required)*
 
 ---
 
-### GET `/billing/brs/history/<brs_id>`
+### GET `/billing/brb/history/<brb_id>`
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "action": "SUBMIT",
+      "level": 1,
+      "comments": null,
+      "actionBy": "john.doe",
+      "createdAt": "2025-01-11 10:30:00"
+    }
+  ]
+}
+```
 
 ---
 
@@ -511,29 +564,31 @@ Edit a Draft or Reback BRS. Same JSON body as create.
 
 ## DB Tables
 
-| Table           | Description                        |
-|-----------------|------------------------------------|
-| `brr_master`    | Bill Receive Register header       |
-| `brg_master`    | BRR Billing GRN header             |
-| `brg_items`     | BRR Billing GRN line items         |
-| `brs_master`    | BRR Billing SRN header             |
-| `brs_items`     | BRR Billing SRN line items         |
+| Table        | Description                                      |
+|--------------|--------------------------------------------------|
+| `brr_master` | Bill Receive Register header                     |
+| `brb_master` | BRR Billing header — unified GRN + SRN           |
+| `brb_items`  | BRR Billing line items                           |
 
 ## FK Chain
 
 ```
-brr_master.order_id      → order_master.id
-brr_master.pw_order_id   → pw_order_master.id
+brr_master.order_id     → order_master.id        (GRN categories)
+brr_master.pw_order_id  → pw_order_master.id     (SRN categories)
 
-brg_master.brr_id        → brr_master.id
-brg_master.order_id      → order_master.id
-brg_items.brg_id         → brg_master.id
-brg_items.grn_id         → grn_master.id
-brg_items.grn_item_id    → grn_items.id
-
-brs_master.brr_id        → brr_master.id
-brs_master.order_id      → pw_order_master.id
-brs_items.brs_id         → brs_master.id
-brs_items.srn_id         → srn_master.id
-brs_items.srn_item_id    → srn_items.id
+brb_master.brr_id       → brr_master.id
+brb_items.brb_id        → brb_master.id
+brb_items.grn_id        → grn_master.id          (GRN only, else NULL)
+brb_items.grn_item_id   → grn_items.id           (GRN only, else NULL)
+brb_items.srn_id        → srn_master.id          (SRN only, else NULL)
+brb_items.srn_item_id   → srn_items.id           (SRN only, else NULL)
 ```
+
+## brb_items — Two FK pairs, only one filled per row
+
+| billing_type | grn_item_id | srn_item_id |
+|--------------|-------------|-------------|
+| GRN          | filled      | NULL        |
+| SRN          | NULL        | filled      |
+
+Same numeric ID in both columns (e.g. both = 5) is **not a collision** — they reference entirely different tables (`grn_items` vs `srn_items`) via separate FK constraints.

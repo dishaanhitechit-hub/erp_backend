@@ -8,6 +8,7 @@ from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.brgMaster import BrgMaster, BrgItem
+from app.models.brsMaster import BrsMaster
 from app.models.item import Item
 from app.models.cc_code import CCCode
 from app.response import res
@@ -53,6 +54,23 @@ def _already_billed_qty(grn_item_id):
         .scalar()
     )
     return float(result)
+
+
+def _brr_billed_amount(brr_id, exclude_brg_id=None):
+    """Total non-rejected BRG + BRS amount under a BRR (budget cap check)."""
+    brg_q = (
+        db.session.query(func.coalesce(func.sum(BrgMaster.total_amount), 0))
+        .filter(BrgMaster.brr_id == brr_id, BrgMaster.workflow_status != "Rejected")
+    )
+    if exclude_brg_id:
+        brg_q = brg_q.filter(BrgMaster.id != exclude_brg_id)
+
+    brs_q = (
+        db.session.query(func.coalesce(func.sum(BrsMaster.total_amount), 0))
+        .filter(BrsMaster.brr_id == brr_id, BrsMaster.workflow_status != "Rejected")
+    )
+
+    return float(brg_q.scalar()) + float(brs_q.scalar())
 
 
 def _get_brg_cc_summary(brg_id):
@@ -119,12 +137,11 @@ def get_grns_by_brr(brr_id):
         if not brr:
             return res("BRR not found", [], 404)
 
-        if not brr.order_id:
+        order = brr.order
+        if not order:
             return res("BRR has no GRN order linked", [], 400)
 
-        order = OrderMaster.query.get(brr.order_id)
-        if not order:
-            return res("Order not found", [], 404)
+        vendor = order.vendor
 
         grns = GrnMaster.query.filter(
             GrnMaster.order_id        == order.id,
@@ -172,16 +189,23 @@ def get_grns_by_brr(brr_id):
                 "items":   items,
             })
 
+        brr_total    = float(brr.total_amount or 0)
+        billed_total = _brr_billed_amount(brr_id)
+        remaining    = max(brr_total - billed_total, 0)
+
         data = {
             "brrId":           brr.id,
             "brrNo":           brr.brr_no,
+            "brrTotal":        brr_total,
+            "billedSoFar":     billed_total,
+            "remainingAmount": remaining,
             "orderId":         order.id,
             "orderNo":         order.order_no,
             "orderDate":       _fmt_date(order.order_date),
             "vendorId":        order.vendor_id,
-            "partyName":       order.vendor.ledger_name        if order.vendor else None,
-            "partyAddress":    order.vendor.registered_address if order.vendor else None,
-            "partyGstn":       order.vendor.gstin              if order.vendor else None,
+            "partyName":       vendor.ledger_name        if vendor else None,
+            "partyAddress":    vendor.registered_address if vendor else None,
+            "partyGstn":       vendor.gstin              if vendor else None,
             "projectCode":     order.project_code,
             "site":            order.project_code,
             "billingAddress":  order.billing_address,
@@ -221,6 +245,11 @@ def create_brg(data, user_id):
         if not brr:
             return res("BRR not found", [], 404)
 
+        # derive order and vendor from BRR chain
+        order = brr.order
+        if not order:
+            return res("BRR has no GRN order linked", [], 400)
+
         brg_no = generate_brg_no()
 
         brg = BrgMaster(
@@ -228,16 +257,16 @@ def create_brg(data, user_id):
             brg_date          = data.get("brgDate"),
             project_code      = data.get("projectCode"),
             brr_id            = brr_id,
-            order_id          = data.get("orderId") or brr.order_id,
-            vendor_id         = data.get("vendorId"),
-            received_category = data.get("receivedCategory"),
+            order_id          = order.id,
+            vendor_id         = order.vendor_id,
+            received_category = order.category_code,
             item_category     = data.get("itemCategory"),
             cost_head         = data.get("costHead"),
             party_bill_no     = data.get("partyBillNo"),
             party_date        = data.get("partyDate") or None,
-            site              = data.get("site"),
-            billing_address   = data.get("billingAddress"),
-            shipping_address  = data.get("shippingAddress"),
+            site              = order.project_code,
+            billing_address   = order.billing_address,
+            shipping_address  = order.shipping_address,
             workflow_status   = "Draft",
             current_level     = 0,
             locked            = False,
@@ -294,9 +323,22 @@ def create_brg(data, user_id):
             total_basic += amount
             total_gst   += gst_amount
 
+        new_total       = total_basic + total_gst
+        brr_total       = float(brr.total_amount or 0)
+        existing_billed = _brr_billed_amount(brr_id)
+
+        if brr_total > 0 and existing_billed + new_total > brr_total:
+            db.session.rollback()
+            remaining = brr_total - existing_billed
+            return res(
+                f"Billing exceeds BRR amount. BRR total: {brr_total:.2f}, "
+                f"already billed: {existing_billed:.2f}, remaining: {remaining:.2f}",
+                [], 400
+            )
+
         brg.basic_amount = total_basic
         brg.gst_amount   = total_gst
-        brg.total_amount = total_basic + total_gst
+        brg.total_amount = new_total
 
         db.session.commit()
 
@@ -346,15 +388,18 @@ def get_brg_list(data):
 
         result = []
         for row in rows:
+            order  = row.brr.order  if row.brr else None
+            vendor = order.vendor   if order   else None
+
             result.append({
                 "id":               row.id,
                 "brgNo":            row.brg_no,
                 "brgDate":          _fmt_date(row.brg_date),
                 "projectCode":      row.project_code,
-                "brrNo":            row.brr.brr_no     if row.brr    else None,
-                "orderNo":          row.order.order_no if row.order  else None,
-                "partyName":        row.vendor.ledger_name if row.vendor else None,
-                "receivedCategory": row.received_category,
+                "brrNo":            row.brr.brr_no          if row.brr else None,
+                "orderNo":          order.order_no           if order   else None,
+                "partyName":        vendor.ledger_name       if vendor  else None,
+                "receivedCategory": order.category_code      if order   else None,
                 "itemCategory":     row.item_category,
                 "costHead":         row.cost_head,
                 "partyBillNo":      row.party_bill_no,
@@ -379,6 +424,10 @@ def get_brg_details(brg_id):
         brg = BrgMaster.query.get(brg_id)
         if not brg:
             return res("BRG not found", [], 404)
+
+        # derive order and vendor from BRR chain
+        order  = brg.brr.order  if brg.brr else None
+        vendor = order.vendor   if order   else None
 
         items = []
         for bi in brg.items:
@@ -423,22 +472,22 @@ def get_brg_details(brg_id):
             "brgDate":          _fmt_date(brg.brg_date),
             "projectCode":      brg.project_code,
             "brrId":            brg.brr_id,
-            "brrNo":            brg.brr.brr_no if brg.brr else None,
-            "vendorId":         brg.vendor_id,
-            "partyName":        brg.vendor.ledger_name        if brg.vendor else None,
-            "partyAddress":     brg.vendor.registered_address if brg.vendor else None,
-            "partyGstn":        brg.vendor.gstin              if brg.vendor else None,
-            "receivedCategory": brg.received_category,
+            "brrNo":            brg.brr.brr_no             if brg.brr else None,
+            "vendorId":         order.vendor_id             if order   else None,
+            "partyName":        vendor.ledger_name          if vendor  else None,
+            "partyAddress":     vendor.registered_address   if vendor  else None,
+            "partyGstn":        vendor.gstin                if vendor  else None,
+            "orderId":          order.id                    if order   else None,
+            "orderNo":          order.order_no              if order   else None,
+            "orderDate":        _fmt_date(order.order_date) if order   else None,
+            "receivedCategory": order.category_code         if order   else None,
             "itemCategory":     brg.item_category,
             "costHead":         brg.cost_head,
             "partyBillNo":      brg.party_bill_no,
             "partyDate":        _fmt_date(brg.party_date),
-            "orderId":          brg.order_id,
-            "orderNo":          brg.order.order_no              if brg.order else None,
-            "orderDate":        _fmt_date(brg.order.order_date) if brg.order else None,
-            "site":             brg.site,
-            "billingAddress":   brg.billing_address,
-            "shippingAddress":  brg.shipping_address,
+            "site":             order.project_code          if order   else None,
+            "billingAddress":   order.billing_address       if order   else None,
+            "shippingAddress":  order.shipping_address      if order   else None,
             "basicAmount":      float(brg.basic_amount or 0),
             "gstAmount":        float(brg.gst_amount   or 0),
             "totalAmount":      float(brg.total_amount  or 0),
@@ -483,19 +532,13 @@ def edit_brg(brg_id, data, user_id):
         if not items:
             return res("Items required", [], 400)
 
-        # update header fields
+        # only user-entered fields are editable; order/vendor/address derive from chain
         for key, attr in [
-            ("brgDate",          "brg_date"),
-            ("vendorId",         "vendor_id"),
-            ("partyBillNo",      "party_bill_no"),
-            ("partyDate",        "party_date"),
-            ("orderId",          "order_id"),
-            ("site",             "site"),
-            ("billingAddress",   "billing_address"),
-            ("shippingAddress",  "shipping_address"),
-            ("receivedCategory", "received_category"),
-            ("itemCategory",     "item_category"),
-            ("costHead",         "cost_head"),
+            ("brgDate",      "brg_date"),
+            ("partyBillNo",  "party_bill_no"),
+            ("partyDate",    "party_date"),
+            ("itemCategory", "item_category"),
+            ("costHead",     "cost_head"),
         ]:
             if data.get(key) is not None:
                 setattr(brg, attr, data.get(key) or None)
@@ -551,9 +594,22 @@ def edit_brg(brg_id, data, user_id):
             total_basic += amount
             total_gst   += gst_amount
 
+        new_total       = total_basic + total_gst
+        brr_total       = float(brg.brr.total_amount or 0) if brg.brr else 0
+        existing_billed = _brr_billed_amount(brg.brr_id, exclude_brg_id=brg.id)
+
+        if brr_total > 0 and existing_billed + new_total > brr_total:
+            db.session.rollback()
+            remaining = brr_total - existing_billed
+            return res(
+                f"Billing exceeds BRR amount. BRR total: {brr_total:.2f}, "
+                f"already billed: {existing_billed:.2f}, remaining: {remaining:.2f}",
+                [], 400
+            )
+
         brg.basic_amount = total_basic
         brg.gst_amount   = total_gst
-        brg.total_amount = total_basic + total_gst
+        brg.total_amount = new_total
 
         if brg.workflow_status == "Reback":
             brg.correction_sent_at = None

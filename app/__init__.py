@@ -91,11 +91,8 @@ def create_app():
     from .modules.billing.bill_receive_register.routes import brr_bp
     app.register_blueprint(brr_bp, url_prefix="/billing/brr")
 
-    from .modules.billing.brr_billing_grn.routes import brg_bp
-    app.register_blueprint(brg_bp, url_prefix="/billing/brg")
-
-    from .modules.billing.brr_billing_srn.routes import brs_bp
-    app.register_blueprint(brs_bp, url_prefix="/billing/brs")
+    from .modules.billing.brr_billing.routes import brb_bp
+    app.register_blueprint(brb_bp, url_prefix="/billing/brb")
 
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
