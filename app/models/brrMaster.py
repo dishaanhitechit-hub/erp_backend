@@ -86,7 +86,7 @@ class BrrMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project  = db.relationship("Project",               backref="brr_list")
+    project  = db.relationship("Project",              backref="brr_list")
     vendor   = db.relationship("Vendor",                backref="brr_list")
     order    = db.relationship("OrderMaster",           backref="brr_list")
     pw_order = db.relationship("ProjectWorkOrderMaster", backref="brr_list")
