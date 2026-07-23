@@ -103,19 +103,28 @@ def get_pw_orders_by_vendor(data):
         sub_category_code = data.get("itemCategory")
         cost_head        = data.get("costHead")
 
-        filtered_query = base_query
+        # Build filters dynamically (AND condition)
+        filters = []
+
         if category_code:
-            filtered_query = filtered_query.filter(
+            filters.append(
                 ProjectWorkOrderMaster.category_code == category_code
             )
+
         if sub_category_code:
-            filtered_query = filtered_query.filter(
+            filters.append(
                 ProjectWorkOrderMaster.sub_codes.ilike(f'%"{sub_category_code}"%')
             )
+
         if cost_head:
-            filtered_query = filtered_query.filter(
+            filters.append(
                 ProjectWorkOrderMaster.cost_head == cost_head
             )
+
+        filtered_query = base_query
+
+        if filters:
+            filtered_query = filtered_query.filter(*filters)
 
         rows = filtered_query.order_by(ProjectWorkOrderMaster.id.desc()).all()
 
