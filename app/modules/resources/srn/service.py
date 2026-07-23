@@ -93,54 +93,31 @@ def get_pw_orders_by_vendor(data):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        base_query = ProjectWorkOrderMaster.query.filter(
-            ProjectWorkOrderMaster.vendor_id    == vendor_id,
-            ProjectWorkOrderMaster.project_code == project_code,
-            ProjectWorkOrderMaster.workflow_status == "Approved"
-        )
-
-        category_code    = data.get("receivedCategory")
+        category_code     = data.get("receivedCategory")
         sub_category_code = data.get("itemCategory")
-        cost_head        = data.get("costHead")
+        cost_head         = data.get("costHead")
 
-        # Build filters dynamically (AND condition)
-        filters = []
+        if not category_code:
+            return res("receivedCategory required", [], 400)
+        if not sub_category_code:
+            return res("itemCategory required", [], 400)
+        if not cost_head:
+            return res("costHead required", [], 400)
 
-        if category_code:
-            filters.append(
-                ProjectWorkOrderMaster.category_code == category_code
-            )
+        filters = [
+            ProjectWorkOrderMaster.vendor_id       == vendor_id,
+            ProjectWorkOrderMaster.project_code    == project_code,
+            ProjectWorkOrderMaster.workflow_status == "Approved",
+            ProjectWorkOrderMaster.category_code   == category_code,
+            ProjectWorkOrderMaster.cost_head       == cost_head,
+        ]
 
-        if sub_category_code:
-            filters.append(
-                ProjectWorkOrderMaster.sub_codes.ilike(f'%"{sub_category_code}"%')
-            )
+        for i in [x.strip() for x in sub_category_code.split(",") if x.strip()]:
+            filters.append(ProjectWorkOrderMaster.sub_codes.ilike(f'%"{i}"%'))
 
-        if cost_head:
-            filters.append(
-                ProjectWorkOrderMaster.cost_head == cost_head
-            )
-
-        filtered_query = base_query
-
-        if filters:
-            filtered_query = filtered_query.filter(*filters)
+        filtered_query = ProjectWorkOrderMaster.query.filter(*filters)
 
         rows = filtered_query.order_by(ProjectWorkOrderMaster.id.desc()).all()
-
-        # fallback: if categoryCode provided but nothing matched,
-        # retry with subCategoryCode + costHead only
-        if not rows and category_code:
-            fallback_query = base_query
-            if sub_category_code:
-                fallback_query = fallback_query.filter(
-                    ProjectWorkOrderMaster.sub_codes.ilike(f'%"{sub_category_code}"%')
-                )
-            if cost_head:
-                fallback_query = fallback_query.filter(
-                    ProjectWorkOrderMaster.cost_head == cost_head
-                )
-            rows = fallback_query.order_by(ProjectWorkOrderMaster.id.desc()).all()
 
         result = []
         for row in rows:
@@ -160,6 +137,9 @@ def get_pw_orders_by_vendor(data):
                 "totalAmount":      float(row.total_amount or 0),
                 "workflowStatus":   row.workflow_status,
             })
+
+        if not result:
+            return res("No matched data found", [], 404)
 
         return res("PW Orders fetched", result, 200)
 

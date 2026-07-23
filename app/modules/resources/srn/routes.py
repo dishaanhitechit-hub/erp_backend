@@ -31,11 +31,11 @@ srn_bp = Blueprint("srn", __name__)
 def api_vendor_orders():
 
     data = {
-        "vendorId":        request.args.get("vendorId"),
-        "projectCode":     request.args.get("projectCode"),
-        "categoryCode":    request.args.get("categoryCode"),
-        "subCategoryCode": request.args.get("subCategoryCode"),
-        "costHead":        request.args.get("costHead"),
+        "vendorId":         request.args.get("vendorId"),
+        "projectCode":      request.args.get("projectCode"),
+        "receivedCategory": request.args.get("receivedCategory"),
+        "itemCategory":     request.args.get("itemCategory"),
+        "costHead":         request.args.get("costHead"),
     }
 
     return get_pw_orders_by_vendor(data)
