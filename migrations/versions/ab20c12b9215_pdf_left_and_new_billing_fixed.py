@@ -81,10 +81,10 @@ def upgrade():
     sa.ForeignKeyConstraint(['srn_item_id'], ['srn_items.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.drop_table('brs_items')
     op.drop_table('brs_master')
     op.drop_table('brg_items')
     op.drop_table('brg_master')
-    op.drop_table('brs_items')
     # ### end Alembic commands ###
 
 
