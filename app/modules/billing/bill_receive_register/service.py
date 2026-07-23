@@ -183,13 +183,19 @@ def create_brr(data, user_id, files=None):
                     fileName   = "attached_doc"
                 )
 
+        order_category = data.get("orderCategory")
+        billing_type   = get_billing_type(order_category)
+        order_id_val   = data.get("orderId") or None
+
         brr = BrrMaster(
             brr_no             = brr_no,
             brr_date           = datetime.utcnow().date(),
             project_code       = data.get("projectCode"),
             vendor_id          = data.get("vendorId"),
-            order_category     = data.get("orderCategory"),
-            order_id           = data.get("orderId") or None,
+            order_category     = order_category,
+            order_type         = billing_type,
+            order_id           = order_id_val if billing_type == "GRN" else None,
+            pw_order_id        = order_id_val if billing_type == "SRN" else None,
             party_bill_no      = data.get("partyBillNo"),
             party_date         = data.get("partyDate") or None,
             received_category  = data.get("receivedCategory"),
@@ -280,6 +286,8 @@ def get_brr_list(data):
                 for b in all_billings if b.billing_type == "SRN"
             ]
 
+            order_obj = row.order if row.order_type == "GRN" else row.pw_order
+
             result.append({
                 "id":             row.id,
                 "brrNo":          row.brr_no,
@@ -287,12 +295,13 @@ def get_brr_list(data):
                 "projectCode":    row.project_code,
                 "partyName":      row.vendor.ledger_name if row.vendor else None,
                 "orderCategory":  row.order_category,
-                "orderNo":        row.order.order_no    if row.order  else None,
+                "orderType":      row.order_type,
+                "orderNo":        order_obj.order_no   if order_obj else None,
+                "orderDate":      _fmt_date(order_obj.order_date) if order_obj else None,
                 "partyBillNo":    row.party_bill_no,
                 "basicAmount":    float(row.basic_amount or 0),
                 "totalAmount":    float(row.total_amount or 0),
                 "workflowStatus": row.workflow_status,
-                "orderDate":      _fmt_date(row.order.order_date) if row.order else None,
                 "partyDate":      _fmt_date(row.party_date),
                 "bookedAmount":   row.booked_amount,
                 "grnBillings":    grn_billings,
@@ -315,6 +324,8 @@ def get_brr_details(brr_id):
         if not brr:
             return res("BRR not found", [], 404)
 
+        order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
+
         data = {
             "id":                brr.id,
             "brrNo":             brr.brr_no,
@@ -325,9 +336,10 @@ def get_brr_details(brr_id):
             "partyAddress":      brr.vendor.registered_address if brr.vendor else None,
             "partyGstn":         brr.vendor.gstin              if brr.vendor else None,
             "orderCategory":     brr.order_category,
-            "orderId":           brr.order_id,
-            "orderNo":           brr.order.order_no            if brr.order  else None,
-            "orderDate":         _fmt_date(brr.order.order_date) if brr.order else None,
+            "orderType":         brr.order_type,
+            "orderId":           brr.order_id if brr.order_type == "GRN" else brr.pw_order_id,
+            "orderNo":           order_obj.order_no              if order_obj else None,
+            "orderDate":         _fmt_date(order_obj.order_date) if order_obj else None,
             "partyBillNo":       brr.party_bill_no,
             "partyDate":         _fmt_date(brr.party_date),
             "receivedCategory":  brr.received_category,
@@ -372,12 +384,10 @@ def edit_brr(brr_id, data, user_id, files=None):
 
         fields = [
             ("vendorId",          "vendor_id"),
-            ("orderCategory",     "order_category"),
-            ("orderId",           "order_id"),
             ("partyBillNo",       "party_bill_no"),
             ("partyDate",         "party_date"),
             ("receivedCategory",  "received_category"),
-            ("submittedByName",       "submitted_by_name"),
+            ("submittedByName",   "submitted_by_name"),
             ("submissionDate",    "submission_date"),
             ("receivedThrough",   "received_through"),
             ("receivedReference", "received_reference"),
@@ -385,6 +395,22 @@ def edit_brr(brr_id, data, user_id, files=None):
         for key, attr in fields:
             if data.get(key) is not None:
                 setattr(brr, attr, data.get(key) or None)
+
+        # Category or order changed — derive type and route to correct FK column
+        new_category = data.get("orderCategory")
+        new_order_id = data.get("orderId")
+        if new_category is not None:
+            brr.order_category = new_category or None
+            billing_type       = get_billing_type(brr.order_category)
+            brr.order_type     = billing_type
+            order_id_val       = (new_order_id or None) if new_order_id is not None else None
+            brr.order_id       = order_id_val if billing_type == "GRN" else None
+            brr.pw_order_id    = order_id_val if billing_type == "SRN" else None
+        elif new_order_id is not None:
+            order_id_val    = new_order_id or None
+            billing_type    = brr.order_type or get_billing_type(brr.order_category)
+            brr.order_id    = order_id_val if billing_type == "GRN" else brr.order_id
+            brr.pw_order_id = order_id_val if billing_type == "SRN" else brr.pw_order_id
 
         if data.get("basicAmount") is not None or data.get("gstAmount") is not None:
             basic = float(data.get("basicAmount") or brr.basic_amount or 0)
