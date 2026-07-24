@@ -543,6 +543,7 @@ def get_brb_list(data):
 def get_brb_details(brb_id):
     try:
         brb = BrbMaster.query.get(brb_id)
+        brr = BrrMaster.query.get(brb.brr_id)
         if not brb:
             return res("Billing not found", [], 404)
 
