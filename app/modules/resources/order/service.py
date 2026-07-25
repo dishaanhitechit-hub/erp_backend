@@ -1,6 +1,6 @@
 import uuid as _uuid
 from collections import defaultdict
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 import time
@@ -115,22 +115,18 @@ def get_cc_code_summary(order_id):
 
 
 def generate_order_no():
-    last_order = (
+    db.session.execute(text("SELECT pg_advisory_xact_lock(440000)"))
+    last = (
         db.session.query(OrderMaster.order_no)
         .order_by(OrderMaster.id.desc())
-        .with_for_update()   # locks the row until this transaction commits
         .first()
     )
-
-    if last_order:
-        try:
-            last_serial = int(last_order[0])
-        except:
-            last_serial = 440000
-    else:
-        last_serial = 440000
-
-    return str(last_serial + 1)
+    if not last:
+        return "44001"
+    suffix = last[0][2:]  # strip "44"
+    if all(c == '9' for c in suffix):
+        return "44" + "0" * len(suffix) + "1"
+    return "44" + str(int(suffix) + 1).zfill(len(suffix))
 
 
 
@@ -209,7 +205,6 @@ files=None,
                 400
             )
 
-        xtemp = generate_order_no()
         new_uuid = str(_uuid.uuid4())
         print("Before upload:", time.time() - start)
         supporting_file = (
@@ -222,7 +217,7 @@ files=None,
                 mainFolder=
                 "order",
 
-                subFolder= xtemp,
+                subFolder= new_uuid,
 
                 fileName=
                 "support"
@@ -230,6 +225,7 @@ files=None,
             )
 
         )
+        xtemp = generate_order_no()
         # if not supporting_file:
         #     return res("ladle miaooo", [], 400)
 

@@ -212,7 +212,13 @@ class OrderMaster(db.Model):
         foreign_keys="[OrderMaster.project_code]",
         backref="orders"
     )
-
+    
+    sub_category = db.relationship(
+        "CategoryMaster",
+        foreign_keys=[sub_code],
+        primaryjoin="OrderMaster.sub_code == CategoryMaster.fixed_code",
+        lazy="joined"
+    )
     items=db.relationship(
         "OrderItem",
         backref="order",
