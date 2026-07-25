@@ -1,6 +1,6 @@
 import uuid as _uuid
 from collections import defaultdict
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 import time
@@ -331,7 +331,11 @@ files=None,
                     db.session.query(
                         func.coalesce(func.sum(OrderItem.qty), 0)
                     )
-                    .filter(OrderItem.indent_item_id==indent_item_id)
+                    .join(OrderMaster, OrderMaster.id == OrderItem.order_id)
+                    .filter(
+                        OrderItem.indent_item_id == indent_item_id,
+                        OrderMaster.workflow_status != "Rejected"
+                    )
                     .scalar()
                 )
 
@@ -494,7 +498,10 @@ def get_indent_pending_qty_list(
                 func.coalesce(
 
                     func.sum(
-                        OrderItem.qty
+                        case(
+                            (OrderMaster.workflow_status != "Rejected", OrderItem.qty),
+                            else_=0
+                        )
                     ),
 
                     0
@@ -533,9 +540,11 @@ def get_indent_pending_qty_list(
 
             .outerjoin(
                 OrderItem,
-
-                OrderItem.indent_item_id ==
-                IndentItem.id
+                OrderItem.indent_item_id == IndentItem.id
+            )
+            .outerjoin(
+                OrderMaster,
+                OrderMaster.id == OrderItem.order_id
             )
 
             .filter(
@@ -2114,7 +2123,11 @@ def edit_order(order_id, data, user_id, files=None):
                     db.session.query(
                         func.coalesce(func.sum(OrderItem.qty), 0)
                     )
-                    .filter(OrderItem.indent_item_id == indent_item_id)
+                    .join(OrderMaster, OrderMaster.id == OrderItem.order_id)
+                    .filter(
+                        OrderItem.indent_item_id == indent_item_id,
+                        OrderMaster.workflow_status != "Rejected"
+                    )
                     .scalar()
                 )
 
