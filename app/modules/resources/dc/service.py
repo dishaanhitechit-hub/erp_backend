@@ -815,7 +815,7 @@ def get_dc_history(dc_id):
         return res(str(e), [], 500)
 
 
-def get_dc_my_approval_status(dc_id, project_code, user_id):
+def get_dc_my_approval_status(dc_id, user_id):
     try:
         dc = DcMaster.query.get(dc_id)
         if not dc:

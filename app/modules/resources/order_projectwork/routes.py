@@ -1,4 +1,4 @@
-# app/modules/resources/order_projectwork/routes.py
+﻿# app/modules/resources/order_projectwork/routes.py
 #
 # Project-Work Order Routes
 # Blueprint prefix recommended: /api/pw-order
@@ -244,4 +244,4 @@ def api_pw_order_by_uuid(order_uuid):
 @login_required
 def api_pw_order_my_approval_status(order_id):
     user = g.current_user
-    return get_pw_order_my_approval_status(order_id, user["projectId"], user["id"])
+    return get_pw_order_my_approval_status(order_id, user["id"])

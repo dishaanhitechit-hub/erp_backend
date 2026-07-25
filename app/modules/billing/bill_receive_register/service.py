@@ -722,12 +722,12 @@ def get_brr_history(brr_id):
         return res(str(e), [], 500)
 
 
-def get_brr_my_approval_status(brr_id, project_code, user_id):
+def get_brr_my_approval_status(brr_id, user_id):
     try:
         brr = BrrMaster.query.get(brr_id)
         if not brr:
             return res("BRR not found", [], 404)
-        data = get_my_approval_status(project_code, _MODULE, brr, user_id)
+        data = get_my_approval_status(brr.project_code, _MODULE, brr, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

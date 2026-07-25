@@ -1,4 +1,4 @@
-
+﻿
 from flask import Blueprint, request
 import json
 from flask import g
@@ -330,4 +330,4 @@ def indent_by_uuid(indent_uuid):
 @login_required
 def api_indent_my_approval_status(indent_id):
     user = g.current_user
-    return get_indent_my_approval_status(indent_id, user["projectId"], user["id"])
+    return get_indent_my_approval_status(indent_id, user["id"])

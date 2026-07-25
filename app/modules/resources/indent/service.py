@@ -1778,12 +1778,12 @@ def get_indent_by_uuid(indent_uuid):
     except Exception as e:
         return res(str(e), [], 500)
 
-def get_indent_my_approval_status(indent_id, project_code, user_id):
+def get_indent_my_approval_status(indent_id, user_id):
     try:
         indent = IndentMaster.query.get(indent_id)
         if not indent:
             return res("Indent not found", [], 404)
-        data = get_my_approval_status(project_code, "indent", indent, user_id)
+        data = get_my_approval_status(indent.project_code, "indent", indent, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

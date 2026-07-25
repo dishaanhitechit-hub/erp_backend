@@ -961,12 +961,12 @@ def get_bvs_history(bvs_id):
         return res(str(e), [], 500)
 
 
-def get_bvs_my_approval_status(bvs_id, project_code, user_id):
+def get_bvs_my_approval_status(bvs_id, user_id):
     try:
         bvs = BvsMaster.query.get(bvs_id)
         if not bvs:
             return res("BVS not found", [], 404)
-        data = get_my_approval_status(project_code, _MODULE, bvs, user_id)
+        data = get_my_approval_status(bvs.project_code, _MODULE, bvs, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

@@ -1074,13 +1074,13 @@ def get_brb_history(brb_id):
         return res(str(e), [], 500)
 
 
-def get_brb_my_approval_status(brb_id, project_code, user_id):
+def get_brb_my_approval_status(brb_id, user_id):
     try:
         brb = BrbMaster.query.get(brb_id)
         if not brb:
             return res("BRB not found", [], 404)
         module = get_module_code(brb.billing_type)
-        data = get_my_approval_status(project_code, module, brb, user_id)
+        data = get_my_approval_status(brb.project_code, module, brb, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

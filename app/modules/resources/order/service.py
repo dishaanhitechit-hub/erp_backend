@@ -2242,12 +2242,12 @@ def edit_order(order_id, data, user_id, files=None):
         return res(str(e), [], 500)
 
 
-def get_order_my_approval_status(order_id, project_code, user_id):
+def get_order_my_approval_status(order_id, user_id):
     try:
         order = OrderMaster.query.get(order_id)
         if not order:
             return res("Order not found", [], 404)
-        data = get_my_approval_status(project_code, "order", order, user_id)
+        data = get_my_approval_status(order.project_code, "order", order, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

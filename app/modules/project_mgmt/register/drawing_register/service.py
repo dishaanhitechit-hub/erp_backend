@@ -620,12 +620,12 @@ def get_drawing_register_history(dr_id):
         return res(str(e), [], 500)
 
 
-def get_drawing_register_my_approval_status(dr_id, project_code, user_id):
+def get_drawing_register_my_approval_status(dr_id, user_id):
     try:
         dr = DrawingRegister.query.get(dr_id)
         if not dr:
             return res("Drawing Register not found", [], 404)
-        data = get_my_approval_status(project_code, "drawing_register", dr, user_id)
+        data = get_my_approval_status(dr.project_code, "drawing_register", dr, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

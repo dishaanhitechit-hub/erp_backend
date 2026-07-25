@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -92,4 +92,4 @@ def history(brb_id):
 @login_required
 def api_brb_my_approval_status(brb_id):
     user = g.current_user
-    return get_brb_my_approval_status(brb_id, user["projectId"], user["id"])
+    return get_brb_my_approval_status(brb_id, user["id"])

@@ -1105,12 +1105,12 @@ def get_srn_by_uuid(srn_uuid):
         return res(str(e), [], 500)
 
 
-def get_srn_my_approval_status(srn_id, project_code, user_id):
+def get_srn_my_approval_status(srn_id, user_id):
     try:
         srn = SrnMaster.query.get(srn_id)
         if not srn:
             return res("SRN not found", [], 404)
-        data = get_my_approval_status(project_code, "service_received_note", srn, user_id)
+        data = get_my_approval_status(srn.project_code, "service_received_note", srn, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

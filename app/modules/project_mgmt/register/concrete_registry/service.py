@@ -523,12 +523,12 @@ def get_registry_history(registry_id):
         return res(str(e), [], 500)
 
 
-def get_registry_my_approval_status(registry_id, project_code, user_id):
+def get_registry_my_approval_status(registry_id, user_id):
     try:
         registry = ConcreteRegistry.query.get(registry_id)
         if not registry:
             return res("Concrete Registry not found", [], 404)
-        data = get_my_approval_status(project_code, "concrete_registry", registry, user_id)
+        data = get_my_approval_status(registry.project_code, "concrete_registry", registry, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

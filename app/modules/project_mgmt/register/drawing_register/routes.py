@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -165,4 +165,4 @@ def api_drawing_register_history(dr_id):
 @login_required
 def api_drawing_register_my_approval_status(dr_id):
     user = g.current_user
-    return get_drawing_register_my_approval_status(dr_id, user["projectId"], user["id"])
+    return get_drawing_register_my_approval_status(dr_id, user["id"])

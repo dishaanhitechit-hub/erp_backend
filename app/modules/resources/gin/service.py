@@ -1084,12 +1084,12 @@ def get_gin_by_uuid(gin_uuid):
         return res(str(e), [], 500)
 
 
-def get_gin_my_approval_status(gin_id, project_code, user_id):
+def get_gin_my_approval_status(gin_id, user_id):
     try:
         gin = GinMaster.query.get(gin_id)
         if not gin:
             return res("GIN not found", [], 404)
-        data = get_my_approval_status(project_code, "goods_issue_note", gin, user_id)
+        data = get_my_approval_status(gin.project_code, "goods_issue_note", gin, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

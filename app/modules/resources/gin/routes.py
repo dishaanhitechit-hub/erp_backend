@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -223,4 +223,4 @@ def api_gin_by_uuid(gin_uuid):
 @login_required
 def api_gin_my_approval_status(gin_id):
     user = g.current_user
-    return get_gin_my_approval_status(gin_id, user["projectId"], user["id"])
+    return get_gin_my_approval_status(gin_id, user["id"])

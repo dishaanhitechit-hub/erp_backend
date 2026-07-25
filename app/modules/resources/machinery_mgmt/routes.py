@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, g
+﻿from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.middleware.auth_middleware import login_required
 
@@ -212,11 +212,11 @@ def api_log_entry_history(entry_id):
 @login_required
 def api_log_book_my_approval_status(log_book_id):
     user = g.current_user
-    return get_log_book_my_approval_status(log_book_id, user["projectId"], user["id"])
+    return get_log_book_my_approval_status(log_book_id, user["id"])
 
 
 @machinery_bp.route("/log-entry/my-approval-status/<int:entry_id>", methods=["GET"])
 @login_required
 def api_log_entry_my_approval_status(entry_id):
     user = g.current_user
-    return get_log_entry_my_approval_status(entry_id, user["projectId"], user["id"])
+    return get_log_entry_my_approval_status(entry_id, user["id"])

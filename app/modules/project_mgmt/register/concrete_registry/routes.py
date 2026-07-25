@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -117,4 +117,4 @@ def history_route(registry_id):
 @login_required
 def api_registry_my_approval_status(registry_id):
     user = g.current_user
-    return get_registry_my_approval_status(registry_id, user["projectId"], user["id"])
+    return get_registry_my_approval_status(registry_id, user["id"])

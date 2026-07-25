@@ -1022,23 +1022,23 @@ def get_log_entry_history(entry_id):
         return res(str(e), [], 500)
 
 
-def get_log_book_my_approval_status(log_book_id, project_code, user_id):
+def get_log_book_my_approval_status(log_book_id, user_id):
     try:
         lb = MachineryLogBook.query.get(log_book_id)
         if not lb:
             return res("Log Book not found", [], 404)
-        data = get_my_approval_status(project_code, _MODULE, lb, user_id)
+        data = get_my_approval_status(lb.project_code, _MODULE, lb, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
 
 
-def get_log_entry_my_approval_status(entry_id, project_code, user_id):
+def get_log_entry_my_approval_status(entry_id, user_id):
     try:
         entry = LogBookEntry.query.get(entry_id)
         if not entry:
             return res("Log Entry not found", [], 404)
-        data = get_my_approval_status(project_code, _MODULE, entry, user_id)
+        data = get_my_approval_status(entry.project_code, _MODULE, entry, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

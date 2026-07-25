@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -207,4 +207,4 @@ def api_bss_history(bss_id):
 @login_required
 def api_bss_my_approval_status(bss_id):
     user = g.current_user
-    return get_bss_my_approval_status(bss_id, user["projectId"], user["id"])
+    return get_bss_my_approval_status(bss_id, user["id"])

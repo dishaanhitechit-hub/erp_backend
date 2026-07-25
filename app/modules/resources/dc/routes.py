@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g
+﻿from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -120,4 +120,4 @@ def api_dc_history(dc_id):
 @login_required
 def api_dc_my_approval_status(dc_id):
     user = g.current_user
-    return get_dc_my_approval_status(dc_id, user["projectId"], user["id"])
+    return get_dc_my_approval_status(dc_id, user["id"])

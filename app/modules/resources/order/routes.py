@@ -1,4 +1,4 @@
-from flask import Blueprint, request, send_from_directory, g
+﻿from flask import Blueprint, request, send_from_directory, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 
@@ -393,4 +393,4 @@ def api_order_by_uuid(order_uuid):
 @login_required
 def api_order_my_approval_status(order_id):
     user = g.current_user
-    return get_order_my_approval_status(order_id, user["projectId"], user["id"])
+    return get_order_my_approval_status(order_id, user["id"])

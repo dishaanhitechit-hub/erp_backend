@@ -984,12 +984,12 @@ def get_bss_history(bss_id):
         return res(str(e), [], 500)
 
 
-def get_bss_my_approval_status(bss_id, project_code, user_id):
+def get_bss_my_approval_status(bss_id, user_id):
     try:
         bss = BssMaster.query.get(bss_id)
         if not bss:
             return res("BSS not found", [], 404)
-        data = get_my_approval_status(project_code, _MODULE, bss, user_id)
+        data = get_my_approval_status(bss.project_code, _MODULE, bss, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
