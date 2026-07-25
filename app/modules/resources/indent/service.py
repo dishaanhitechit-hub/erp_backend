@@ -18,7 +18,8 @@ from app.cloudinary_uploader import *
 from app.models.cc_code import CCCode
 from app.models.category_group import GroupMaster
 from app.models.unit import Unit
-from sqlalchemy import func
+from sqlalchemy import func, case
+from app.models.orderMaster import OrderMaster, OrderItem
 
 
 
@@ -304,6 +305,59 @@ def get_indent_list(filters=None):
             .all()
         )
 
+        # ── batch: booked qty per indent item (excludes rejected orders) ──
+        indent_ids = [row.id for row in indents]
+        booking_map = defaultdict(list)
+
+        if indent_ids:
+            booked_rows = (
+                db.session.query(
+                    IndentItem.indent_id,
+                    IndentItem.qty.label("indent_qty"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (OrderMaster.workflow_status != "Rejected",
+                                 OrderItem.qty),
+                                else_=0
+                            )
+                        ),
+                        0
+                    ).label("booked_qty")
+                )
+                .filter(IndentItem.indent_id.in_(indent_ids))
+                .outerjoin(
+                    OrderItem,
+                    OrderItem.indent_item_id == IndentItem.id
+                )
+                .outerjoin(
+                    OrderMaster,
+                    OrderMaster.id == OrderItem.order_id
+                )
+                .group_by(
+                    IndentItem.indent_id,
+                    IndentItem.id,
+                    IndentItem.qty
+                )
+                .all()
+            )
+
+            for r in booked_rows:
+                booking_map[r.indent_id].append({
+                    "indent_qty": float(r.indent_qty),
+                    "booked_qty": float(r.booked_qty)
+                })
+
+        def compute_order_status(indent_id):
+            items = booking_map.get(indent_id, [])
+            if not items:
+                return "Pending"
+            if all(i["booked_qty"] >= i["indent_qty"] for i in items):
+                return "Completed"
+            if any(i["booked_qty"] > 0 for i in items):
+                return "Ongoing"
+            return "Pending"
+
         data = []
 
         for row in indents:
@@ -324,7 +378,7 @@ def get_indent_list(filters=None):
 
                 "indentStatus": row.workflow_status,
 
-                "orderStatus": row.order_status,
+                "orderStatus": compute_order_status(row.id),
                 "indentDate" : row.indent_date,
                 "placedBy" : row.creator.username if row.creator else None,
                 "createdAt": row.created_at.strftime(
