@@ -503,6 +503,7 @@ def get_grn_details(grn_id):
             "id": grn.id,
             "grnNo": grn.grn_no,
             "grnDate": _fmt_date(grn.grn_date),
+            "uuid": grn.grn_uuid,
             "projectCode": grn.project_code,
             "receivedCategory": grn.received_category,
             "itemCategory": grn.item_category,

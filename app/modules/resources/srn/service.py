@@ -454,6 +454,7 @@ def get_srn_details(srn_id):
             "id":                    srn.id,
             "srnNo":                 srn.srn_no,
             "srnDate":               _fmt_date(srn.srn_date),
+            "uuid": srn.srn_uuid,
             "projectCode":           srn.project_code,
             "receivedCategory":      srn.received_category,
             "itemCategory":          sub_codes_list,

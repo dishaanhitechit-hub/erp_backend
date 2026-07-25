@@ -452,6 +452,7 @@ def get_gin_details(gin_id):
             "id": gin.id,
             "ginNo": gin.gin_no,
             "ginDate": _fmt_date(gin.gin_date),
+            "uuid": gin.gin_uuid,
             "projectCode": gin.project_code,
             "issueCategory": gin.issue_category,
             "itemCategory": gin.item_category,

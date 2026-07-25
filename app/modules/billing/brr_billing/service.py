@@ -328,13 +328,13 @@ def create_brb(data, user_id):
             return res("No items provided", [], 400)
 
         # item_category derived from order FK
-        if billing_type == "SRN":
+        if billing_type == "GRN":
+            cat_list = [order.sub_code] if order.sub_code else []
+        else:  # SRN
             try:
                 cat_list = json.loads(order.sub_codes) if order.sub_codes else []
             except Exception:
                 cat_list = []
-        else:
-            cat_list = [order.category_code] if order.category_code else []
 
         brb = BrbMaster(
             brb_no        = _generate_brb_no(),
