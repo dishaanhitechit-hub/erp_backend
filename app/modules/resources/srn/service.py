@@ -18,6 +18,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 # workflow alias — set in workflow_module_alias table with module_code="srn"
@@ -924,7 +926,19 @@ def get_srn_history(srn_id):
                 ),
             })
 
-        return res("SRN history fetched", data, 200)
+        steps = get_approval_steps(
+            srn.project_code,
+            "service_received_note",
+            srn,
+            rows
+        )
+
+        return res("SRN history fetched", {
+            "workflowStatus": srn.workflow_status,
+            "currentLevel":   srn.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -1087,5 +1101,16 @@ def get_srn_by_uuid(srn_uuid):
 
         return res("SRN details fetched", data, 200)
 
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_srn_my_approval_status(srn_id, project_code, user_id):
+    try:
+        srn = SrnMaster.query.get(srn_id)
+        if not srn:
+            return res("SRN not found", [], 404)
+        data = get_my_approval_status(project_code, "service_received_note", srn, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

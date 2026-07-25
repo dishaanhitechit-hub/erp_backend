@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from app.modules.resources.dc.service import (
     get_approved_orders_for_dc,
@@ -13,6 +14,7 @@ from app.modules.resources.dc.service import (
     reject_dc,
     reback_dc,
     get_dc_history,
+    get_dc_my_approval_status,
 )
 
 dc_bp = Blueprint("dc", __name__)
@@ -112,3 +114,10 @@ def api_reback_dc(dc_id):
 @jwt_required()
 def api_dc_history(dc_id):
     return get_dc_history(dc_id)
+
+
+@dc_bp.route("/my-approval-status/<int:dc_id>", methods=["GET"])
+@login_required
+def api_dc_my_approval_status(dc_id):
+    user = g.current_user
+    return get_dc_my_approval_status(dc_id, user["projectId"], user["id"])

@@ -45,6 +45,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 
@@ -1160,7 +1162,19 @@ def get_pw_order_history(order_id: int):
             for row in rows
         ]
 
-        return res("PW Order history fetched", data, 200)
+        steps = get_approval_steps(
+            order.project_code,
+            "pw_order",
+            order,
+            rows
+        )
+
+        return res("PW Order history fetched", {
+            "workflowStatus": order.workflow_status,
+            "currentLevel":   order.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -1413,5 +1427,16 @@ def get_pw_order_by_uuid(order_uuid: str):
 
         return res("Service order details fetched successfully", response, 200)
 
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_pw_order_my_approval_status(order_id, project_code, user_id):
+    try:
+        order = ProjectWorkOrderMaster.query.get(order_id)
+        if not order:
+            return res("PW Order not found", [], 404)
+        data = get_my_approval_status(project_code, "pw_order", order, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

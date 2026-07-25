@@ -17,6 +17,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 _MODULE = "billing_by_srn"
@@ -964,7 +966,30 @@ def get_bss_history(bss_id):
                 ),
             })
 
-        return res("BSS history fetched", data, 200)
+        steps = get_approval_steps(
+            bss.project_code,
+            _MODULE,
+            bss,
+            rows
+        )
 
+        return res("BSS history fetched", {
+            "workflowStatus": bss.workflow_status,
+            "currentLevel":   bss.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_bss_my_approval_status(bss_id, project_code, user_id):
+    try:
+        bss = BssMaster.query.get(bss_id)
+        if not bss:
+            return res("BSS not found", [], 404)
+        data = get_my_approval_status(project_code, _MODULE, bss, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

@@ -14,6 +14,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 
@@ -503,7 +505,30 @@ def get_registry_history(registry_id):
                 ),
             })
 
-        return res("Concrete Registry history fetched", data, 200)
+        steps = get_approval_steps(
+            registry.project_code,
+            "concrete_registry",
+            registry,
+            rows
+        )
 
+        return res("Concrete Registry history fetched", {
+            "workflowStatus": registry.workflow_status,
+            "currentLevel":   registry.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_registry_my_approval_status(registry_id, project_code, user_id):
+    try:
+        registry = ConcreteRegistry.query.get(registry_id)
+        if not registry:
+            return res("Concrete Registry not found", [], 404)
+        data = get_my_approval_status(project_code, "concrete_registry", registry, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

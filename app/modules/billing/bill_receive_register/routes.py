@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from app.utils.txn_tracker import TransactionTracker
 
@@ -14,6 +15,7 @@ from app.modules.billing.bill_receive_register.service import (
     reback_brr,
     reject_brr,
     get_brr_history,
+    get_brr_my_approval_status,
 )
 
 brr_bp = Blueprint("brr", __name__)
@@ -143,3 +145,10 @@ def api_reject_brr(brr_id):
 @jwt_required()
 def api_brr_history(brr_id):
     return get_brr_history(brr_id)
+
+
+@brr_bp.route("/my-approval-status/<int:brr_id>", methods=["GET"])
+@login_required
+def api_brr_my_approval_status(brr_id):
+    user = g.current_user
+    return get_brr_my_approval_status(brr_id, user["projectId"], user["id"])

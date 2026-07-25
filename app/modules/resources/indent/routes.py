@@ -325,3 +325,9 @@ def history(indent_id):
 def indent_by_uuid(indent_uuid):
 
     return get_indent_by_uuid(indent_uuid)
+
+@indent_bp.route("/my-approval-status/<int:indent_id>", methods=["GET"])
+@login_required
+def api_indent_my_approval_status(indent_id):
+    user = g.current_user
+    return get_indent_my_approval_status(indent_id, user["projectId"], user["id"])

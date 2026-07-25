@@ -12,6 +12,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 
@@ -600,7 +602,30 @@ def get_drawing_register_history(dr_id):
                 ),
             })
 
-        return res("Drawing Register history fetched", data, 200)
+        steps = get_approval_steps(
+            dr.project_code,
+            "drawing_register",
+            dr,
+            rows
+        )
 
+        return res("Drawing Register history fetched", {
+            "workflowStatus": dr.workflow_status,
+            "currentLevel":   dr.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_drawing_register_my_approval_status(dr_id, project_code, user_id):
+    try:
+        dr = DrawingRegister.query.get(dr_id)
+        if not dr:
+            return res("Drawing Register not found", [], 404)
+        data = get_my_approval_status(project_code, "drawing_register", dr, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

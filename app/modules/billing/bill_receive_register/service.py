@@ -16,6 +16,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 _MODULE = "bill_receive_register"
@@ -702,7 +704,30 @@ def get_brr_history(brr_id):
             for row in rows
         ]
 
-        return res("BRR history fetched", data, 200)
+        steps = get_approval_steps(
+            brr.project_code,
+            _MODULE,
+            brr,
+            rows
+        )
 
+        return res("BRR history fetched", {
+            "workflowStatus": brr.workflow_status,
+            "currentLevel":   brr.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_brr_my_approval_status(brr_id, project_code, user_id):
+    try:
+        brr = BrrMaster.query.get(brr_id)
+        if not brr:
+            return res("BRR not found", [], 404)
+        data = get_my_approval_status(project_code, _MODULE, brr, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

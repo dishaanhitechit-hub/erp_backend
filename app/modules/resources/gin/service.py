@@ -17,6 +17,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 import json
 
@@ -918,7 +920,19 @@ def get_gin_history(gin_id):
                 ),
             })
 
-        return res("GIN history fetched", data, 200)
+        steps = get_approval_steps(
+            gin.project_code,
+            "goods_issue_note",
+            gin,
+            rows
+        )
+
+        return res("GIN history fetched", {
+            "workflowStatus": gin.workflow_status,
+            "currentLevel":   gin.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -1066,5 +1080,16 @@ def get_gin_by_uuid(gin_uuid):
 
         return res("GIN details fetched", data, 200)
 
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_gin_my_approval_status(gin_id, project_code, user_id):
+    try:
+        gin = GinMaster.query.get(gin_id)
+        if not gin:
+            return res("GIN not found", [], 404)
+        data = get_my_approval_status(project_code, "goods_issue_note", gin, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

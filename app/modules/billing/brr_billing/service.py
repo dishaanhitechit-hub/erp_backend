@@ -21,6 +21,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 from app.modules.billing.constants import (
     get_billing_type,
@@ -1054,7 +1056,31 @@ def get_brb_history(brb_id):
             for r in rows
         ]
 
-        return res("History fetched", data, 200)
+        steps = get_approval_steps(
+            brb.project_code,
+            module,
+            brb,
+            rows
+        )
 
+        return res("History fetched", {
+            "workflowStatus": brb.workflow_status,
+            "currentLevel":   brb.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_brb_my_approval_status(brb_id, project_code, user_id):
+    try:
+        brb = BrbMaster.query.get(brb_id)
+        if not brb:
+            return res("BRB not found", [], 404)
+        module = get_module_code(brb.billing_type)
+        data = get_my_approval_status(project_code, module, brb, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

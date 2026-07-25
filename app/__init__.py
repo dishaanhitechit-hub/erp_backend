@@ -94,6 +94,9 @@ def create_app():
     from .modules.billing.brr_billing.routes import brb_bp
     app.register_blueprint(brb_bp, url_prefix="/billing/brb")
 
+    from .modules.workflow.routes import workflow_bp
+    app.register_blueprint(workflow_bp, url_prefix="/workflow")
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 

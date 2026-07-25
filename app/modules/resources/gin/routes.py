@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 # MAINTENANCE: tracks which user is in the middle of a write operation
 from app.utils.txn_tracker import TransactionTracker
@@ -17,6 +18,7 @@ from app.modules.resources.gin.service import (
     edit_gin,
     get_gin_history,
     get_gin_by_uuid,
+    get_gin_my_approval_status,
 )
 
 gin_bp = Blueprint("gin", __name__)
@@ -215,3 +217,10 @@ def api_gin_history(gin_id):
 @gin_bp.route("/uuid/<string:gin_uuid>", methods=["GET"])
 def api_gin_by_uuid(gin_uuid):
     return get_gin_by_uuid(gin_uuid)
+
+
+@gin_bp.route("/my-approval-status/<int:gin_id>", methods=["GET"])
+@login_required
+def api_gin_my_approval_status(gin_id):
+    user = g.current_user
+    return get_gin_my_approval_status(gin_id, user["projectId"], user["id"])

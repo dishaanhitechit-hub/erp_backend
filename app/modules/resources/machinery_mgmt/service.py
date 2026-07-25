@@ -12,6 +12,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 
 _MODULE = "log_sheet"
@@ -500,7 +502,19 @@ def get_log_book_history(log_book_id):
                 "createdAt": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
             })
 
-        return res("Log Book history fetched", data, 200)
+        steps = get_approval_steps(
+            lb.project_code,
+            _MODULE,
+            lb,
+            rows
+        )
+
+        return res("Log Book history fetched", {
+            "workflowStatus": lb.workflow_status,
+            "currentLevel":   lb.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -990,7 +1004,41 @@ def get_log_entry_history(entry_id):
                 "createdAt": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
             })
 
-        return res("Log Entry history fetched", data, 200)
+        steps = get_approval_steps(
+            entry.project_code,
+            _MODULE,
+            entry,
+            rows
+        )
 
+        return res("Log Entry history fetched", {
+            "workflowStatus": entry.workflow_status,
+            "currentLevel":   entry.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_log_book_my_approval_status(log_book_id, project_code, user_id):
+    try:
+        lb = MachineryLogBook.query.get(log_book_id)
+        if not lb:
+            return res("Log Book not found", [], 404)
+        data = get_my_approval_status(project_code, _MODULE, lb, user_id)
+        return res("Approval status", data, 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_log_entry_my_approval_status(entry_id, project_code, user_id):
+    try:
+        entry = LogBookEntry.query.get(entry_id)
+        if not entry:
+            return res("Log Entry not found", [], 404)
+        data = get_my_approval_status(project_code, _MODULE, entry, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

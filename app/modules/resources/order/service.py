@@ -1750,11 +1750,23 @@ def get_order_history(
                 else None
             })
 
+        steps = get_approval_steps(
+            order.project_code,
+            "order",
+            order,
+            rows
+        )
+
         return res(
 
             "Order history fetched",
 
-            data,
+            {
+                "workflowStatus": order.workflow_status,
+                "currentLevel":   order.current_level,
+                "approvalSteps":  steps,
+                "history":        data,
+            },
 
             200
         )
@@ -2227,4 +2239,15 @@ def edit_order(order_id, data, user_id, files=None):
 
     except Exception as e:
         db.session.rollback()
+        return res(str(e), [], 500)
+
+
+def get_order_my_approval_status(order_id, project_code, user_id):
+    try:
+        order = OrderMaster.query.get(order_id)
+        if not order:
+            return res("Order not found", [], 404)
+        data = get_my_approval_status(project_code, "order", order, user_id)
+        return res("Approval status", data, 200)
+    except Exception as e:
         return res(str(e), [], 500)

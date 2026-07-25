@@ -4,8 +4,9 @@
 # Blueprint prefix recommended: /api/pw-order
 # ──────────────────────────────────────────────────────────────────
 
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from app.modules.resources.order_projectwork.service import (
     get_item_list_by_subcategories,
@@ -20,6 +21,7 @@ from app.modules.resources.order_projectwork.service import (
     delete_pw_order,
     get_pw_order_history,
     get_pw_order_by_uuid,
+    get_pw_order_my_approval_status,
 )
 
 pw_order_bp = Blueprint("pw_order", __name__)
@@ -236,3 +238,10 @@ def api_pw_order_history(order_id):
 @pw_order_bp.route("/uuid/<string:order_uuid>", methods=["GET"])
 def api_pw_order_by_uuid(order_uuid):
     return get_pw_order_by_uuid(order_uuid)
+
+
+@pw_order_bp.route("/my-approval-status/<int:order_id>", methods=["GET"])
+@login_required
+def api_pw_order_my_approval_status(order_id):
+    user = g.current_user
+    return get_pw_order_my_approval_status(order_id, user["projectId"], user["id"])

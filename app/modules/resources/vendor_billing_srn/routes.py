@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 # MAINTENANCE: tracks which user is in the middle of a write operation
 from app.utils.txn_tracker import TransactionTracker
@@ -16,6 +17,7 @@ from app.modules.resources.vendor_billing_srn.service import (
     reback_bss,
     reject_bss,
     get_bss_history,
+    get_bss_my_approval_status,
 )
 
 bss_bp = Blueprint("bss", __name__)
@@ -199,3 +201,10 @@ def api_reject_bss(bss_id):
 def api_bss_history(bss_id):
 
     return get_bss_history(bss_id)
+
+
+@bss_bp.route("/my-approval-status/<int:bss_id>", methods=["GET"])
+@login_required
+def api_bss_my_approval_status(bss_id):
+    user = g.current_user
+    return get_bss_my_approval_status(bss_id, user["projectId"], user["id"])

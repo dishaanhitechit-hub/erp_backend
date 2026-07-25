@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from .service import (
     get_items_by_brr,
@@ -12,6 +13,7 @@ from .service import (
     reback_brb,
     reject_brb,
     get_brb_history,
+    get_brb_my_approval_status,
 )
 
 brb_bp = Blueprint("brb", __name__)
@@ -84,3 +86,10 @@ def reject(brb_id):
 @jwt_required()
 def history(brb_id):
     return get_brb_history(brb_id)
+
+
+@brb_bp.route("/my-approval-status/<int:brb_id>", methods=["GET"])
+@login_required
+def api_brb_my_approval_status(brb_id):
+    user = g.current_user
+    return get_brb_my_approval_status(brb_id, user["projectId"], user["id"])

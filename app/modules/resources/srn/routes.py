@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 # MAINTENANCE: tracks which user is in the middle of a write operation
 from app.utils.txn_tracker import TransactionTracker
@@ -17,6 +18,7 @@ from app.modules.resources.srn.service import (
     edit_srn,
     get_srn_history,
     get_srn_by_uuid,
+    get_srn_my_approval_status,
 )
 
 srn_bp = Blueprint("srn", __name__)
@@ -215,3 +217,10 @@ def api_srn_history(srn_id):
 @srn_bp.route("/uuid/<string:srn_uuid>", methods=["GET"])
 def api_srn_by_uuid(srn_uuid):
     return get_srn_by_uuid(srn_uuid)
+
+
+@srn_bp.route("/my-approval-status/<int:srn_id>", methods=["GET"])
+@login_required
+def api_srn_my_approval_status(srn_id):
+    user = g.current_user
+    return get_srn_my_approval_status(srn_id, user["projectId"], user["id"])

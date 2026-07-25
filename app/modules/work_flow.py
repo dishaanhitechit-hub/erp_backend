@@ -468,3 +468,135 @@ def validate_creator(
         )
 
     )
+
+
+# ==========================================
+# FULL APPROVAL STEPS
+# ==========================================
+
+def get_approval_steps(
+        project_code,
+        module_code,
+        record,
+        history_rows
+):
+
+    approval_code = get_approval_module(
+        module_code
+    )
+
+    levels = (
+
+        ApprovalPath.query
+
+        .filter_by(
+
+            project_code=
+            project_code,
+
+            module_code=
+            approval_code,
+
+            path_type=
+            "APPROVER"
+
+        )
+
+        .order_by(
+            ApprovalPath.level_no.asc()
+        )
+
+        .all()
+
+    )
+
+    # latest APPROVE / REJECT / REBACK action per level
+    level_history = {}
+    for row in history_rows:
+        if (
+            row.action in ("APPROVE", "REJECT", "REBACK")
+            and row.level_no
+        ):
+            existing = level_history.get(row.level_no)
+            if not existing or row.id > existing.id:
+                level_history[row.level_no] = row
+
+    ACTION_STATUS = {
+        "APPROVE": "Approved",
+        "REJECT":  "Rejected",
+        "REBACK":  "Rebacked",
+    }
+
+    steps = []
+
+    for path in levels:
+
+        lvl = path.level_no
+        h   = level_history.get(lvl)
+
+        is_pending = (
+            record.workflow_status
+            and record.workflow_status.startswith("Pending")
+            and lvl == record.current_level
+        )
+
+        if is_pending:
+            status    = "Pending"
+            action_at = None
+            comments  = None
+
+        elif h:
+            status    = ACTION_STATUS.get(h.action, h.action)
+            action_at = (
+                h.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if h.created_at else None
+            )
+            comments  = h.comments
+
+        else:
+            status    = "Not Reached"
+            action_at = None
+            comments  = None
+
+        steps.append({
+
+            "level": lvl,
+
+            "approver": {
+                "userId":   path.user_id,
+                "username": (
+                    path.user.username
+                    if path.user else None
+                ),
+            },
+
+            "status":   status,
+            "actionAt": action_at,
+            "comments": comments,
+
+        })
+
+    return steps
+
+
+# ==========================================
+# MY APPROVAL STATUS
+# ==========================================
+
+def get_my_approval_status(project_code, module_code, record, user_id):
+    approval_code = get_approval_module(module_code)
+    user_path = (ApprovalPath.query
+                 .filter_by(project_code=project_code,
+                            module_code=approval_code,
+                            user_id=user_id,
+                            path_type="APPROVER")
+                 .first())
+    my_level = user_path.level_no if user_path else None
+    is_pending = (my_level is not None and
+                  record.workflow_status == f"Pending_L{my_level}")
+    return {
+        "isPendingForMe": is_pending,
+        "myLevel":        my_level,
+        "workflowStatus": record.workflow_status,
+        "currentLevel":   record.current_level,
+    }

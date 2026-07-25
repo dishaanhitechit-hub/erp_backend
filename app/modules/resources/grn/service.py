@@ -18,6 +18,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 import json
 
@@ -1011,7 +1013,19 @@ def get_grn_history(grn_id):
                 ),
             })
 
-        return res("GRN history fetched", data, 200)
+        steps = get_approval_steps(
+            grn.project_code,
+            "goods_received_note",
+            grn,
+            rows
+        )
+
+        return res("GRN history fetched", {
+            "workflowStatus": grn.workflow_status,
+            "currentLevel":   grn.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -1211,5 +1225,16 @@ def get_grn_by_uuid(grn_uuid):
 
         return res("GRN details fetched", data, 200)
 
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_grn_my_approval_status(grn_id, project_code, user_id):
+    try:
+        grn = GrnMaster.query.get(grn_id)
+        if not grn:
+            return res("GRN not found", [], 404)
+        data = get_my_approval_status(project_code, "goods_received_note", grn, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

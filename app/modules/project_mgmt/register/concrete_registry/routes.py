@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from .service import (
     create_resigistry,
@@ -11,6 +12,7 @@ from .service import (
     reback_registry,
     reject_registry,
     get_registry_history,
+    get_registry_my_approval_status,
 )
 
 concrete_registry_bp = Blueprint("concrete_registry", __name__)
@@ -109,3 +111,10 @@ def reject_route(registry_id):
 @jwt_required()
 def history_route(registry_id):
     return get_registry_history(registry_id)
+
+
+@concrete_registry_bp.route("/my-approval-status/<int:registry_id>", methods=["GET"])
+@login_required
+def api_registry_my_approval_status(registry_id):
+    user = g.current_user
+    return get_registry_my_approval_status(registry_id, user["projectId"], user["id"])

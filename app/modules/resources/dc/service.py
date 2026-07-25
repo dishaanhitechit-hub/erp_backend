@@ -20,6 +20,8 @@ from app.modules.work_flow import (
     get_next_approver,
     create_history,
     get_history,
+    get_approval_steps,
+    get_my_approval_status,
 )
 import json
 
@@ -794,7 +796,31 @@ def get_dc_history(dc_id):
                 ),
             })
 
-        return res("DC history fetched", data, 200)
+        project_code = _dc_project_code(dc)
+        steps = get_approval_steps(
+            project_code,
+            MODULE_CODE,
+            dc,
+            rows
+        )
 
+        return res("DC history fetched", {
+            "workflowStatus": dc.workflow_status,
+            "currentLevel":   dc.current_level,
+            "approvalSteps":  steps,
+            "history":        data,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_dc_my_approval_status(dc_id, project_code, user_id):
+    try:
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("DC not found", [], 404)
+        data = get_my_approval_status(_dc_project_code(dc), MODULE_CODE, dc, user_id)
+        return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)

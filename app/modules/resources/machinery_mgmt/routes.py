@@ -1,5 +1,6 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from app.middleware.auth_middleware import login_required
 
 from app.modules.resources.machinery_mgmt.service import (
     # log book
@@ -23,6 +24,8 @@ from app.modules.resources.machinery_mgmt.service import (
     reback_log_entry,
     reject_log_entry,
     get_log_entry_history,
+    get_log_book_my_approval_status,
+    get_log_entry_my_approval_status,
 )
 
 machinery_bp = Blueprint("machinery_mgmt", __name__)
@@ -203,3 +206,17 @@ def api_log_entry_history(entry_id):
     if not _can_view():
         return _no_access()
     return get_log_entry_history(entry_id)
+
+
+@machinery_bp.route("/log-book/my-approval-status/<int:log_book_id>", methods=["GET"])
+@login_required
+def api_log_book_my_approval_status(log_book_id):
+    user = g.current_user
+    return get_log_book_my_approval_status(log_book_id, user["projectId"], user["id"])
+
+
+@machinery_bp.route("/log-entry/my-approval-status/<int:entry_id>", methods=["GET"])
+@login_required
+def api_log_entry_my_approval_status(entry_id):
+    user = g.current_user
+    return get_log_entry_my_approval_status(entry_id, user["projectId"], user["id"])

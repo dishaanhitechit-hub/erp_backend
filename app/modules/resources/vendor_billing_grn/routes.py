@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 # MAINTENANCE: tracks which user is in the middle of a write operation
 from app.utils.txn_tracker import TransactionTracker
@@ -16,6 +17,7 @@ from app.modules.resources.vendor_billing_grn.service import (
     reback_bvs,
     reject_bvs,
     get_bvs_history,
+    get_bvs_my_approval_status,
 )
 
 bvs_bp = Blueprint("bvs", __name__)
@@ -199,3 +201,10 @@ def api_reject_bvs(bvs_id):
 def api_bvs_history(bvs_id):
 
     return get_bvs_history(bvs_id)
+
+
+@bvs_bp.route("/my-approval-status/<int:bvs_id>", methods=["GET"])
+@login_required
+def api_bvs_my_approval_status(bvs_id):
+    user = g.current_user
+    return get_bvs_my_approval_status(bvs_id, user["projectId"], user["id"])

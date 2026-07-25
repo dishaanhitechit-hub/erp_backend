@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from .service import (
     create_drawing_register,
@@ -11,6 +12,7 @@ from .service import (
     reback_drawing_register,
     reject_drawing_register,
     get_drawing_register_history,
+    get_drawing_register_my_approval_status,
 )
 
 drawing_register_bp = Blueprint("drawing_register", __name__)
@@ -157,3 +159,10 @@ def api_reject_drawing_register(dr_id):
 def api_drawing_register_history(dr_id):
 
     return get_drawing_register_history(dr_id)
+
+
+@drawing_register_bp.route("/my-approval-status/<int:dr_id>", methods=["GET"])
+@login_required
+def api_drawing_register_my_approval_status(dr_id):
+    user = g.current_user
+    return get_drawing_register_my_approval_status(dr_id, user["projectId"], user["id"])

@@ -1,5 +1,6 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from app.modules.resources.grn.grn_pdf_rl_service import (
     generate_grn_pdf,
@@ -23,6 +24,7 @@ from app.modules.resources.grn.service import (
     edit_grn,
     get_grn_history,
     get_grn_by_uuid,
+    get_grn_my_approval_status,
 )
 
 grn_bp = Blueprint("grn", __name__)
@@ -284,3 +286,10 @@ def api_serve_grn_pdf(relative_path):
 @grn_bp.route("/uuid/<string:grn_uuid>", methods=["GET"])
 def api_grn_by_uuid(grn_uuid):
     return get_grn_by_uuid(grn_uuid)
+
+
+@grn_bp.route("/my-approval-status/<int:grn_id>", methods=["GET"])
+@login_required
+def api_grn_my_approval_status(grn_id):
+    user = g.current_user
+    return get_grn_my_approval_status(grn_id, user["projectId"], user["id"])
