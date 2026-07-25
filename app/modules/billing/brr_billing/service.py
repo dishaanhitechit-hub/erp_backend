@@ -221,6 +221,9 @@ def get_items_by_brr(brr_id):
             "billingAddress":   order.billing_address,
             "shippingAddress":  order.shipping_address,
 
+            # Order extras
+            "costHead":     order.cost_head,
+
             # Vendor
             "vendorId":     order.vendor_id,
             "partyName":    vendor.ledger_name        if vendor else None,
