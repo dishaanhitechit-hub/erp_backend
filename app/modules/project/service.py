@@ -57,6 +57,12 @@ def enter_project(
 
         if value is True
     }
+    token_permissions = {
+        key: value
+        for key, value in permissions.items()
+        if not key.endswith(".APPROVER")
+    }
+
     token=create_access_token(
 
         identity=str(
@@ -69,7 +75,7 @@ def enter_project(
             project.id,
 
             "permissions":
-            permissions
+            token_permissions
         }
     )
 
