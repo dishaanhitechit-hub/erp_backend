@@ -12,6 +12,7 @@ from app.models.srnMaster import SrnMaster, SrnItem
 from app.models.brbMaster import BrbMaster, BrbItem
 from app.models.item import Item
 from app.models.cc_code import CCCode
+from app.models.category_group import CategoryMaster
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -150,6 +151,26 @@ def _get_order_and_vendor(brr, billing_type):
     return order, vendor
 
 
+def _resolve_item_category(billing_type, order):
+    """Return list of category NAMES for itemCategory field."""
+    if not order:
+        return []
+    if billing_type == "GRN":
+        if order.sub_category:
+            return [order.sub_category.category_name]
+        return [order.sub_code] if order.sub_code else []
+    else:  # SRN
+        try:
+            codes = json.loads(order.sub_codes) if order.sub_codes else []
+        except Exception:
+            codes = []
+        if not codes:
+            return []
+        rows = CategoryMaster.query.filter(CategoryMaster.fixed_code.in_(codes)).all()
+        name_map = {r.fixed_code: r.category_name for r in rows}
+        return [name_map.get(c, c) for c in codes]
+
+
 # ══════════════════════════════════════════════════════════════════
 # 1. GET ITEMS BY BRR  (selection grid)
 # ══════════════════════════════════════════════════════════════════
@@ -185,6 +206,7 @@ def get_items_by_brr(brr_id):
             "brrWorkflowStatus": brr.workflow_status,
             "orderCategory":     brr.order_category,
             "billingType":       billing_type,
+            "itemCategory":      _resolve_item_category(billing_type, order),
             "billedSoFar":       billed_total,
             "remainingAmount":   remaining,
 
@@ -508,11 +530,6 @@ def get_brb_list(data):
         for row in rows:
             order, vendor = _get_order_and_vendor(row.brr, row.billing_type) if row.brr else (None, None)
 
-            try:
-                cat_list = json.loads(row.item_category) if row.item_category else []
-            except Exception:
-                cat_list = []
-
             result.append({
                 "id":             row.id,
                 "brbNo":          row.brb_no,
@@ -522,7 +539,7 @@ def get_brb_list(data):
                 "brrNo":          row.brr.brr_no      if row.brr else None,
                 "orderNo":        order.order_no       if order   else None,
                 "partyName":      vendor.ledger_name   if vendor  else None,
-                "itemCategory":   cat_list,
+                "itemCategory":   _resolve_item_category(row.billing_type, order),
                 "costHead":       row.cost_head,
                 "partyBillNo":    row.party_bill_no,
                 "basicAmount":    float(row.basic_amount or 0),
@@ -611,11 +628,6 @@ def get_brb_details(brb_id):
                 })
 
         try:
-            cat_list = json.loads(brb.item_category) if brb.item_category else []
-        except Exception:
-            cat_list = []
-
-        try:
             order_sub_codes = json.loads(order.sub_codes) if order and hasattr(order, "sub_codes") and order.sub_codes else []
         except Exception:
             order_sub_codes = []
@@ -626,7 +638,7 @@ def get_brb_details(brb_id):
             "brbNo":          brb.brb_no,
             "brbDate":        _fmt_date(brb.brb_date),
             "billingType":    brb.billing_type,
-            "itemCategory":   cat_list,
+            "itemCategory":   _resolve_item_category(brb.billing_type, order),
             "costHead":       brb.cost_head,
             "partyBillNo":    brb.party_bill_no,
             "partyDate":      _fmt_date(brb.party_date),
