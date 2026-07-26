@@ -8,6 +8,7 @@ from app.modules.resources.manpower.service import (
     get_manpower_by_id,
     update_manpower,
     get_labour_categories,
+    get_manpower_by_supplier,
 )
 
 manpower_bp = Blueprint("manpower", __name__)
@@ -43,6 +44,14 @@ def manpower_list():
 @login_required
 def manpower_detail(worker_id):
     return get_manpower_by_id(worker_id)
+
+
+# ── Workers by supplier ───────────────────────────────────────────────────────
+
+@manpower_bp.route("/by-supplier/<int:supplier_id>", methods=["GET"])
+@login_required
+def manpower_by_supplier(supplier_id):
+    return get_manpower_by_supplier(supplier_id)
 
 
 # ── Update (is_creator check done in service via ApprovalPath) ───────────────

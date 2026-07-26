@@ -6,6 +6,7 @@ from app.response import res
 from app.models.manpower import ManpowerWorker
 from app.models.vendor import Vendor
 from app.models.project import Project
+from app.models.supplier import SupplierLedgerMap
 from sqlalchemy.orm import joinedload
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.resources.manpower.constants import LABOUR_CATEGORY_LIST
@@ -80,6 +81,38 @@ def _serialize(w: ManpowerWorker):
         "createdAt": w.created_at.isoformat() if w.created_at else None,
         "updatedAt": w.updated_at.isoformat() if w.updated_at else None,
     }
+
+
+# ── GET workers by supplier ───────────────────────────────────────────────────
+
+def get_manpower_by_supplier(supplier_id):
+    # supplier_id → SupplierLedgerMap → vendor IDs → ManpowerWorker
+    ledger_maps = (
+        SupplierLedgerMap.query
+        .filter_by(supplier_id=supplier_id)
+        .all()
+    )
+    if not ledger_maps:
+        return res("No vendors linked to this supplier", [], 200)
+
+    vendor_ids = [m.ledger_id for m in ledger_maps]
+
+    workers = (
+        ManpowerWorker.query
+        .filter(ManpowerWorker.vendor_id.in_(vendor_ids))
+        .order_by(ManpowerWorker.id.asc())
+        .all()
+    )
+    data = [
+        {
+            "id": w.id,
+            "manId": w.man_id,
+            "fullName": w.full_name,
+            "category": w.category,
+        }
+        for w in workers
+    ]
+    return res("Manpower list fetched", data, 200)
 
 
 # ── GET category list ─────────────────────────────────────────────────────────

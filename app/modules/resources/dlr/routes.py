@@ -13,6 +13,7 @@ from app.modules.resources.dlr.service import (
     get_dlr_history,
     get_dlr_my_approval_status,
     get_dlr_summary,
+    get_labour_by_supplier,
     _project_code,
     _current_user,
 )
@@ -103,3 +104,9 @@ def api_dlr_my_approval_status(dlr_id):
 @login_required
 def api_dlr_summary(dlr_id):
     return get_dlr_summary(dlr_id)
+
+
+@dlr_bp.route("/labour-by-supplier/<int:supplier_id>", methods=["GET"])
+@login_required
+def api_dlr_labour_by_supplier(supplier_id):
+    return get_labour_by_supplier(supplier_id)

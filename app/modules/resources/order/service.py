@@ -1863,6 +1863,7 @@ def get_order_by_uuid(order_uuid):
                 "registeredAddress": vendor.registered_address,
                 "primaryContact":    vendor.primary_contact_person,
                 "primaryPhone":      vendor.primary_contact_number,
+                "email": vendor.email
             }
 
         # ── Transfer project (FK resolved) ─────────────────────────

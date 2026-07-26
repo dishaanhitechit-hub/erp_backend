@@ -6,6 +6,7 @@ from app.extensions import db
 from app.response import res
 from app.models.dlrMaster import DlrMaster, DlrItem
 from app.models.manpower import ManpowerWorker
+from app.models.supplier import SupplierLedgerMap
 from app.models.project import Project
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -397,6 +398,32 @@ def get_dlr_my_approval_status(dlr_id, user_id, project_code):
         return res("DLR not found", [], 404)
     status = get_my_approval_status(project_code, MODULE_CODE, d, user_id)
     return res("My approval status", [status], 200)
+
+
+# ── LABOUR LIST BY SUPPLIER ──────────────────────────────────────
+
+def get_labour_by_supplier(supplier_id):
+    maps = SupplierLedgerMap.query.filter_by(supplier_id=supplier_id).all()
+    if not maps:
+        return res("No vendors linked to this supplier", [], 200)
+
+    vendor_ids = [m.ledger_id for m in maps]
+    workers = (
+        ManpowerWorker.query
+        .filter(ManpowerWorker.vendor_id.in_(vendor_ids))
+        .order_by(ManpowerWorker.id.asc())
+        .all()
+    )
+    data = [
+        {
+            "id": w.id,
+            "manId": w.man_id,
+            "fullName": w.full_name,
+            "category": w.category,
+        }
+        for w in workers
+    ]
+    return res("Labour list fetched", data, 200)
 
 
 # ── SUMMARY ───────────────────────────────────────────────────────
