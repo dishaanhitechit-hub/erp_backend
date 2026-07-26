@@ -46,7 +46,6 @@ def _parse_date(val):
         return None
 
 
-
 def _serialize(w: ManpowerWorker):
     return {
         "id": w.id,
