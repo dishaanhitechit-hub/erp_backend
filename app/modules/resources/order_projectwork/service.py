@@ -35,6 +35,7 @@ from app.models.unit import Unit
 from app.models.term_conditions import TermConditions
 from app.models.term import Term
 from app.models.vendor import Vendor
+from app.models.companies import Company
 from app.alias_helper import *
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
@@ -1184,6 +1185,25 @@ def get_pw_order_history(order_id: int):
 # GET FULL PW ORDER DETAILS BY UUID
 # ═══════════════════════════════════════════════════════════════════
 
+def _company_info():
+    c = Company.query.first()
+    if not c:
+        return None
+    return {
+        "companyName":       c.company_name,
+        "registeredAddress": c.registered_address,
+        "corporateAddress":  c.corporate_address,
+        "pan":               c.pan,
+        "gstn":              c.gstn,
+        "gstnType":          c.gstn_type,
+        "state":             c.state,
+        "stateCode":         c.state_code,
+        "contactPerson":     c.contact_person,
+        "contactNumber":     c.contact_number,
+        "email":             c.email,
+    }
+
+
 def get_pw_order_by_uuid(order_uuid: str):
     try:
         order = ProjectWorkOrderMaster.query.filter_by(order_uuid=order_uuid).first()
@@ -1364,6 +1384,9 @@ def get_pw_order_by_uuid(order_uuid: str):
             # ── Category & cost head ───────────────────────────────
             "categoryCode": order.category_code,
             "costHead":     order.cost_head,
+
+            # ── Company ────────────────────────────────────────────
+            "company": _company_info(),
 
             # ── Vendor (FK resolved) ───────────────────────────────
             "vendor": vendor_info,

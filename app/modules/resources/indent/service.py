@@ -20,6 +20,7 @@ from app.models.category_group import GroupMaster
 from app.models.unit import Unit
 from sqlalchemy import func, case
 from app.models.orderMaster import OrderMaster, OrderItem
+from app.models.companies import Company
 
 
 
@@ -1598,6 +1599,25 @@ def get_indent_history(
 # GET FULL INDENT DETAILS BY UUID
 # =========================================================
 
+def _company_info():
+    c = Company.query.first()
+    if not c:
+        return None
+    return {
+        "companyName":       c.company_name,
+        "registeredAddress": c.registered_address,
+        "corporateAddress":  c.corporate_address,
+        "pan":               c.pan,
+        "gstn":              c.gstn,
+        "gstnType":          c.gstn_type,
+        "state":             c.state,
+        "stateCode":         c.state_code,
+        "contactPerson":     c.contact_person,
+        "contactNumber":     c.contact_number,
+        "email":             c.email,
+    }
+
+
 def get_indent_by_uuid(indent_uuid):
     """
     Returns complete indent details identified by its UUID.
@@ -1768,6 +1788,9 @@ def get_indent_by_uuid(indent_uuid):
             "id":          indent.id,
             "uuid":        indent.indent_uuid,
             "indentNo":    indent.indent_no,
+
+            # ── Company ───────────────────────────────────
+            "company":     _company_info(),
 
             # ── Project (full details, FK resolved) ───────
             "project":     project_info,

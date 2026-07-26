@@ -8,6 +8,7 @@ import json
 
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster, ProjectWorkOrderItem
 from app.models.srnMaster import SrnMaster, SrnItem
+from app.models.companies import Company
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 # from app.alias_helper import get_approval_module
@@ -948,6 +949,25 @@ def get_srn_history(srn_id):
 # GET FULL SRN DETAILS BY UUID
 # ══════════════════════════════════════════════════════════════════
 
+def _company_info():
+    c = Company.query.first()
+    if not c:
+        return None
+    return {
+        "companyName":       c.company_name,
+        "registeredAddress": c.registered_address,
+        "corporateAddress":  c.corporate_address,
+        "pan":               c.pan,
+        "gstn":              c.gstn,
+        "gstnType":          c.gstn_type,
+        "state":             c.state,
+        "stateCode":         c.state_code,
+        "contactPerson":     c.contact_person,
+        "contactNumber":     c.contact_number,
+        "email":             c.email,
+    }
+
+
 def get_srn_by_uuid(srn_uuid):
     try:
         srn = SrnMaster.query.filter_by(srn_uuid=srn_uuid).first()
@@ -1074,6 +1094,7 @@ def get_srn_by_uuid(srn_uuid):
             "physicallyVerifiedBy": srn.physically_verified_by,
             "attachedDoc":         srn.attached_doc,
 
+            "company":           _company_info(),
             "project":           project_info,
             "order":             order_info,
             "vendor":            vendor_info,

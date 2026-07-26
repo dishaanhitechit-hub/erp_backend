@@ -9,6 +9,7 @@ from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.item import Item
 from app.models.unit import Unit
+from app.models.companies import Company
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -1035,6 +1036,25 @@ def get_grn_history(grn_id):
 # GET FULL GRN DETAILS BY UUID
 # ══════════════════════════════════════════════════════════════════
 
+def _company_info():
+    c = Company.query.first()
+    if not c:
+        return None
+    return {
+        "companyName":       c.company_name,
+        "registeredAddress": c.registered_address,
+        "corporateAddress":  c.corporate_address,
+        "pan":               c.pan,
+        "gstn":              c.gstn,
+        "gstnType":          c.gstn_type,
+        "state":             c.state,
+        "stateCode":         c.state_code,
+        "contactPerson":     c.contact_person,
+        "contactNumber":     c.contact_number,
+        "email":             c.email,
+    }
+
+
 def get_grn_by_uuid(grn_uuid):
     try:
         grn = GrnMaster.query.filter_by(grn_uuid=grn_uuid).first()
@@ -1195,6 +1215,7 @@ def get_grn_by_uuid(grn_uuid):
             "attachedDoc":         grn.attached_doc,
             "pdfUrl":              grn.pdf_url,
 
+            "company":           _company_info(),
             "project":           project_info,
             "order":             order_info,
             "vendor":            vendor_info,

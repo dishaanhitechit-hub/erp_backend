@@ -8,6 +8,7 @@ import uuid as _uuid
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.ginMaster import GinMaster, GinItem
+from app.models.companies import Company
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
@@ -942,6 +943,25 @@ def get_gin_history(gin_id):
 # GET FULL GIN DETAILS BY UUID
 # ══════════════════════════════════════════════════════════════════
 
+def _company_info():
+    c = Company.query.first()
+    if not c:
+        return None
+    return {
+        "companyName":       c.company_name,
+        "registeredAddress": c.registered_address,
+        "corporateAddress":  c.corporate_address,
+        "pan":               c.pan,
+        "gstn":              c.gstn,
+        "gstnType":          c.gstn_type,
+        "state":             c.state,
+        "stateCode":         c.state_code,
+        "contactPerson":     c.contact_person,
+        "contactNumber":     c.contact_number,
+        "email":             c.email,
+    }
+
+
 def get_gin_by_uuid(gin_uuid):
     try:
         gin = GinMaster.query.filter_by(gin_uuid=gin_uuid).first()
@@ -1053,6 +1073,7 @@ def get_gin_by_uuid(gin_uuid):
             "handedOverTo":      gin.handed_over_to,
             "attachedDoc":       gin.attached_doc,
 
+            "company":           _company_info(),
             "project":           project_info,
             "order":             order_info,
             "vendor":            vendor_info,
