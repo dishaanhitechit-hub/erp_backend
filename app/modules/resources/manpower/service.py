@@ -5,8 +5,26 @@ from app.extensions import db
 from app.response import res
 from app.models.manpower import ManpowerWorker
 from app.models.vendor import Vendor
+from app.models.project import Project
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.resources.manpower.constants import LABOUR_CATEGORY_LIST
+from app.modules.work_flow import is_creator
+
+MODULE_CODE = "labour_id"
+
+
+# ── Creator check (via ApprovalPath table) ────────────────────────────────────
+
+def _get_current_user():
+    cu = g.current_user if hasattr(g, "current_user") else {}
+    return cu.get("id"), cu.get("projectId")
+
+
+def _check_manpower_creator():
+    user_id, project_id = _get_current_user()
+    project = Project.query.get(project_id) if project_id else None
+    project_code = project.project_code if project else None
+    return is_creator(project_code, MODULE_CODE, user_id), user_id
 
 
 # ── Auto ID generator ─────────────────────────────────────────────────────────
@@ -81,6 +99,10 @@ def get_labour_categories():
 # ── CREATE ────────────────────────────────────────────────────────────────────
 
 def create_manpower(request):
+    allowed, user_id = _check_manpower_creator()
+    if not allowed:
+        return res("You are not authorised to create manpower records", [], 403)
+
     data = request.form
     files = request.files
 
@@ -119,7 +141,7 @@ def create_manpower(request):
         uan_file=_upload(files, "uanFile"),
         esic_file=_upload(files, "esicFile"),
         bank_details_file=_upload(files, "bankDetailsFile"),
-        created_by=g.current_user["id"],
+        created_by=user_id,
     )
 
     db.session.add(worker)
@@ -144,16 +166,16 @@ def get_manpower_by_id(worker_id):
     return res("Worker fetched", [_serialize(worker)], 200)
 
 
-# ── UPDATE (only creator) ─────────────────────────────────────────────────────
+# ── UPDATE (only ApprovalPath creator) ───────────────────────────────────────
 
 def update_manpower(worker_id, request):
     worker = ManpowerWorker.query.get(worker_id)
     if not worker:
         return res("Worker not found", [], 404)
 
-    # Only the creator of this record can edit it
-    if worker.created_by != g.current_user["id"]:
-        return res("Only the creator of this record can edit it", [], 403)
+    allowed, _ = _check_manpower_creator()
+    if not allowed:
+        return res("You are not authorised to edit manpower records", [], 403)
 
     data = request.form
     files = request.files

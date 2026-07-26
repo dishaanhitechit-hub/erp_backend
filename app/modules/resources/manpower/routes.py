@@ -1,8 +1,6 @@
 from flask import Blueprint, request
 
 from app.middleware.auth_middleware import login_required
-from app.middleware.permission_middleware import page_permission
-from app.response import res
 
 from app.modules.resources.manpower.service import (
     create_manpower,
@@ -14,10 +12,8 @@ from app.modules.resources.manpower.service import (
 
 manpower_bp = Blueprint("manpower", __name__)
 
-MODULE = "labour_id"
 
-
-# ── Category list (no special permission needed — used by dropdowns) ──────────
+# ── Category list ─────────────────────────────────────────────────────────────
 
 @manpower_bp.route("/categories", methods=["GET"])
 @login_required
@@ -25,11 +21,10 @@ def labour_categories():
     return get_labour_categories()
 
 
-# ── Create (requires labour_id.EDIT permission) ───────────────────────────────
+# ── Create (is_creator check done in service via ApprovalPath) ────────────────
 
 @manpower_bp.route("/create", methods=["POST"])
 @login_required
-@page_permission(MODULE, "EDIT")
 def manpower_create():
     return create_manpower(request)
 
@@ -50,10 +45,9 @@ def manpower_detail(worker_id):
     return get_manpower_by_id(worker_id)
 
 
-# ── Update (requires labour_id.EDIT permission + must be creator of record) ───
+# ── Update (is_creator check done in service via ApprovalPath) ───────────────
 
 @manpower_bp.route("/update/<int:worker_id>", methods=["PUT"])
 @login_required
-@page_permission(MODULE, "EDIT")
 def manpower_update(worker_id):
     return update_manpower(worker_id, request)
