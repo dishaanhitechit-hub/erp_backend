@@ -22,6 +22,7 @@ def create_app():
     from .models import maintenance_txn  # noqa
     from .models import manpower  # noqa — registers ManpowerWorker with Alembic
     from .models import dlrMaster  # noqa — registers DlrMaster, DlrItem with Alembic
+    from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
 
     # maintenance middleware
     register_maintenance_middleware(app)
@@ -80,6 +81,15 @@ def create_app():
 
     from .modules.resources.dlr.routes import dlr_bp
     app.register_blueprint(dlr_bp, url_prefix="/resource/dlr")
+
+    from .modules.resources.machinery_mgmt.pm_id_routes import pm_id_bp
+    app.register_blueprint(pm_id_bp, url_prefix="/resource/machinery/pm-id")
+
+    from .modules.resources.machinery_mgmt.service_history_routes import service_history_bp
+    app.register_blueprint(service_history_bp, url_prefix="/resource/machinery/service-history")
+
+    from .modules.resources.machinery_mgmt.service_schedule_routes import service_schedule_bp
+    app.register_blueprint(service_schedule_bp, url_prefix="/resource/machinery/service-schedule")
 
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")
