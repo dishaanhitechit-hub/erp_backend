@@ -585,18 +585,30 @@ def get_approval_steps(
 
 def get_my_approval_status(project_code, module_code, record, user_id):
     approval_code = get_approval_module(module_code)
-    user_path = (ApprovalPath.query
-                 .filter_by(project_code=project_code,
-                            module_code=approval_code,
-                            user_id=user_id,
-                            path_type="APPROVER")
-                 .first())
-    my_level = user_path.level_no if user_path else None
-    is_pending = (my_level is not None and
-                  record.workflow_status == f"Pending_L{my_level}")
+    user_paths = (ApprovalPath.query
+                  .filter_by(project_code=project_code,
+                             module_code=approval_code,
+                             user_id=user_id,
+                             path_type="APPROVER")
+                  .order_by(ApprovalPath.level_no.asc())
+                  .all())
+    if not user_paths:
+        return {
+            "isPendingForMe": False,
+            "myLevel":        None,
+            "workflowStatus": record.workflow_status,
+            "currentLevel":   record.current_level,
+        }
+    my_levels = [p.level_no for p in user_paths]
+    active_level = next(
+        (lvl for lvl in my_levels
+         if record.workflow_status == f"Pending_L{lvl}"),
+        my_levels[0]
+    )
+    is_pending = record.workflow_status == f"Pending_L{active_level}"
     return {
         "isPendingForMe": is_pending,
-        "myLevel":        my_level,
+        "myLevel":        active_level,
         "workflowStatus": record.workflow_status,
         "currentLevel":   record.current_level,
     }
