@@ -46,13 +46,6 @@ def _parse_date(val):
         return None
 
 
-def _upload(files, field):
-    f = files.get(field)
-    if f and f.filename:
-        url = upload_file_to_bunny(f, folder="manpower")
-        return url
-    return None
-
 
 def _serialize(w: ManpowerWorker):
     return {
@@ -118,8 +111,16 @@ def create_manpower(request):
     if not full_name:
         return res("fullName is required", [], 400)
 
+    man_id = _generate_man_id()
+
+    aadhar_file = upload_file_to_bunny(file=files.get("aadharFile"), mainFolder="manpower", subFolder=man_id, fileName="aadhar")
+    pan_file    = upload_file_to_bunny(file=files.get("panFile"),    mainFolder="manpower", subFolder=man_id, fileName="pan")
+    uan_file    = upload_file_to_bunny(file=files.get("uanFile"),    mainFolder="manpower", subFolder=man_id, fileName="uan")
+    esic_file   = upload_file_to_bunny(file=files.get("esicFile"),   mainFolder="manpower", subFolder=man_id, fileName="esic")
+    bank_file   = upload_file_to_bunny(file=files.get("bankDetailsFile"), mainFolder="manpower", subFolder=man_id, fileName="bank_details")
+
     worker = ManpowerWorker(
-        man_id=_generate_man_id(),
+        man_id=man_id,
         vendor_id=data.get("vendorId") or None,
         full_name=full_name,
         father_name=data.get("fatherName"),
@@ -136,11 +137,11 @@ def create_manpower(request):
         bank_name=data.get("bankName"),
         branch_name=data.get("branchName"),
         ifsc_code=data.get("ifscCode"),
-        aadhar_file=_upload(files, "aadharFile"),
-        pan_file=_upload(files, "panFile"),
-        uan_file=_upload(files, "uanFile"),
-        esic_file=_upload(files, "esicFile"),
-        bank_details_file=_upload(files, "bankDetailsFile"),
+        aadhar_file=aadhar_file,
+        pan_file=pan_file,
+        uan_file=uan_file,
+        esic_file=esic_file,
+        bank_details_file=bank_file,
         created_by=user_id,
     )
 
@@ -225,25 +226,25 @@ def update_manpower(worker_id, request):
     if "ifscCode" in data:
         worker.ifsc_code = data.get("ifscCode")
 
-    new_aadhar = _upload(files, "aadharFile")
-    if new_aadhar:
-        worker.aadhar_file = new_aadhar
+    f = files.get("aadharFile")
+    if f:
+        worker.aadhar_file = upload_file_to_bunny(file=f, mainFolder="manpower", subFolder=worker.man_id, fileName="aadhar")
 
-    new_pan = _upload(files, "panFile")
-    if new_pan:
-        worker.pan_file = new_pan
+    f = files.get("panFile")
+    if f:
+        worker.pan_file = upload_file_to_bunny(file=f, mainFolder="manpower", subFolder=worker.man_id, fileName="pan")
 
-    new_uan = _upload(files, "uanFile")
-    if new_uan:
-        worker.uan_file = new_uan
+    f = files.get("uanFile")
+    if f:
+        worker.uan_file = upload_file_to_bunny(file=f, mainFolder="manpower", subFolder=worker.man_id, fileName="uan")
 
-    new_esic = _upload(files, "esicFile")
-    if new_esic:
-        worker.esic_file = new_esic
+    f = files.get("esicFile")
+    if f:
+        worker.esic_file = upload_file_to_bunny(file=f, mainFolder="manpower", subFolder=worker.man_id, fileName="esic")
 
-    new_bank = _upload(files, "bankDetailsFile")
-    if new_bank:
-        worker.bank_details_file = new_bank
+    f = files.get("bankDetailsFile")
+    if f:
+        worker.bank_details_file = upload_file_to_bunny(file=f, mainFolder="manpower", subFolder=worker.man_id, fileName="bank_details")
 
     worker.updated_at = datetime.utcnow()
     db.session.commit()
