@@ -8,6 +8,7 @@ from app.models.dlrMaster import DlrMaster, DlrItem
 from app.models.manpower import ManpowerWorker
 from app.models.supplier import SupplierLedgerMap
 from app.models.project import Project
+from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.work_flow import (
     is_creator,
@@ -424,6 +425,46 @@ def get_labour_by_supplier(supplier_id):
         for w in workers
     ]
     return res("Labour list fetched", data, 200)
+
+
+# ── PW ORDERS BY SUPPLIER FOR CURRENT PROJECT ────────────────────
+
+def get_pw_orders_by_supplier(supplier_id):
+    _, project_id = _current_user()
+    project_code = _project_code(project_id)
+    if not project_code:
+        return res("Project not resolved for current user", [], 400)
+
+    maps = SupplierLedgerMap.query.filter_by(supplier_id=supplier_id).all()
+    if not maps:
+        return res("No vendors linked to this supplier", [], 200)
+
+    vendor_ids = [m.ledger_id for m in maps]
+
+    orders = (
+        ProjectWorkOrderMaster.query
+        .filter(
+            ProjectWorkOrderMaster.vendor_id.in_(vendor_ids),
+            ProjectWorkOrderMaster.project_code == project_code,
+            ProjectWorkOrderMaster.workflow_status == "Approved",
+        )
+        .order_by(ProjectWorkOrderMaster.id.desc())
+        .all()
+    )
+
+    data = [
+        {
+            "id": o.id,
+            "orderNo": o.order_no,
+            "orderDate": o.order_date.isoformat() if o.order_date else None,
+            "vendorId": o.vendor_id,
+            "vendorName": o.vendor.ledger_name if o.vendor else None,
+            "bookedAmount": float(o.booked_amount) if o.booked_amount else 0.0,
+            "workflowStatus": o.workflow_status,
+        }
+        for o in orders
+    ]
+    return res("PW orders fetched", data, 200)
 
 
 # ── SUMMARY ───────────────────────────────────────────────────────
