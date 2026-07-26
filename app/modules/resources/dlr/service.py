@@ -72,10 +72,15 @@ def _generate_dlr_no():
 
 
 def _serialize_item(item):
+    worker = (
+        ManpowerWorker.query.filter_by(man_id=item.man_id).first()
+        if item.man_id else None
+    )
     return {
         "id": item.id,
         "slNo": item.sl_no,
-        "manId": item.man_id,
+        "manId": worker.id if worker else None,
+        "manCode": item.man_id,
         "fullName": item.full_name,
         "category": item.category,
         "startTime": item.start_time,
@@ -116,14 +121,19 @@ def _serialize(d: DlrMaster):
 def _build_items(rows):
     items = []
     for idx, row in enumerate(rows, start=1):
-        man_id = str(row.get("manId") or "").strip()
+        worker_db_id = row.get("manId")
         full_name = str(row.get("fullName") or "").strip()
         category = str(row.get("category") or "").strip()
 
-        if man_id and not full_name:
-            worker = ManpowerWorker.query.filter_by(man_id=man_id).first()
+        man_id_str = None
+        if worker_db_id:
+            try:
+                worker = ManpowerWorker.query.get(int(worker_db_id))
+            except (ValueError, TypeError):
+                worker = None
             if worker:
-                full_name = worker.full_name
+                man_id_str = worker.man_id
+                full_name = full_name or worker.full_name
                 category = category or worker.category
 
         start_time = str(row.get("startTime") or "").strip()
@@ -135,7 +145,7 @@ def _build_items(rows):
 
         items.append(DlrItem(
             sl_no=idx,
-            man_id=man_id or None,
+            man_id=man_id_str or None,
             full_name=full_name or None,
             category=category or None,
             start_time=start_time or None,
