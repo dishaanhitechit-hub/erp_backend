@@ -116,9 +116,9 @@ def _serialize(d: DlrMaster):
 def _build_items(rows):
     items = []
     for idx, row in enumerate(rows, start=1):
-        man_id = row.get("manId", "").strip()
-        full_name = row.get("fullName", "").strip()
-        category = row.get("category", "").strip()
+        man_id = str(row.get("manId") or "").strip()
+        full_name = str(row.get("fullName") or "").strip()
+        category = str(row.get("category") or "").strip()
 
         if man_id and not full_name:
             worker = ManpowerWorker.query.filter_by(man_id=man_id).first()
@@ -126,8 +126,8 @@ def _build_items(rows):
                 full_name = worker.full_name
                 category = category or worker.category
 
-        start_time = row.get("startTime", "")
-        finish_time = row.get("finishTime", "")
+        start_time = str(row.get("startTime") or "").strip()
+        finish_time = str(row.get("finishTime") or "").strip()
         lunch_hour = float(row.get("lunchHour") or 0)
         bonus_hour = float(row.get("bonusHour") or 0)
         working_hour = _calc_working_hour(start_time, finish_time, lunch_hour)
@@ -144,7 +144,7 @@ def _build_items(rows):
             working_hour=working_hour,
             bonus_hour=bonus_hour,
             total_working_hr=total_working_hr,
-            job_location=row.get("jobLocation", "").strip() or None,
+            job_location=str(row.get("jobLocation") or "").strip() or None,
         ))
     return items
 
