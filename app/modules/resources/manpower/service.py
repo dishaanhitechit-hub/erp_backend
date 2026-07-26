@@ -6,6 +6,7 @@ from app.response import res
 from app.models.manpower import ManpowerWorker
 from app.models.vendor import Vendor
 from app.models.project import Project
+from sqlalchemy.orm import joinedload
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.resources.manpower.constants import LABOUR_CATEGORY_LIST
 from app.modules.work_flow import is_creator
@@ -112,11 +113,30 @@ def create_manpower(request):
 
     man_id = _generate_man_id()
 
-    aadhar_file = upload_file_to_bunny(file=files.get("aadharFile"), mainFolder="manpower", subFolder=man_id, fileName="aadhar")
-    pan_file    = upload_file_to_bunny(file=files.get("panFile"),    mainFolder="manpower", subFolder=man_id, fileName="pan")
-    uan_file    = upload_file_to_bunny(file=files.get("uanFile"),    mainFolder="manpower", subFolder=man_id, fileName="uan")
-    esic_file   = upload_file_to_bunny(file=files.get("esicFile"),   mainFolder="manpower", subFolder=man_id, fileName="esic")
-    bank_file   = upload_file_to_bunny(file=files.get("bankDetailsFile"), mainFolder="manpower", subFolder=man_id, fileName="bank_details")
+    aadhar_file = None
+    aadhar_f = files.get("aadharFile")
+    if aadhar_f:
+        aadhar_file = upload_file_to_bunny(file=aadhar_f, mainFolder="manpower", subFolder=man_id, fileName="aadhar")
+
+    pan_file = None
+    pan_f = files.get("panFile")
+    if pan_f:
+        pan_file = upload_file_to_bunny(file=pan_f, mainFolder="manpower", subFolder=man_id, fileName="pan")
+
+    uan_file = None
+    uan_f = files.get("uanFile")
+    if uan_f:
+        uan_file = upload_file_to_bunny(file=uan_f, mainFolder="manpower", subFolder=man_id, fileName="uan")
+
+    esic_file = None
+    esic_f = files.get("esicFile")
+    if esic_f:
+        esic_file = upload_file_to_bunny(file=esic_f, mainFolder="manpower", subFolder=man_id, fileName="esic")
+
+    bank_file = None
+    bank_f = files.get("bankDetailsFile")
+    if bank_f:
+        bank_file = upload_file_to_bunny(file=bank_f, mainFolder="manpower", subFolder=man_id, fileName="bank_details")
 
     worker = ManpowerWorker(
         man_id=man_id,
@@ -153,7 +173,12 @@ def create_manpower(request):
 # ── LIST ──────────────────────────────────────────────────────────────────────
 
 def get_all_manpower():
-    workers = ManpowerWorker.query.order_by(ManpowerWorker.id.desc()).all()
+    workers = (
+        ManpowerWorker.query
+        .options(joinedload(ManpowerWorker.vendor))
+        .order_by(ManpowerWorker.id.desc())
+        .all()
+    )
     return res("Manpower workers fetched", [_serialize(w) for w in workers], 200)
 
 
