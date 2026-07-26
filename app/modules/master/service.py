@@ -1653,4 +1653,24 @@ def delete_bank_cash(record_id):
     db.session.delete(r)
     db.session.commit()
 
+
+# ── Vendor Dropdown ───────────────────────────────────────────────────────────
+
+def get_vendor_dropdown():
+    vendors = (
+        Vendor.query
+        .filter_by(status="Active")
+        .order_by(Vendor.ledger_code.asc())
+        .all()
+    )
+    data = [
+        {
+            "id": v.id,
+            "ledgerCode": v.ledger_code,
+            "ledgerName": v.ledger_name,
+        }
+        for v in vendors
+    ]
+    return res("Vendor dropdown fetched", data, 200)
+
     return res("Bank/Cash deleted successfully", [], 200)

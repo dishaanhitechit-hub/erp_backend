@@ -20,6 +20,7 @@ def create_app():
 
     # maintenance model — must be imported so Alembic detects the table
     from .models import maintenance_txn  # noqa
+    from .models import manpower  # noqa — registers ManpowerWorker with Alembic
 
     # maintenance middleware
     register_maintenance_middleware(app)
@@ -72,6 +73,9 @@ def create_app():
 
     from .modules.resources.dc.routes import dc_bp
     app.register_blueprint(dc_bp, url_prefix="/resource/dc")
+
+    from .modules.resources.manpower.routes import manpower_bp
+    app.register_blueprint(manpower_bp, url_prefix="/resource/manpower")
 
     from .modules.project_mgmt.register.drawing_register.routes import drawing_register_bp
     app.register_blueprint(drawing_register_bp, url_prefix="/project-mgmt/register/drawing-register")

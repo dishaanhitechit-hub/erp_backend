@@ -424,3 +424,13 @@ def bank_cash_delete(recordId):
         return _no_access()
     return delete_bank_cash(recordId)
 
+
+# ==========================================
+# VENDOR DROPDOWN
+# ==========================================
+
+@master_bp.route("/ledger/dropdown", methods=["GET"])
+@login_required
+def vendor_dropdown():
+    return get_vendor_dropdown()
+
