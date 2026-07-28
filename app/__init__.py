@@ -115,6 +115,11 @@ def create_app():
     from .modules.workflow.routes import workflow_bp
     app.register_blueprint(workflow_bp, url_prefix="/workflow")
 
+    from .modules.resources.batching_plant.routes import batching_bp
+    app.register_blueprint(batching_bp, url_prefix="/resource/batching")
+
+    from .models import batchingPlant  # noqa — registers BatchingPlantMaster with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
