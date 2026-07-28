@@ -125,6 +125,11 @@ def create_app():
 
     from .models import bbsRegister  # noqa — registers BbsRegister with Alembic
 
+    from .modules.project_mgmt.register.hindrance_register.routes import hindrance_register_bp
+    app.register_blueprint(hindrance_register_bp, url_prefix="/project-mgmt/register/hindrance-register")
+
+    from .models import hindranceRegister  # noqa — registers HindranceRegister with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
