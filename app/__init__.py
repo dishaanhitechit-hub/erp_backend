@@ -120,6 +120,11 @@ def create_app():
 
     from .models import batchingPlant  # noqa — registers BatchingPlantMaster with Alembic
 
+    from .modules.project_mgmt.register.bbs_register.routes import bbs_register_bp
+    app.register_blueprint(bbs_register_bp, url_prefix="/project-mgmt/register/bbs-register")
+
+    from .models import bbsRegister  # noqa — registers BbsRegister with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
