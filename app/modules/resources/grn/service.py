@@ -1205,7 +1205,7 @@ def get_grn_by_uuid(grn_uuid):
             "locked":            grn.locked,
 
             "receivedCategory":    grn.received_category,
-            "challanDate": grn.challan_date,
+            "challanDate": _fmt_date(grn.challan_date),
             "itemCategory":        grn.item_category,
             "costHead":            grn.cost_head,
             "billingAddress":      grn.billing_address,
