@@ -528,7 +528,7 @@ def get_grn_details(grn_id):
             "billingAddress": grn.billing_address,
             "shippingAddress": grn.shipping_address,
             "challanNo": grn.challan_no,
-            "challanDate":grn.challan_date,
+            "challanDate":_fmt_date(grn.challan_date),
             "partyBillNo": grn.party_bill_no,
             "partyBillDate": _fmt_date(grn.party_bill_date),
             "deliverVehicleNo": grn.deliver_vehicle_no,
