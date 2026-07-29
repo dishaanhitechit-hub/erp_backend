@@ -312,6 +312,7 @@ def create_grn(data, user_id, files=None):
             billing_address=data.get("billingAddress"),
             shipping_address=data.get("shippingAddress"),
             challan_no=data.get("challanNo"),
+            challan_date=data.get("challanDate"),
             party_bill_no=data.get("partyBillNo"),
             party_bill_date=data.get("partyBillDate"),
             deliver_vehicle_no=data.get("deliverVehicleNo"),
@@ -527,6 +528,7 @@ def get_grn_details(grn_id):
             "billingAddress": grn.billing_address,
             "shippingAddress": grn.shipping_address,
             "challanNo": grn.challan_no,
+            "challanDate":grn.challan_date,
             "partyBillNo": grn.party_bill_no,
             "partyBillDate": _fmt_date(grn.party_bill_date),
             "deliverVehicleNo": grn.deliver_vehicle_no,
@@ -903,6 +905,8 @@ def edit_grn(grn_id, data, user_id, files=None):
             grn.unloading_datetime = data.get("unloadingDatetime")
         if data.get("physicallyVerifiedBy"):
             grn.physically_verified_by = data.get("physicallyVerifiedBy")
+        if data.get("challanDate"):
+            grn.challan_date = data.get("challanDate")
 
         # ── file update ────────────────────────────────────────
         if files:

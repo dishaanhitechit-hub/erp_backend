@@ -168,6 +168,7 @@ class GinMaster(db.Model):
     rejected_at = db.Column(db.DateTime)
     correction_sent_at = db.Column(db.DateTime)
 
+
     # ── relationships ──────────────────────────────────────────────
     project = db.relationship("Project", backref="gins")
     order = db.relationship("OrderMaster", backref="gins")

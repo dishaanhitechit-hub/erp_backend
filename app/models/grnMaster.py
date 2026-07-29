@@ -84,7 +84,7 @@ class GrnMaster(db.Model):
         db.String(100),
         nullable=True
     )
-
+    challan_date = db.Column(db.DateTime)
     party_bill_no = db.Column(
         db.String(100),
         nullable=True
