@@ -20,7 +20,7 @@ def _fmt_date(d):
 # STOCK LIST  —  grouped by CC Code
 # ══════════════════════════════════════════════════════════════════
 
-def get_stock_list(project_code, item_category=None, page=1, limit=10):
+def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=None):
 
     # ── received from GRN ────────────────────────────────────────
     grn_q = (
@@ -117,6 +117,14 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10):
             "stockQty":    stockQty,
             "stockAmount": stockAmount,
         })
+
+    # ── filter by cc_codes (case-insensitive, multi-value) ───────
+    if cc_codes:
+        allowed = {c.lower() for c in cc_codes}
+        groups = {
+            k: v for k, v in groups.items()
+            if v.get("ccCode") and v["ccCode"].lower() in allowed
+        }
 
     # ── build full list with slNo ────────────────────────────────
     all_groups = []

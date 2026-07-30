@@ -15,6 +15,7 @@ stock_bp = Blueprint("stock", __name__)
 # Query params:
 #   project_code  (required)
 #   item_category (optional)
+#   cc_code       (optional)
 # ══════════════════════════════════════════════════════════════════
 
 @stock_bp.route("/list", methods=["GET"])
@@ -22,13 +23,14 @@ stock_bp = Blueprint("stock", __name__)
 def stock_list():
     project_code  = request.args.get("project_code", "").strip()
     item_category = request.args.get("item_category", "").strip() or None
+    cc_codes      = [c.strip() for c in request.args.get("cc_code", "").split(",") if c.strip()] or None
     page          = int(request.args.get("page", 1))
     limit         = int(request.args.get("limit", 10))
 
     if not project_code:
         return res("project_code is required", [], 400)
 
-    return get_stock_list(project_code, item_category, page, limit)
+    return get_stock_list(project_code, item_category, page, limit, cc_codes=cc_codes)
 
 
 # ══════════════════════════════════════════════════════════════════
