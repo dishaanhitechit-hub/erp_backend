@@ -224,7 +224,7 @@ def get_order_items_for_grn(order_id):
 
                 # user fills these
                 "currentReceivedQty": 0,
-                "useLocation": None,
+                "useLocation": oi.location,
                 "storeLocation": None,
             })
 
