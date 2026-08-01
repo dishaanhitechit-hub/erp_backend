@@ -19,7 +19,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE = "certified_bill"
+_MODULE = "sale_certified_bill"
 
 
 # ══════════════════════════════════════════════════════════════════

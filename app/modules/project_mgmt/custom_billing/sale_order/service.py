@@ -19,7 +19,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE = "sale_order"
+_MODULE = "sale_claim_bill"
 
 
 # ══════════════════════════════════════════════════════════════════
