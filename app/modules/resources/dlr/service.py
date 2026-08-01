@@ -181,13 +181,20 @@ def create_dlr(request):
     if not dlr_date:
         return res("dlrDate is required (YYYY-MM-DD)", [], 400)
 
+    dlr_no = _generate_dlr_no()
+
     scan_copy = None
     f = request.files.get("scanCopy")
     if f and f.filename:
-        scan_copy = upload_file_to_bunny(f, folder="dlr")
+        scan_copy = upload_file_to_bunny(
+            file=f,
+            mainFolder="dlr",
+            subFolder=dlr_no,
+            fileName="scan_copy",
+        )
 
     dlr = DlrMaster(
-        dlr_no=_generate_dlr_no(),
+        dlr_no=dlr_no,
         dlr_date=dlr_date,
         project_code=project_code,
         vendor_id=data.get("vendorId") or None,
@@ -266,7 +273,12 @@ def edit_dlr(dlr_id, request):
 
     f = request.files.get("scanCopy")
     if f and f.filename:
-        d.scan_copy = upload_file_to_bunny(f, folder="dlr")
+        d.scan_copy = upload_file_to_bunny(
+            file=f,
+            mainFolder="dlr",
+            subFolder=d.dlr_no,
+            fileName="scan_copy",
+        )
 
     d.updated_by = user_id
     d.updated_at = datetime.utcnow()
