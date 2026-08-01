@@ -62,3 +62,4 @@ from .search_history import SearchHistory
 from .dlrMaster import DlrMaster, DlrItem
 from .saleOrderMaster import SaleOrderMaster, SaleOrderItem
 from .certifiedBillMaster import CertifiedBillMaster, CertifiedBillItem
+from .ogSaleOrder import *
