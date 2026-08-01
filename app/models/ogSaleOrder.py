@@ -77,10 +77,17 @@ class OgSaleOrderItem(db.Model):
         nullable=False
     )
 
-    sl_no          = db.Column(db.Integer,        nullable=False)
-    item_code      = db.Column(db.String(50),     nullable=True)   # manual text
-    item_name_desc = db.Column(db.Text,           nullable=True)   # manual text
-    unit           = db.Column(db.String(30),     nullable=True)   # manual text
+    sl_no          = db.Column(db.Integer,    nullable=False)
+    item_code      = db.Column(db.String(50), db.ForeignKey("items.item_code"), nullable=False)
+    item_name_desc = db.Column(db.Text,       nullable=True)   # snapshot from Item.item_name
+    unit           = db.Column(db.String(30), nullable=True)   # snapshot from Item.unit
+
+    item_ref = db.relationship(
+        "Item",
+        primaryjoin="foreign(OgSaleOrderItem.item_code) == Item.item_code",
+        lazy="select",
+        uselist=False,
+    )
     order_qty      = db.Column(db.Numeric(12, 2), default=0)
     rate           = db.Column(db.Numeric(12, 2), default=0)
     amount         = db.Column(db.Numeric(14, 2), default=0)       # order_qty × rate

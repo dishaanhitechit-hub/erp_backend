@@ -5,6 +5,7 @@ import uuid as _uuid
 import json
 
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
+from app.models.item import Item
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -70,42 +71,104 @@ def _upload_attachment(file, so_no, slot):
     )
 
 
+def _item_display_code(item_obj):
+    """Returns cc_code + item_code, e.g. 'CC0010042'."""
+    if not item_obj:
+        return None
+    cc = item_obj.cc_code.cc_code if item_obj.cc_code else ""
+    return f"{cc}{item_obj.item_code}"
+
+
+def _build_item_map(rows):
+    """
+    Batch-fetch Item objects for all itemCodes in rows.
+    Returns (item_map, errors):
+        item_map: {item_code: Item}
+        errors:   list of error strings (empty when all ok)
+    """
+    codes = [str(r.get("itemCode", "")).strip() for r in rows]
+    missing_idx = [i + 1 for i, c in enumerate(codes) if not c]
+    if missing_idx:
+        return {}, [f"Row {i}: itemCode is required" for i in missing_idx]
+
+    objs = Item.query.filter(Item.item_code.in_(codes)).all()
+    item_map = {obj.item_code: obj for obj in objs}
+
+    errors = []
+    for idx, code in enumerate(codes, start=1):
+        if code not in item_map:
+            errors.append(f"Row {idx}: itemCode '{code}' not found")
+
+    return item_map, errors
+
+
 def _serialize_items(items):
+    """
+    Serialize OgSaleOrderItem rows.
+    Batch-fetches Item master once to build itemDisplayCode.
+    """
+    codes = [row.item_code for row in items if row.item_code]
+    item_map = {}
+    if codes:
+        objs = Item.query.filter(Item.item_code.in_(codes)).all()
+        for obj in objs:
+            item_map[obj.item_code] = obj
+
     result = []
-    for item in items:
+    for row in items:
+        item_obj = item_map.get(row.item_code)
         result.append({
-            "id":           item.id,
-            "slNo":         item.sl_no,
-            "itemCode":     item.item_code,
-            "itemNameDesc": item.item_name_desc,
-            "unit":         item.unit,
-            "orderQty":     float(item.order_qty   or 0),
-            "rate":         float(item.rate         or 0),
-            "amount":       float(item.amount       or 0),
-            "gstPercent":   float(item.gst_percent  or 0),
-            "gstAmount":    float(item.gst_amount   or 0),
+            "id":              row.id,
+            "slNo":            row.sl_no,
+            "itemCode":        row.item_code,
+            "itemDisplayCode": _item_display_code(item_obj),
+            "itemNameDesc":    row.item_name_desc,
+            "unit":            row.unit,
+            "orderQty":        float(row.order_qty   or 0),
+            "rate":            float(row.rate         or 0),
+            "amount":          float(row.amount       or 0),
+            "gstPercent":      float(row.gst_percent  or 0),
+            "gstAmount":       float(row.gst_amount   or 0),
         })
     return result
 
 
-def _build_items(rows, og_sale_order_id):
+def _build_items(rows, og_sale_order_id, item_map):
+    """
+    Build OgSaleOrderItem objects.
+    item_map must already be validated (no missing codes).
+    Auto-fills item_name_desc and unit from Item master if not sent.
+    """
     items = []
     total_basic = 0
     total_gst   = 0
 
     for idx, row in enumerate(rows, start=1):
-        order_qty   = float(row.get("orderQty")   or 0)
-        rate        = float(row.get("rate")        or 0)
-        amount      = round(order_qty * rate, 2)
-        gst_percent = float(row.get("gstPercent") or 0)
-        gst_amount  = round((amount * gst_percent) / 100, 2)
+        item_code = str(row.get("itemCode", "")).strip()
+        item_obj  = item_map.get(item_code)
+
+        # Auto-fill from master if frontend didn't send
+        item_name_desc = row.get("itemNameDesc") or (item_obj.item_name if item_obj else None)
+        unit           = row.get("unit") or (
+            item_obj.unit.unit_name if item_obj and item_obj.unit else None
+        )
+        gst_percent = float(
+            row.get("gstPercent")
+            if row.get("gstPercent") not in (None, "")
+            else (item_obj.gst_percentage or 0)
+        )
+
+        order_qty  = float(row.get("orderQty") or 0)
+        rate       = float(row.get("rate")      or 0)
+        amount     = round(order_qty * rate, 2)
+        gst_amount = round((amount * gst_percent) / 100, 2)
 
         items.append(OgSaleOrderItem(
             og_sale_order_id = og_sale_order_id,
             sl_no            = row.get("slNo") or idx,
-            item_code        = row.get("itemCode")     or None,
-            item_name_desc   = row.get("itemNameDesc") or None,
-            unit             = row.get("unit")         or None,
+            item_code        = item_code,
+            item_name_desc   = item_name_desc,
+            unit             = unit,
             order_qty        = order_qty,
             rate             = rate,
             amount           = amount,
@@ -143,7 +206,6 @@ def create_og_sale_order(request, user_id):
         if not og_so_date:
             return res("ogSaleOrderDate is required (YYYY-MM-DD)", [], 400)
 
-        # Parse items from JSON string in form data
         try:
             items_raw = json.loads(data.get("items", "[]"))
         except Exception:
@@ -152,10 +214,14 @@ def create_og_sale_order(request, user_id):
         if not items_raw:
             return res("At least one BOQ item required", [], 400)
 
+        # Validate item codes against items master
+        item_map, errors = _build_item_map(items_raw)
+        if errors:
+            return res("; ".join(errors), [], 400)
+
         so_no   = generate_og_sale_order_no()
         so_uuid = str(_uuid.uuid4())
 
-        # Upload attachments
         att_1 = _upload_attachment(request.files.get("attachment_1"), so_no, "attachment_1")
         att_2 = _upload_attachment(request.files.get("attachment_2"), so_no, "attachment_2")
         att_3 = _upload_attachment(request.files.get("attachment_3"), so_no, "attachment_3")
@@ -180,7 +246,7 @@ def create_og_sale_order(request, user_id):
         db.session.add(og_so)
         db.session.flush()
 
-        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id)
+        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id, item_map)
         for item in built_items:
             db.session.add(item)
 
@@ -234,18 +300,18 @@ def get_og_sale_order_list(data):
         result = []
         for row in rows:
             result.append({
-                "id":               row.id,
-                "ogSaleOrderNo":    row.og_sale_order_no,
-                "ogSaleOrderDate":  _fmt_date(row.og_sale_order_date),
-                "orderNo":          row.order_no,
-                "orderValidity":    _fmt_date(row.order_validity),
-                "orderTitle":       row.order_title,
-                "basicAmount":      float(row.basic_amount or 0),
-                "gstAmount":        float(row.gst_amount   or 0),
-                "totalAmount":      float(row.total_amount  or 0),
-                "workflowStatus":   row.workflow_status,
-                "createdBy":        row.creator.username if row.creator else None,
-                "createdAt":        _fmt_date(row.created_at),
+                "id":              row.id,
+                "ogSaleOrderNo":   row.og_sale_order_no,
+                "ogSaleOrderDate": _fmt_date(row.og_sale_order_date),
+                "orderNo":         row.order_no,
+                "orderValidity":   _fmt_date(row.order_validity),
+                "orderTitle":      row.order_title,
+                "basicAmount":     float(row.basic_amount or 0),
+                "gstAmount":       float(row.gst_amount   or 0),
+                "totalAmount":     float(row.total_amount  or 0),
+                "workflowStatus":  row.workflow_status,
+                "createdBy":       row.creator.username if row.creator else None,
+                "createdAt":       _fmt_date(row.created_at),
             })
 
         return res("OG Sale Order list fetched", result, 200)
@@ -320,7 +386,6 @@ def edit_og_sale_order(so_id, request, user_id):
 
         data = request.form
 
-        # Parse items
         try:
             items_raw = json.loads(data.get("items", "[]"))
         except Exception:
@@ -328,6 +393,11 @@ def edit_og_sale_order(so_id, request, user_id):
 
         if not items_raw:
             return res("At least one BOQ item required", [], 400)
+
+        # Validate item codes
+        item_map, errors = _build_item_map(items_raw)
+        if errors:
+            return res("; ".join(errors), [], 400)
 
         # Update header fields
         if data.get("ogSaleOrderDate"):
@@ -354,7 +424,7 @@ def edit_og_sale_order(so_id, request, user_id):
         OgSaleOrderItem.query.filter_by(og_sale_order_id=og_so.id).delete()
         db.session.flush()
 
-        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id)
+        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id, item_map)
         for item in built_items:
             db.session.add(item)
 

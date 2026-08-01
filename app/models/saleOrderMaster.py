@@ -12,10 +12,9 @@ class SaleOrderMaster(db.Model):
     sale_order_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
     sale_order_date = db.Column(db.Date, nullable=False)
 
-    # Reference to work order (normal or pw) — stored as plain int, no DB FK
-    order_no = db.Column(db.String(50), nullable=False)
-    order_id = db.Column(db.Integer, nullable=True)
-    order_type = db.Column(db.String(10), nullable=False)  # 'normal' or 'pw'
+    # Reference to OG Sale Order — stored as plain values, no DB FK
+    og_sale_order_no = db.Column(db.String(50), nullable=False)
+    og_sale_order_id = db.Column(db.Integer, nullable=True)
 
     project_code = db.Column(
         db.String(50),
@@ -79,10 +78,11 @@ class SaleOrderItem(db.Model):
         nullable=False
     )
 
-    sl_no = db.Column(db.Integer, nullable=False)
-    item_code = db.Column(db.String(50), nullable=True)
-    item_name_desc = db.Column(db.Text, nullable=True)
-    unit = db.Column(db.String(30), nullable=True)
+    sl_no                 = db.Column(db.Integer,  nullable=False)
+    og_sale_order_item_id = db.Column(db.Integer,  db.ForeignKey("og_sale_order_items.id"), nullable=True)
+    item_code             = db.Column(db.String(50), nullable=True)
+    item_name_desc        = db.Column(db.Text,       nullable=True)
+    unit                  = db.Column(db.String(30), nullable=True)
     claim_qty = db.Column(db.Numeric(12, 2), default=0)
     rate = db.Column(db.Numeric(12, 2), default=0)
     amount = db.Column(db.Numeric(14, 2), default=0)

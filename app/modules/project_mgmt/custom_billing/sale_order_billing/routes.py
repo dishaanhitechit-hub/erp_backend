@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
 from app.utils.txn_tracker import TransactionTracker
 
-from app.modules.project_mgmt.custom_billing.sale_order.service import (
+from app.modules.project_mgmt.custom_billing.sale_order_billing.service import (
     get_order_lookup,
     create_sale_order,
     get_sale_order_list,
@@ -18,20 +18,19 @@ from app.modules.project_mgmt.custom_billing.sale_order.service import (
     get_sale_order_by_uuid,
 )
 
-sale_order_bp = Blueprint("sale_order", __name__)
+sale_order_billing_bp = Blueprint("sale_order_billing", __name__)
 
 
 # ==========================================
-# ORDER LOOKUP
+# OG SALE ORDER LOOKUP
 # ==========================================
 
-@sale_order_bp.route("/order-lookup", methods=["GET"])
+@sale_order_billing_bp.route("/order-lookup", methods=["GET"])
 @jwt_required()
 def api_order_lookup():
     data = {
-        "orderNo":     request.args.get("orderNo"),
-        "projectCode": request.args.get("projectCode"),
-        "orderType":   request.args.get("orderType", "normal"),
+        "ogSaleOrderNo": request.args.get("ogSaleOrderNo"),
+        "projectCode":   request.args.get("projectCode"),
     }
     return get_order_lookup(data)
 
@@ -40,11 +39,11 @@ def api_order_lookup():
 # CREATE
 # ==========================================
 
-@sale_order_bp.route("/create", methods=["POST"])
+@sale_order_billing_bp.route("/create", methods=["POST"])
 @jwt_required()
 def api_create_sale_order():
     user_id = get_jwt_identity()
-    TransactionTracker.mark_open(user_id, "sale_order_create")
+    TransactionTracker.mark_open(user_id, "sale_order_billing_create")
     response = create_sale_order(data=request.get_json() or {}, user_id=user_id)
     TransactionTracker.mark_closed(user_id)
     return response
@@ -54,13 +53,12 @@ def api_create_sale_order():
 # LIST
 # ==========================================
 
-@sale_order_bp.route("/list", methods=["GET"])
+@sale_order_billing_bp.route("/list", methods=["GET"])
 @jwt_required()
 def api_sale_order_list():
     data = {
         "projectCode":    request.args.get("projectCode"),
-        "orderNo":        request.args.get("orderNo"),
-        "orderType":      request.args.get("orderType"),
+        "ogSaleOrderNo":  request.args.get("ogSaleOrderNo"),
         "workflowStatus": request.args.get("workflowStatus"),
         "search":         request.args.get("search"),
     }
@@ -71,7 +69,7 @@ def api_sale_order_list():
 # DETAILS
 # ==========================================
 
-@sale_order_bp.route("/details/<int:so_id>", methods=["GET"])
+@sale_order_billing_bp.route("/details/<int:so_id>", methods=["GET"])
 @jwt_required()
 def api_sale_order_details(so_id):
     return get_sale_order_details(so_id)
@@ -81,11 +79,11 @@ def api_sale_order_details(so_id):
 # EDIT
 # ==========================================
 
-@sale_order_bp.route("/edit/<int:so_id>", methods=["PUT"])
+@sale_order_billing_bp.route("/edit/<int:so_id>", methods=["PUT"])
 @jwt_required()
 def api_edit_sale_order(so_id):
     user_id = get_jwt_identity()
-    TransactionTracker.mark_open(user_id, "sale_order_edit")
+    TransactionTracker.mark_open(user_id, "sale_order_billing_edit")
     response = edit_sale_order(so_id=so_id, data=request.get_json() or {}, user_id=user_id)
     TransactionTracker.mark_closed(user_id)
     return response
@@ -95,7 +93,7 @@ def api_edit_sale_order(so_id):
 # SUBMIT
 # ==========================================
 
-@sale_order_bp.route("/submit/<int:so_id>", methods=["POST"])
+@sale_order_billing_bp.route("/submit/<int:so_id>", methods=["POST"])
 @jwt_required()
 def api_submit_sale_order(so_id):
     user_id = get_jwt_identity()
@@ -106,7 +104,7 @@ def api_submit_sale_order(so_id):
 # APPROVE
 # ==========================================
 
-@sale_order_bp.route("/approve/<int:so_id>", methods=["POST"])
+@sale_order_billing_bp.route("/approve/<int:so_id>", methods=["POST"])
 @jwt_required()
 def api_approve_sale_order(so_id):
     user_id = get_jwt_identity()
@@ -118,7 +116,7 @@ def api_approve_sale_order(so_id):
 # REBACK
 # ==========================================
 
-@sale_order_bp.route("/reback/<int:so_id>", methods=["POST"])
+@sale_order_billing_bp.route("/reback/<int:so_id>", methods=["POST"])
 @jwt_required()
 def api_reback_sale_order(so_id):
     user_id = get_jwt_identity()
@@ -130,7 +128,7 @@ def api_reback_sale_order(so_id):
 # REJECT
 # ==========================================
 
-@sale_order_bp.route("/reject/<int:so_id>", methods=["POST"])
+@sale_order_billing_bp.route("/reject/<int:so_id>", methods=["POST"])
 @jwt_required()
 def api_reject_sale_order(so_id):
     user_id = get_jwt_identity()
@@ -142,7 +140,7 @@ def api_reject_sale_order(so_id):
 # HISTORY
 # ==========================================
 
-@sale_order_bp.route("/history/<int:so_id>", methods=["GET"])
+@sale_order_billing_bp.route("/history/<int:so_id>", methods=["GET"])
 @jwt_required()
 def api_sale_order_history(so_id):
     return get_sale_order_history(so_id)
@@ -152,7 +150,7 @@ def api_sale_order_history(so_id):
 # MY APPROVAL STATUS
 # ==========================================
 
-@sale_order_bp.route("/my-approval-status/<int:so_id>", methods=["GET"])
+@sale_order_billing_bp.route("/my-approval-status/<int:so_id>", methods=["GET"])
 @login_required
 def api_sale_order_my_approval_status(so_id):
     user = g.current_user
@@ -163,6 +161,6 @@ def api_sale_order_my_approval_status(so_id):
 # GET BY UUID  (public — no JWT)
 # ==========================================
 
-@sale_order_bp.route("/uuid/<string:so_uuid>", methods=["GET"])
+@sale_order_billing_bp.route("/uuid/<string:so_uuid>", methods=["GET"])
 def api_sale_order_by_uuid(so_uuid):
     return get_sale_order_by_uuid(so_uuid)
