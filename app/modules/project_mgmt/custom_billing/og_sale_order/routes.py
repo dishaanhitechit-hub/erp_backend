@@ -39,7 +39,7 @@ def details(so_id):
     return get_og_sale_order_details(so_id)
 
 
-@og_sale_order_bp.route("/<int:so_id>/edit", methods=["PUT"])
+@og_sale_order_bp.route("/edit/<int:so_id>", methods=["PUT"])
 @jwt_required()
 def edit(so_id):
     user_id = get_jwt_identity()
@@ -47,14 +47,14 @@ def edit(so_id):
 
 
 # ── Workflow ────────────────────────────────────────────────────
-@og_sale_order_bp.route("/<int:so_id>/submit", methods=["POST"])
+@og_sale_order_bp.route("/submit/<int:so_id>", methods=["POST"])
 @jwt_required()
 def submit(so_id):
     user_id = get_jwt_identity()
     return submit_og_sale_order(so_id, user_id)
 
 
-@og_sale_order_bp.route("/<int:so_id>/approve", methods=["POST"])
+@og_sale_order_bp.route("/approve/<int:so_id>", methods=["POST"])
 @jwt_required()
 def approve(so_id):
     user_id  = get_jwt_identity()
@@ -62,7 +62,7 @@ def approve(so_id):
     return approve_og_sale_order(so_id, user_id, comments)
 
 
-@og_sale_order_bp.route("/<int:so_id>/reback", methods=["POST"])
+@og_sale_order_bp.route("/reback/<int:so_id>", methods=["POST"])
 @jwt_required()
 def reback(so_id):
     user_id  = get_jwt_identity()
@@ -70,7 +70,7 @@ def reback(so_id):
     return reback_og_sale_order(so_id, user_id, comments)
 
 
-@og_sale_order_bp.route("/<int:so_id>/reject", methods=["POST"])
+@og_sale_order_bp.route("/reject/<int:so_id>", methods=["POST"])
 @jwt_required()
 def reject(so_id):
     user_id  = get_jwt_identity()
@@ -79,13 +79,13 @@ def reject(so_id):
 
 
 # ── History & approval status ───────────────────────────────────
-@og_sale_order_bp.route("/<int:so_id>/history", methods=["GET"])
+@og_sale_order_bp.route("/history/<int:so_id>", methods=["GET"])
 @jwt_required()
 def history(so_id):
     return get_og_sale_order_history(so_id)
 
 
-@og_sale_order_bp.route("/<int:so_id>/my-approval-status", methods=["GET"])
+@og_sale_order_bp.route("/my-approval-status/<int:so_id>", methods=["GET"])
 @jwt_required()
 def my_approval_status(so_id):
     user_id = get_jwt_identity()
