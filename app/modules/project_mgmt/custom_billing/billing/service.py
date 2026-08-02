@@ -29,7 +29,7 @@ VALID_MODES = ("sale_claim_bill", "sale_certified_bill")
 # ══════════════════════════════════════════════════════════════════
 
 def _module_for(mode):
-    return "sale_order_billing" if mode == "sale_claim_bill" else "sale_certified_bill"
+    return "sale_claim_bill" if mode == "sale_claim_bill" else "sale_certified_bill"
 
 
 def _billing_no_prefix(mode):
