@@ -92,6 +92,7 @@ class BillingItem(db.Model):
         nullable=True,
     )
     item_code      = db.Column(db.String(50),    nullable=True)
+    item_name      = db.Column(db.Text,          nullable=True)
     item_name_desc = db.Column(db.Text,          nullable=True)
     unit           = db.Column(db.String(30),    nullable=True)
 

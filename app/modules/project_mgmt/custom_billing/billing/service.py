@@ -156,9 +156,9 @@ def _serialize_items(items):
             "slNo":                item.sl_no,
             "ogSaleOrderItemId":   item.og_sale_order_item_id,
             "itemCode":            item.item_code,
-            "itemName":            item_obj.item_name if item_obj else None,
-            "itemDisplayCode":     _item_display_code(item_obj),
-            "itemDescription":        item.item_name_desc,
+            "itemName":        item.item_name,
+            "itemDisplayCode": _item_display_code(item_obj),
+            "itemDescription": item.item_name_desc,
             "unit":                item.unit,
             "claimQty":            float(item.claim_qty   or 0),
             "rate":                float(item.rate         or 0),
@@ -256,7 +256,7 @@ def get_order_lookup(data):
                 "itemCode":          og_item.item_code,
                 "itemDisplayCode":   _item_display_code(item_obj),
                 "itemName":          og_item.item_name,
-                "itemDescription":   og_item.item_name_desc,
+                "itemDescription":   og_item.item_description,
                 "unit":              og_item.unit,
                 "orderQty":          float(og_item.order_qty  or 0),
                 "rate":              float(og_item.rate        or 0),
@@ -358,9 +358,10 @@ def create_billing(data, user_id):
             og_item_id = row.get("ogSaleOrderItemId")
             og_item    = og_item_map.get(og_item_id) if og_item_id else None
 
-            item_code      = og_item.item_code      if og_item else row.get("itemCode")
-            item_name_desc = og_item.item_name_desc  if og_item else row.get("itemNameDesc")
-            unit           = og_item.unit            if og_item else row.get("unit")
+            item_code      = og_item.item_code        if og_item else row.get("itemCode")
+            item_name      = og_item.item_name        if og_item else row.get("itemName")
+            item_name_desc = og_item.item_description if og_item else row.get("itemDescription")
+            unit           = og_item.unit              if og_item else row.get("unit")
 
             claim_qty   = float(row.get("claimQty")   or 0)
             rate        = float(row.get("rate")        or 0)
@@ -377,6 +378,7 @@ def create_billing(data, user_id):
                 sl_no                 = row.get("slNo") or idx,
                 og_sale_order_item_id = og_item_id,
                 item_code             = item_code,
+                item_name             = item_name,
                 item_name_desc        = item_name_desc,
                 unit                  = unit,
                 claim_qty             = claim_qty,
@@ -547,9 +549,10 @@ def edit_billing(bill_id, data, user_id):
             og_item_id = row.get("ogSaleOrderItemId")
             og_item    = og_item_map.get(og_item_id) if og_item_id else None
 
-            item_code      = og_item.item_code      if og_item else row.get("itemCode")
-            item_name_desc = og_item.item_name_desc  if og_item else row.get("itemNameDesc")
-            unit           = og_item.unit            if og_item else row.get("unit")
+            item_code      = og_item.item_code        if og_item else row.get("itemCode")
+            item_name      = og_item.item_name        if og_item else row.get("itemName")
+            item_name_desc = og_item.item_description if og_item else row.get("itemDescription")
+            unit           = og_item.unit              if og_item else row.get("unit")
 
             claim_qty   = float(row.get("claimQty")   or 0)
             rate        = float(row.get("rate")        or 0)
@@ -566,6 +569,7 @@ def edit_billing(bill_id, data, user_id):
                 sl_no                 = row.get("slNo") or idx,
                 og_sale_order_item_id = og_item_id,
                 item_code             = item_code,
+                item_name             = item_name,
                 item_name_desc        = item_name_desc,
                 unit                  = unit,
                 claim_qty             = claim_qty,
