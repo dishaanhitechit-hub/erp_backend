@@ -8,12 +8,19 @@ class BillingMaster(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    billing_no   = db.Column(db.String(50), unique=True, nullable=False)
+    billing_no   = db.Column(db.String(50), nullable=False)
     billing_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
     billing_date = db.Column(db.Date, nullable=False)
 
     # mode: 'sale_order_bill' or 'certified_bill'
     mode = db.Column(db.String(30), nullable=False)
+
+    # For certified_bill: link back to the parent sale_claim_bill
+    claim_bill_id = db.Column(
+        db.Integer,
+        db.ForeignKey("billing_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Reference to OG Sale Order (both modes use this)
     og_sale_order_no = db.Column(db.String(50), nullable=True)
