@@ -21,7 +21,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-VALID_MODES = ("sale_order_bill", "sale_certified_bill")
+VALID_MODES = ("sale_claim_bill", "sale_certified_bill")
 
 
 # ══════════════════════════════════════════════════════════════════
