@@ -80,16 +80,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['og_sale_order_item_id'], ['og_sale_order_items.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    with op.batch_alter_table('certified_bill_master', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_certified_bill_master_certified_bill_uuid'))
-
-    op.drop_table('certified_bill_master')
-    with op.batch_alter_table('sale_order_master', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_sale_order_master_sale_order_uuid'))
-
-    op.drop_table('sale_order_master')
-    op.drop_table('certified_bill_items')
-    op.drop_table('sale_order_items')
     with op.batch_alter_table('items', schema=None) as batch_op:
         batch_op.add_column(sa.Column('item_display_code', sa.String(length=200), nullable=True))
 
