@@ -308,6 +308,8 @@ def get_og_sale_order_list(data):
                 "ogSaleOrderDate": _fmt_date(row.og_sale_order_date),
                 "orderNo":         row.order_no,
                 "orderValidity":   _fmt_date(row.order_validity),
+                "prefix": row.prefix,
+                "suffix": row.suffix,
                 "orderTitle":      row.order_title,
                 "basicAmount":     float(row.basic_amount or 0),
                 "gstAmount":       float(row.gst_amount   or 0),
