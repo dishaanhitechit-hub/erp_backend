@@ -503,11 +503,11 @@ def get_items_by_category(category_code, asset_only=False):
             .outerjoin(CCCode, CCCode.id == Item.cc_code_id)
             .outerjoin(GroupMaster, GroupMaster.id == CCCode.group_id)
             .outerjoin(Unit, Unit.id == Item.unit_id)
-            .filter(
-                Item.category_code == category_code,
-                Item.status == "Active"
-            )
+            .filter(Item.status == "Active")
         )
+
+        if category_code:
+            query = query.filter(Item.category_code == category_code)
 
         if asset_only:
             query = query.filter(GroupMaster.group_name == "Fixed Asset")

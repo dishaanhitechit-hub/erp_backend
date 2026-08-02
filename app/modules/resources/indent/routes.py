@@ -35,17 +35,8 @@ def api_verify_indent_pdf(token):
 @login_required
 def items_by_category():
 
-    category_code = request.args.get("categoryCode")
-
-    if not category_code:
-        return {
-            "msg": "categoryCode is required",
-            "data": [],
-            "status": 400
-
-        }, 400
-
-    asset_only = request.args.get("assetOnly", "false").lower() == "true"
+    category_code = request.args.get("categoryCode") or None
+    asset_only    = request.args.get("assetOnly", "false").lower() == "true"
 
     return get_items_by_category(category_code, asset_only)
 
