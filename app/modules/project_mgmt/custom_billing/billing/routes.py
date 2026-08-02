@@ -34,9 +34,8 @@ def api_order_lookup():
 @billing_bp.route("/create", methods=["POST"])
 @login_required
 def api_create_billing():
-    data    = request.get_json() or {}
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    return create_billing(data, user_id)
+    return create_billing(request, user_id)
 
 
 # ── 3. LIST ──────────────────────────────────────────────────────
@@ -57,9 +56,8 @@ def api_billing_details(bill_id):
 @billing_bp.route("/<int:bill_id>/edit", methods=["PUT"])
 @login_required
 def api_edit_billing(bill_id):
-    data    = request.get_json() or {}
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    return edit_billing(bill_id, data, user_id)
+    return edit_billing(bill_id, request, user_id)
 
 
 # ── 6. SUBMIT ────────────────────────────────────────────────────

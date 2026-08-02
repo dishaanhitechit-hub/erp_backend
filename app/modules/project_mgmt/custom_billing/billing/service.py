@@ -3,10 +3,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
 import uuid as _uuid
+import json
 
 from app.models.billingMaster import BillingMaster, BillingItem
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
 from app.models.item import Item
+from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -32,6 +34,17 @@ def _module_for(mode):
 
 def _billing_no_prefix(mode):
     return "SOB" if mode == "sale_order_bill" else "CB"
+
+
+def _upload_billing_attachment(file, billing_no):
+    if not file or not file.filename:
+        return None
+    return upload_file_to_bunny(
+        file=file,
+        mainFolder="billing",
+        subFolder=billing_no,
+        fileName="attachment",
+    )
 
 
 def _fmt_date(d):
@@ -286,13 +299,13 @@ def get_order_lookup(data):
 # 2. CREATE
 # ══════════════════════════════════════════════════════════════════
 
-def create_billing(data, user_id):
+def create_billing(req, user_id):
     try:
-        project_code = data.get("projectCode")
+        project_code = req.form.get("projectCode")
         if not project_code:
             return res("projectCode required", [], 400)
 
-        mode = (data.get("mode") or "").strip()
+        mode = (req.form.get("mode") or "").strip()
         if mode not in VALID_MODES:
             return res(f"mode must be one of {VALID_MODES}", [], 400)
 
@@ -301,7 +314,7 @@ def create_billing(data, user_id):
         if not allowed:
             return res("You are not a billing creator for this module", [], 403)
 
-        og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
+        og_sale_order_no = (req.form.get("ogSaleOrderNo") or "").strip()
         if not og_sale_order_no:
             return res("ogSaleOrderNo required", [], 400)
 
@@ -312,7 +325,7 @@ def create_billing(data, user_id):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
-        items = data.get("items", [])
+        items = json.loads(req.form.get("items") or "[]")
         if not items:
             return res("At least one BOQ item required", [], 400)
 
@@ -330,18 +343,22 @@ def create_billing(data, user_id):
         billing_uuid  = str(_uuid.uuid4())
         pre_certified = _get_pre_certified(og_sale_order_no, project_code, mode)
 
+        attachment_url = _upload_billing_attachment(
+            req.files.get("attachment"), billing_no
+        )
+
         bill = BillingMaster(
             billing_no           = billing_no,
             billing_uuid         = billing_uuid,
-            billing_date         = data.get("billingDate"),
+            billing_date         = req.form.get("billingDate"),
             mode                 = mode,
             og_sale_order_no     = og_sale_order_no,
             og_sale_order_id     = og_so.id,
             project_code         = project_code,
-            title                = data.get("title"),
-            job_location         = data.get("jobLocation"),
+            title                = req.form.get("title"),
+            job_location         = req.form.get("jobLocation"),
             pre_certified_amount = pre_certified,
-            attachment           = data.get("attachment"),
+            attachment           = attachment_url,
             workflow_status      = "Draft",
             current_level        = 0,
             locked               = False,
@@ -499,7 +516,7 @@ def get_billing_details(bill_id):
 # 5. EDIT
 # ══════════════════════════════════════════════════════════════════
 
-def edit_billing(bill_id, data, user_id):
+def edit_billing(bill_id, req, user_id):
     try:
         bill = BillingMaster.query.get(bill_id)
         if not bill:
@@ -515,7 +532,7 @@ def edit_billing(bill_id, data, user_id):
         if not allowed:
             return res("You are not a billing creator for this module", [], 403)
 
-        items = data.get("items", [])
+        items = json.loads(req.form.get("items") or "[]")
         if not items:
             return res("At least one BOQ item required", [], 400)
 
@@ -530,14 +547,16 @@ def edit_billing(bill_id, data, user_id):
                 ).all()
                 og_item_map = {obj.id: obj for obj in og_item_objs}
 
-        if data.get("billingDate"):
-            bill.billing_date = data.get("billingDate")
-        if data.get("title") is not None:
-            bill.title = data.get("title")
-        if data.get("jobLocation") is not None:
-            bill.job_location = data.get("jobLocation")
-        if data.get("attachment") is not None:
-            bill.attachment = data.get("attachment")
+        if req.form.get("billingDate"):
+            bill.billing_date = req.form.get("billingDate")
+        if req.form.get("title") is not None:
+            bill.title = req.form.get("title")
+        if req.form.get("jobLocation") is not None:
+            bill.job_location = req.form.get("jobLocation")
+
+        new_file = req.files.get("attachment")
+        if new_file and new_file.filename:
+            bill.attachment = _upload_billing_attachment(new_file, bill.billing_no)
 
         BillingItem.query.filter_by(billing_id=bill.id).delete()
         db.session.flush()
