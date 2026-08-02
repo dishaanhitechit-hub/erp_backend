@@ -19,7 +19,7 @@ og_sale_order_bp = Blueprint("og_sale_order", __name__)
 
 
 # ── List & Create ───────────────────────────────────────────────
-@og_sale_order_bp.route("/", methods=["GET"])
+@og_sale_order_bp.route("/list", methods=["GET"])
 @jwt_required()
 def list_og_sale_orders():
     return get_og_sale_order_list(request.args)
