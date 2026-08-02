@@ -27,6 +27,7 @@ def api_order_lookup():
         "ogSaleOrderNo": request.args.get("ogSaleOrderNo"),
         "projectCode":   request.args.get("projectCode"),
         "mode":          request.args.get("mode"),
+        "claimBillId":   request.args.get("claimBillId"),
     })
 
 
