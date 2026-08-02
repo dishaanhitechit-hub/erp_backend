@@ -130,18 +130,14 @@ def create_app():
 
     from .models import hindranceRegister  # noqa — registers HindranceRegister with Alembic
 
-    from .modules.project_mgmt.custom_billing.sale_order_billing.routes import sale_order_billing_bp
-    app.register_blueprint(sale_order_billing_bp, url_prefix="/project-mgmt/sale-order-billing")
-
-    from .modules.project_mgmt.custom_billing.certified_bill.routes import certified_bill_bp
-    app.register_blueprint(certified_bill_bp, url_prefix="/project-mgmt/certified-bill")
+    from .modules.project_mgmt.custom_billing.billing.routes import billing_bp
+    app.register_blueprint(billing_bp, url_prefix="/project-mgmt/billing")
 
     from .modules.project_mgmt.custom_billing.og_sale_order.routes import og_sale_order_bp
     app.register_blueprint(og_sale_order_bp, url_prefix="/project-mgmt/og-sale-order")
 
-    from .models import saleOrderMaster      # noqa — registers SaleOrderMaster, SaleOrderItem with Alembic
-    from .models import certifiedBillMaster  # noqa — registers CertifiedBillMaster, CertifiedBillItem with Alembic
-    from .models import ogSaleOrder          # noqa — registers OgSaleOrderMaster, OgSaleOrderItem with Alembic
+    from .models import billingMaster  # noqa — registers BillingMaster, BillingItem with Alembic
+    from .models import ogSaleOrder    # noqa — registers OgSaleOrderMaster, OgSaleOrderItem with Alembic
 
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")

@@ -24,6 +24,11 @@ class Item(db.Model):
         nullable=False
     )
 
+    item_display_code = db.Column(
+        db.String(200),
+        nullable=True
+    )
+
     # FK → category_master.fixed_code
     category_code = db.Column(
         db.String(50),

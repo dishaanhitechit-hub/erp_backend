@@ -498,7 +498,8 @@ def get_items_by_category(category_code, asset_only=False):
                 Item.item_name,
                 Item.item_description,
                 Item.gst_percentage,
-                Unit.short_name.label("unit_name")
+                Unit.short_name.label("unit_name"),
+                CCCode.cc_code.label("cc_code")
             )
             .outerjoin(CCCode, CCCode.id == Item.cc_code_id)
             .outerjoin(GroupMaster, GroupMaster.id == CCCode.group_id)
@@ -527,6 +528,11 @@ def get_items_by_category(category_code, asset_only=False):
                 "id": row.id,
 
                 "itemCode": row.item_code,
+
+                "itemDisplayCode": (
+                    f"{row.cc_code}{row.item_code}"
+                    if row.cc_code else None
+                ),
 
                 "itemName": row.item_name,
 

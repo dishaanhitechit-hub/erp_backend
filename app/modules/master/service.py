@@ -427,8 +427,11 @@ def create_item(data):
     # Normal Create Item Flow
 
 
+    _item_code = generate_item_code()
+    _cc        = CCCode.query.get(data.get("ccCodeId"))
+
     item = Item(
-        item_code=generate_item_code(),
+        item_code=_item_code,
         category_code=data.get("itemCategoryId"),
         cc_code_id=data.get("ccCodeId"),
         item_name=data.get("itemName"),
@@ -436,6 +439,7 @@ def create_item(data):
         unit_id=data.get("unit"),
         hsn_sac=data.get("hsnSac"),
         gst_percentage=data.get("gstPercentage"),
+        item_display_code=f"{_cc.cc_code}{_item_code}" if _cc else _item_code,
     )
 
     if hasattr(g, "current_user"):
@@ -537,6 +541,9 @@ def update_item(itemId, data):
     item.unit_id = data.get("unit", item.unit_id)
     item.hsn_sac = data.get("hsnSac", item.hsn_sac)
     item.gst_percentage = data.get("gstPercentage", item.gst_percentage)
+
+    _cc = CCCode.query.get(item.cc_code_id)
+    item.item_display_code = f"{_cc.cc_code}{item.item_code}" if _cc else item.item_code
 
     db.session.commit()
 

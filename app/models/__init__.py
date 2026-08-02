@@ -60,6 +60,5 @@ from .dcMaster import *
 from .bankCash import *
 from .search_history import SearchHistory
 from .dlrMaster import DlrMaster, DlrItem
-from .saleOrderMaster import SaleOrderMaster, SaleOrderItem
-from .certifiedBillMaster import CertifiedBillMaster, CertifiedBillItem
+from .billingMaster import BillingMaster, BillingItem
 from .ogSaleOrder import *
