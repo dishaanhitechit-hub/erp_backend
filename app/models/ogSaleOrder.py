@@ -32,6 +32,10 @@ class OgSaleOrderMaster(db.Model):
     attachment_2 = db.Column(db.Text, nullable=True)
     attachment_3 = db.Column(db.Text, nullable=True)
 
+    # Order number format helpers
+    prefix = db.Column(db.String(100), nullable=True)
+    suffix = db.Column(db.String(100), nullable=True)
+
     # Workflow
     workflow_status = db.Column(db.String(30), default="Draft")
     status          = db.Column(db.String(30), default="Active")
@@ -83,8 +87,6 @@ class OgSaleOrderItem(db.Model):
     item_description  = db.Column(db.Text,          nullable=True)   # snapshot, user-editable
     item_name_desc    = db.Column(db.Text,          nullable=True)   # legacy combined field
     unit              = db.Column(db.String(30),    nullable=True)   # snapshot from Item.unit
-    prefix            = db.Column(db.String(100),   nullable=True)   # manual input
-    suffix            = db.Column(db.String(100),   nullable=True)   # manual input
 
     item_ref = db.relationship(
         "Item",

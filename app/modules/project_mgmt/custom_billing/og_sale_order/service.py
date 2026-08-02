@@ -122,8 +122,6 @@ def _serialize_items(items):
             "itemDescription": row.item_description,
             "itemNameDesc":    row.item_name_desc,
             "unit":            row.unit,
-            "prefix":          row.prefix,
-            "suffix":          row.suffix,
             "orderQty":        float(row.order_qty   or 0),
             "rate":            float(row.rate         or 0),
             "amount":          float(row.amount       or 0),
@@ -172,8 +170,6 @@ def _build_items(rows, og_sale_order_id, item_map):
             item_description = item_description,
             item_name_desc   = item_name_desc,
             unit             = unit,
-            prefix           = row.get("prefix")  or None,
-            suffix           = row.get("suffix")  or None,
             order_qty        = order_qty,
             rate             = rate,
             amount           = amount,
@@ -239,6 +235,8 @@ def create_og_sale_order(request, user_id):
             order_validity     = _parse_date(data.get("orderValidity")),
             order_title        = order_title,
             project_code       = project_code,
+            prefix             = data.get("prefix")  or None,
+            suffix             = data.get("suffix")  or None,
             attachment_1       = att_1,
             attachment_2       = att_2,
             attachment_3       = att_3,
@@ -342,6 +340,8 @@ def _build_detail_payload(og_so):
         "basicAmount":      float(og_so.basic_amount or 0),
         "gstAmount":        float(og_so.gst_amount   or 0),
         "totalAmount":      float(og_so.total_amount  or 0),
+        "prefix":           og_so.prefix,
+        "suffix":           og_so.suffix,
         "attachment1":      og_so.attachment_1,
         "attachment2":      og_so.attachment_2,
         "attachment3":      og_so.attachment_3,
@@ -413,6 +413,10 @@ def edit_og_sale_order(so_id, request, user_id):
             og_so.order_validity = _parse_date(data.get("orderValidity"))
         if data.get("orderTitle"):
             og_so.order_title = data.get("orderTitle").strip()
+        if data.get("prefix") is not None:
+            og_so.prefix = data.get("prefix") or None
+        if data.get("suffix") is not None:
+            og_so.suffix = data.get("suffix") or None
 
         # Upload attachments only if new file provided
         f1 = request.files.get("attachment_1")
