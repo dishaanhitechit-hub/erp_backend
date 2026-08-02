@@ -103,10 +103,6 @@ def _build_item_map(rows):
 
 
 def _serialize_items(items):
-    """
-    Serialize OgSaleOrderItem rows.
-    Batch-fetches Item master once to build itemDisplayCode.
-    """
     codes = [row.item_code for row in items if row.item_code]
     item_map = {}
     if codes:
@@ -122,8 +118,12 @@ def _serialize_items(items):
             "slNo":            row.sl_no,
             "itemCode":        row.item_code,
             "itemDisplayCode": _item_display_code(item_obj),
+            "itemName":        row.item_name,
+            "itemDescription": row.item_description,
             "itemNameDesc":    row.item_name_desc,
             "unit":            row.unit,
+            "prefix":          row.prefix,
+            "suffix":          row.suffix,
             "orderQty":        float(row.order_qty   or 0),
             "rate":            float(row.rate         or 0),
             "amount":          float(row.amount       or 0),
@@ -134,11 +134,6 @@ def _serialize_items(items):
 
 
 def _build_items(rows, og_sale_order_id, item_map):
-    """
-    Build OgSaleOrderItem objects.
-    item_map must already be validated (no missing codes).
-    Auto-fills item_name_desc and unit from Item master if not sent.
-    """
     items = []
     total_basic = 0
     total_gst   = 0
@@ -147,8 +142,14 @@ def _build_items(rows, og_sale_order_id, item_map):
         item_code = str(row.get("itemCode", "")).strip()
         item_obj  = item_map.get(item_code)
 
-        # Auto-fill from master if frontend didn't send
-        item_name_desc = row.get("itemNameDesc") or (item_obj.item_name if item_obj else None)
+        # Snapshot from master; frontend can override description
+        item_name        = item_obj.item_name        if item_obj else row.get("itemName")
+        item_description = (
+            row.get("itemDescription")
+            if row.get("itemDescription") not in (None, "")
+            else (item_obj.item_description if item_obj else None)
+        )
+        item_name_desc = item_name  # keep legacy field in sync
         unit           = row.get("unit") or (
             item_obj.unit.unit_name if item_obj and item_obj.unit else None
         )
@@ -167,8 +168,12 @@ def _build_items(rows, og_sale_order_id, item_map):
             og_sale_order_id = og_sale_order_id,
             sl_no            = row.get("slNo") or idx,
             item_code        = item_code,
+            item_name        = item_name,
+            item_description = item_description,
             item_name_desc   = item_name_desc,
             unit             = unit,
+            prefix           = row.get("prefix")  or None,
+            suffix           = row.get("suffix")  or None,
             order_qty        = order_qty,
             rate             = rate,
             amount           = amount,

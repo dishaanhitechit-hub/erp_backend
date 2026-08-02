@@ -77,10 +77,14 @@ class OgSaleOrderItem(db.Model):
         nullable=False
     )
 
-    sl_no          = db.Column(db.Integer,    nullable=False)
-    item_code      = db.Column(db.String(50), db.ForeignKey("items.item_code"), nullable=False)
-    item_name_desc = db.Column(db.Text,       nullable=True)   # snapshot from Item.item_name
-    unit           = db.Column(db.String(30), nullable=True)   # snapshot from Item.unit
+    sl_no             = db.Column(db.Integer,       nullable=False)
+    item_code         = db.Column(db.String(50),    db.ForeignKey("items.item_code"), nullable=False)
+    item_name         = db.Column(db.String(2000),  nullable=True)   # snapshot from Item.item_name
+    item_description  = db.Column(db.Text,          nullable=True)   # snapshot, user-editable
+    item_name_desc    = db.Column(db.Text,          nullable=True)   # legacy combined field
+    unit              = db.Column(db.String(30),    nullable=True)   # snapshot from Item.unit
+    prefix            = db.Column(db.String(100),   nullable=True)   # manual input
+    suffix            = db.Column(db.String(100),   nullable=True)   # manual input
 
     item_ref = db.relationship(
         "Item",
@@ -90,7 +94,7 @@ class OgSaleOrderItem(db.Model):
     )
     order_qty      = db.Column(db.Numeric(12, 2), default=0)
     rate           = db.Column(db.Numeric(12, 2), default=0)
-    amount         = db.Column(db.Numeric(14, 2), default=0)       # order_qty × rate
+    amount         = db.Column(db.Numeric(14, 2), default=0)
     gst_percent    = db.Column(db.Numeric(5,  2), default=0)
     gst_amount     = db.Column(db.Numeric(14, 2), default=0)
 
