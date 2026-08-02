@@ -174,6 +174,7 @@ def _serialize_items(items):
             "itemDescription": item.item_name_desc,
             "unit":                item.unit,
             "claimQty":            float(item.claim_qty   or 0),
+            "orderQty":item.og_sale_order_order_qty,
             "rate":                float(item.rate         or 0),
             "amount":              float(item.amount       or 0),
             "gstPercent":          float(item.gst_percent  or 0),

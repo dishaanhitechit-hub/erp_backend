@@ -53,7 +53,7 @@ def api_billing_details(bill_id):
 
 
 # ── 5. EDIT ──────────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/edit", methods=["PUT"])
+@billing_bp.route("/edit/<int:bill_id>", methods=["PUT"])
 @login_required
 def api_edit_billing(bill_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
@@ -61,7 +61,7 @@ def api_edit_billing(bill_id):
 
 
 # ── 6. SUBMIT ────────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/submit", methods=["POST"])
+@billing_bp.route("/submit/<int:bill_id>", methods=["POST"])
 @login_required
 def api_submit_billing(bill_id):
     submitted_by = g.current_user.get("id") if hasattr(g, "current_user") else None
@@ -69,7 +69,7 @@ def api_submit_billing(bill_id):
 
 
 # ── 7. APPROVE ───────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/approve", methods=["POST"])
+@billing_bp.route("/approve/<int:bill_id>", methods=["POST"])
 @login_required
 def api_approve_billing(bill_id):
     data        = request.get_json() or {}
@@ -78,7 +78,7 @@ def api_approve_billing(bill_id):
 
 
 # ── 8. REBACK ────────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/reback", methods=["POST"])
+@billing_bp.route("/reback/<int:bill_id>", methods=["POST"])
 @login_required
 def api_reback_billing(bill_id):
     data      = request.get_json() or {}
@@ -87,7 +87,7 @@ def api_reback_billing(bill_id):
 
 
 # ── 9. REJECT ────────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/reject", methods=["POST"])
+@billing_bp.route("/reject/<int:bill_id>", methods=["POST"])
 @login_required
 def api_reject_billing(bill_id):
     data        = request.get_json() or {}
@@ -96,14 +96,14 @@ def api_reject_billing(bill_id):
 
 
 # ── 10. HISTORY ──────────────────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/history", methods=["GET"])
+@billing_bp.route("/history/<int:bill_id>", methods=["GET"])
 @login_required
 def api_billing_history(bill_id):
     return get_billing_history(bill_id)
 
 
 # ── 11. MY APPROVAL STATUS ───────────────────────────────────────
-@billing_bp.route("/<int:bill_id>/my-approval-status", methods=["GET"])
+@billing_bp.route("/my-approval-status/<int:bill_id>", methods=["GET"])
 @login_required
 def api_billing_my_approval_status(bill_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
