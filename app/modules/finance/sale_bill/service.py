@@ -20,7 +20,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE      = "sale_bill"
+_MODULE      = "sale"
 VALID_MODES  = ("Sale Invoice", "Proforma Invoice")
 
 
