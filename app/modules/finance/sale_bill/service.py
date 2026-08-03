@@ -21,7 +21,7 @@ from app.modules.work_flow import (
 )
 
 _MODULE      = "sale_bill"
-VALID_MODES  = ("sale_invoice", "proforma_invoice")
+VALID_MODES  = ("Sale Invoice", "Proforma Invoice")
 
 
 # ══════════════════════════════════════════════════════════════════
