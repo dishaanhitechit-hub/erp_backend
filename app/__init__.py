@@ -139,6 +139,16 @@ def create_app():
     from .models import billingMaster  # noqa — registers BillingMaster, BillingItem with Alembic
     from .models import ogSaleOrder    # noqa — registers OgSaleOrderMaster, OgSaleOrderItem with Alembic
 
+    from .modules.finance.sale_bill.routes import sale_bill_bp
+    app.register_blueprint(sale_bill_bp, url_prefix="/finance/sale-bill")
+
+    from .models import saleBill  # noqa — registers SaleBillMaster, SaleBillItem, SaleBillGst with Alembic
+
+    from .modules.finance.purchase_bill.routes import purchase_bill_bp
+    app.register_blueprint(purchase_bill_bp, url_prefix="/finance/purchase-bill")
+
+    from .models import purchaseBill  # noqa — registers PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 

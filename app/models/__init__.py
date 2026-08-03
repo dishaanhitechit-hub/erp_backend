@@ -62,3 +62,5 @@ from .search_history import SearchHistory
 from .dlrMaster import DlrMaster, DlrItem
 from .billingMaster import BillingMaster, BillingItem
 from .ogSaleOrder import *
+from .saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
+from .purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst
