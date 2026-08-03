@@ -17,7 +17,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE = "purchase_voucher"
+_MODULE = "purchases"
 
 
 # ══════════════════════════════════════════════════════════════════
