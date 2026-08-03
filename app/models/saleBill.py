@@ -47,6 +47,7 @@ class SaleBillMaster(db.Model):
     bill_abstract_date = db.Column(db.Date, nullable=True)
 
     bank_ac       = db.Column(db.String(200), nullable=True)
+    bank_ac_id    = db.Column(db.Integer, db.ForeignKey("bank_cash.id"), nullable=True)
     payment_terms = db.Column(db.Text, nullable=True)
     declaration   = db.Column(db.Text, nullable=True)
 
@@ -80,6 +81,7 @@ class SaleBillMaster(db.Model):
     project        = db.relationship("Project",             backref="sale_bills")
     og_so          = db.relationship("OgSaleOrderMaster",   backref="sale_bills")
     certified_bill = db.relationship("BillingMaster",       backref="sale_bills")
+    bank_account   = db.relationship("BankCash", foreign_keys=[bank_ac_id])
     items          = db.relationship("SaleBillItem", backref="sale_bill", cascade="all,delete-orphan")
     gst_lines      = db.relationship("SaleBillGst",  backref="sale_bill", cascade="all,delete-orphan")
     creator        = db.relationship("User", foreign_keys=[created_by])

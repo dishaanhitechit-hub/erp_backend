@@ -7,6 +7,7 @@ from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
 from app.models.billingMaster import BillingMaster
 from app.models.item import Item
 from app.models.cc_code import CCCode
+from app.models.bankCash import BankCash
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -116,6 +117,9 @@ def _build_detail_payload(bill):
         "billAbstractNo":      bill.bill_abstract_no,
         "billAbstractDate":    _fmt_date(bill.bill_abstract_date),
         "bankAc":              bill.bank_ac,
+        "bankAcId":            bill.bank_ac_id,
+        "bankAcName":          bill.bank_account.bank_holder_name if bill.bank_account else None,
+        "bankCode":            bill.bank_account.bank_code        if bill.bank_account else None,
         "paymentTerms":        bill.payment_terms,
         "declaration":         bill.declaration,
         "basicAmount":         float(bill.basic_amount         or 0),
@@ -306,6 +310,7 @@ def create_sale_bill(data, user_id):
             bill_abstract_no   = data.get("billAbstractNo"),
             bill_abstract_date = data.get("billAbstractDate"),
             bank_ac            = data.get("bankAc"),
+            bank_ac_id         = data.get("bankAcId"),
             payment_terms      = data.get("paymentTerms"),
             declaration        = data.get("declaration"),
             basic_amount         = round(basic_total, 2),
@@ -473,6 +478,8 @@ def edit_sale_bill(bill_id, data, user_id):
             bill.bill_abstract_date = data.get("billAbstractDate")
         if data.get("bankAc") is not None:
             bill.bank_ac = data.get("bankAc")
+        if data.get("bankAcId") is not None:
+            bill.bank_ac_id = data.get("bankAcId")
         if data.get("paymentTerms") is not None:
             bill.payment_terms = data.get("paymentTerms")
         if data.get("declaration") is not None:
