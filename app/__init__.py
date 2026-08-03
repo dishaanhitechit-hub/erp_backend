@@ -154,6 +154,11 @@ def create_app():
 
     from .models import purchaseVoucher  # noqa — registers PurchaseVoucherMaster, PurchaseVoucherItem, PurchaseVoucherGst with Alembic
 
+    from .modules.finance.sale_receipt.routes import sale_receipt_bp
+    app.register_blueprint(sale_receipt_bp, url_prefix="/finance/sale-receipt")
+
+    from .models import saleReceipt  # noqa — registers SaleReceiptMaster, SaleReceiptItem, SaleReceiptGst with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 

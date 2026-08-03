@@ -65,3 +65,4 @@ from .ogSaleOrder import *
 from .saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
 from .purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst
 from .purchaseVoucher import PurchaseVoucherMaster, PurchaseVoucherItem, PurchaseVoucherGst
+from .saleReceipt import SaleReceiptMaster, SaleReceiptItem, SaleReceiptGst

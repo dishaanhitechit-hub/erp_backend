@@ -27,7 +27,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE     = "purchase_bill"
+_MODULE     = "purchases"
 VALID_MODES = ("purchase_invoice", "proforma_invoice")
 
 
