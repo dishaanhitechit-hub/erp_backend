@@ -22,7 +22,7 @@ class OgSaleOrderMaster(db.Model):
         nullable=False
     )
 
-    # Financials — computed from items
+    # Financials — computed from items + boq_items
     basic_amount = db.Column(db.Numeric(14, 2), default=0)
     gst_amount   = db.Column(db.Numeric(14, 2), default=0)
     total_amount = db.Column(db.Numeric(14, 2), default=0)
@@ -31,10 +31,6 @@ class OgSaleOrderMaster(db.Model):
     attachment_1 = db.Column(db.Text, nullable=True)
     attachment_2 = db.Column(db.Text, nullable=True)
     attachment_3 = db.Column(db.Text, nullable=True)
-
-    # Order number format helpers
-    prefix = db.Column(db.String(100), nullable=True)
-    suffix = db.Column(db.String(100), nullable=True)
 
     # Workflow
     workflow_status = db.Column(db.String(30), default="Draft")
@@ -56,9 +52,14 @@ class OgSaleOrderMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project  = db.relationship("Project", backref="og_sale_orders")
-    items    = db.relationship(
+    project   = db.relationship("Project", backref="og_sale_orders")
+    items     = db.relationship(
         "OgSaleOrderItem",
+        backref="og_sale_order",
+        cascade="all,delete-orphan"
+    )
+    boq_items = db.relationship(
+        "OgSaleOrderBoqItem",
         backref="og_sale_order",
         cascade="all,delete-orphan"
     )
@@ -70,6 +71,7 @@ class OgSaleOrderMaster(db.Model):
 
 
 class OgSaleOrderItem(db.Model):
+    """Regular items table — all fields manual, no FK to item master."""
 
     __tablename__ = "og_sale_order_items"
 
@@ -81,23 +83,46 @@ class OgSaleOrderItem(db.Model):
         nullable=False
     )
 
-    sl_no             = db.Column(db.Integer,       nullable=False)
-    item_code         = db.Column(db.String(50),    db.ForeignKey("items.item_code"), nullable=False)
-    item_name         = db.Column(db.String(2000),  nullable=True)   # snapshot from Item.item_name
-    item_description  = db.Column(db.Text,          nullable=True)   # snapshot, user-editable
-    item_name_desc    = db.Column(db.Text,          nullable=True)   # legacy combined field
-    unit              = db.Column(db.String(30),    nullable=True)   # snapshot from Item.unit
+    sl_no            = db.Column(db.Integer,      nullable=False)
+    item_code        = db.Column(db.String(50),   nullable=True)
+    item_name        = db.Column(db.String(2000), nullable=True)
+    item_description = db.Column(db.Text,         nullable=True)
+    item_name_desc   = db.Column(db.Text,         nullable=True)
+    unit             = db.Column(db.String(30),   nullable=True)
 
-    item_ref = db.relationship(
-        "Item",
-        primaryjoin="foreign(OgSaleOrderItem.item_code) == Item.item_code",
-        lazy="select",
-        uselist=False,
+    order_qty   = db.Column(db.Numeric(12, 2), default=0)
+    rate        = db.Column(db.Numeric(12, 2), default=0)
+    amount      = db.Column(db.Numeric(14, 2), default=0)
+    gst_percent = db.Column(db.Numeric(5,  2), default=0)
+    gst_amount  = db.Column(db.Numeric(14, 2), default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class OgSaleOrderBoqItem(db.Model):
+    """BOQ items table — same structure as OgSaleOrderItem, all manual."""
+
+    __tablename__ = "og_sale_order_boq_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    og_sale_order_id = db.Column(
+        db.Integer,
+        db.ForeignKey("og_sale_order_master.id"),
+        nullable=False
     )
-    order_qty      = db.Column(db.Numeric(12, 2), default=0)
-    rate           = db.Column(db.Numeric(12, 2), default=0)
-    amount         = db.Column(db.Numeric(14, 2), default=0)
-    gst_percent    = db.Column(db.Numeric(5,  2), default=0)
-    gst_amount     = db.Column(db.Numeric(14, 2), default=0)
+
+    sl_no            = db.Column(db.Integer,      nullable=False)
+    item_code        = db.Column(db.String(50),   nullable=True)
+    item_name        = db.Column(db.String(2000), nullable=True)
+    item_description = db.Column(db.Text,         nullable=True)
+    item_name_desc   = db.Column(db.Text,         nullable=True)
+    unit             = db.Column(db.String(30),   nullable=True)
+
+    order_qty   = db.Column(db.Numeric(12, 2), default=0)
+    rate        = db.Column(db.Numeric(12, 2), default=0)
+    amount      = db.Column(db.Numeric(14, 2), default=0)
+    gst_percent = db.Column(db.Numeric(5,  2), default=0)
+    gst_amount  = db.Column(db.Numeric(14, 2), default=0)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -4,8 +4,7 @@ from datetime import datetime
 import uuid as _uuid
 import json
 
-from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
-from app.models.item import Item
+from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -71,105 +70,31 @@ def _upload_attachment(file, so_no, slot):
     )
 
 
-def _item_display_code(item_obj):
-    """Returns cc_code + item_code, e.g. 'CC0010042'."""
-    if not item_obj:
-        return None
-    cc = item_obj.cc_code.cc_code if item_obj.cc_code else ""
-    return f"{cc}{item_obj.item_code}"
-
-
-def _build_item_map(rows):
+def _build_rows(raw_rows, og_sale_order_id, model_class):
     """
-    Batch-fetch Item objects for all itemCodes in rows.
-    Returns (item_map, errors):
-        item_map: {item_code: Item}
-        errors:   list of error strings (empty when all ok)
+    Build ORM rows from raw frontend dicts.
+    All fields are manual — amount and gstAmount are computed server-side.
+    Works for both OgSaleOrderItem and OgSaleOrderBoqItem.
     """
-    codes = [str(r.get("itemCode", "")).strip() for r in rows]
-    missing_idx = [i + 1 for i, c in enumerate(codes) if not c]
-    if missing_idx:
-        return {}, [f"Row {i}: itemCode is required" for i in missing_idx]
-
-    objs = Item.query.filter(Item.item_code.in_(codes)).all()
-    item_map = {obj.item_code: obj for obj in objs}
-
-    errors = []
-    for idx, code in enumerate(codes, start=1):
-        if code not in item_map:
-            errors.append(f"Row {idx}: itemCode '{code}' not found")
-
-    return item_map, errors
-
-
-def _serialize_items(items):
-    codes = [row.item_code for row in items if row.item_code]
-    item_map = {}
-    if codes:
-        objs = Item.query.filter(Item.item_code.in_(codes)).all()
-        for obj in objs:
-            item_map[obj.item_code] = obj
-
-    result = []
-    for row in items:
-        item_obj = item_map.get(row.item_code)
-        result.append({
-            "id":              row.id,
-            "slNo":            row.sl_no,
-            "itemCode":        row.item_code,
-            "itemDisplayCode": _item_display_code(item_obj),
-            "itemName":        row.item_name,
-            "itemDescription": row.item_description,
-            "itemNameDesc":    row.item_name_desc,
-            "unit":            row.unit,
-            "orderQty":        float(row.order_qty   or 0),
-            "rate":            float(row.rate         or 0),
-            "amount":          float(row.amount       or 0),
-            "gstPercent":      float(row.gst_percent  or 0),
-            "gstAmount":       float(row.gst_amount   or 0),
-        })
-    return result
-
-
-def _build_items(rows, og_sale_order_id, item_map):
-    items = []
+    rows       = []
     total_basic = 0
     total_gst   = 0
 
-    for idx, row in enumerate(rows, start=1):
-        item_code = str(row.get("itemCode", "")).strip()
-        item_obj  = item_map.get(item_code)
+    for idx, row in enumerate(raw_rows, start=1):
+        order_qty   = float(row.get("orderQty")   or 0)
+        rate        = float(row.get("rate")        or 0)
+        gst_percent = float(row.get("gstPercent")  or 0)
+        amount      = round(order_qty * rate, 2)
+        gst_amount  = round((amount * gst_percent) / 100, 2)
 
-        # Snapshot from master; frontend can override description
-        item_name        = item_obj.item_name        if item_obj else row.get("itemName")
-        item_description = (
-            row.get("itemDescription")
-            if row.get("itemDescription") not in (None, "")
-            else (item_obj.item_description if item_obj else None)
-        )
-        item_name_desc = item_name  # keep legacy field in sync
-        unit           = row.get("unit") or (
-            item_obj.unit.unit_name if item_obj and item_obj.unit else None
-        )
-        gst_percent = float(
-            row.get("gstPercent")
-            if row.get("gstPercent") not in (None, "")
-            else (item_obj.gst_percentage or 0)
-        )
-
-        order_qty  = float(row.get("orderQty") or 0)
-        rate       = float(row.get("rate")      or 0)
-        amount     = round(order_qty * rate, 2)
-        gst_amount = round((amount * gst_percent) / 100, 2)
-
-        items.append(OgSaleOrderItem(
+        rows.append(model_class(
             og_sale_order_id = og_sale_order_id,
             sl_no            = row.get("slNo") or idx,
-            item_code        = item_code,
-            item_name        = item_name,
-            item_description = item_description,
-            item_name_desc   = item_name_desc,
-            unit             = unit,
+            item_code        = str(row.get("itemCode") or "").strip() or None,
+            item_name        = row.get("itemName"),
+            item_description = row.get("itemDescription"),
+            item_name_desc   = row.get("itemName"),
+            unit             = row.get("unit"),
             order_qty        = order_qty,
             rate             = rate,
             amount           = amount,
@@ -180,7 +105,59 @@ def _build_items(rows, og_sale_order_id, item_map):
         total_basic += amount
         total_gst   += gst_amount
 
-    return items, round(total_basic, 2), round(total_gst, 2)
+    return rows, round(total_basic, 2), round(total_gst, 2)
+
+
+def _serialize_rows(rows):
+    """Serialize OgSaleOrderItem or OgSaleOrderBoqItem rows to dicts."""
+    return [
+        {
+            "id":              row.id,
+            "slNo":            row.sl_no,
+            "itemCode":        row.item_code,
+            "itemName":        row.item_name,
+            "itemDescription": row.item_description,
+            "unit":            row.unit,
+            "orderQty":        float(row.order_qty   or 0),
+            "rate":            float(row.rate         or 0),
+            "amount":          float(row.amount       or 0),
+            "gstPercent":      float(row.gst_percent  or 0),
+            "gstAmount":       float(row.gst_amount   or 0),
+        }
+        for row in rows
+    ]
+
+
+def _build_detail_payload(og_so):
+    return {
+        "id":               og_so.id,
+        "ogSaleOrderNo":    og_so.og_sale_order_no,
+        "ogSaleOrderUuid":  og_so.og_sale_order_uuid,
+        "ogSaleOrderDate":  _fmt_date(og_so.og_sale_order_date),
+        "orderNo":          og_so.order_no,
+        "orderValidity":    _fmt_date(og_so.order_validity),
+        "orderTitle":       og_so.order_title,
+        "projectCode":      og_so.project_code,
+        "basicAmount":      float(og_so.basic_amount or 0),
+        "gstAmount":        float(og_so.gst_amount   or 0),
+        "totalAmount":      float(og_so.total_amount  or 0),
+        "attachment1":      og_so.attachment_1,
+        "attachment2":      og_so.attachment_2,
+        "attachment3":      og_so.attachment_3,
+        "workflowStatus":   og_so.workflow_status,
+        "currentLevel":     og_so.current_level,
+        "locked":           og_so.locked,
+        "createdBy":        og_so.creator.username   if og_so.creator   else None,
+        "createdAt":        _fmt_date(og_so.created_at),
+        "submittedBy":      og_so.submitter.username if og_so.submitter else None,
+        "submittedAt":      _fmt_date(og_so.submitted_at),
+        "approvedBy":       og_so.approver.username  if og_so.approver  else None,
+        "finalApprovedAt":  _fmt_date(og_so.final_approved_at),
+        "rejectedBy":       og_so.rejector.username  if og_so.rejector  else None,
+        "rejectedAt":       _fmt_date(og_so.rejected_at),
+        "items":            _serialize_rows(og_so.items),
+        "boqItems":         _serialize_rows(og_so.boq_items),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -212,13 +189,13 @@ def create_og_sale_order(request, user_id):
         except Exception:
             items_raw = []
 
-        if not items_raw:
-            return res("At least one BOQ item required", [], 400)
+        try:
+            boq_raw = json.loads(data.get("boqItems", "[]"))
+        except Exception:
+            boq_raw = []
 
-        # Validate item codes against items master
-        item_map, errors = _build_item_map(items_raw)
-        if errors:
-            return res("; ".join(errors), [], 400)
+        if not items_raw and not boq_raw:
+            return res("At least one item or BOQ item is required", [], 400)
 
         so_no   = generate_og_sale_order_no()
         so_uuid = str(_uuid.uuid4())
@@ -235,8 +212,6 @@ def create_og_sale_order(request, user_id):
             order_validity     = _parse_date(data.get("orderValidity")),
             order_title        = order_title,
             project_code       = project_code,
-            prefix             = data.get("prefix")  or None,
-            suffix             = data.get("suffix")  or None,
             attachment_1       = att_1,
             attachment_2       = att_2,
             attachment_3       = att_3,
@@ -249,13 +224,17 @@ def create_og_sale_order(request, user_id):
         db.session.add(og_so)
         db.session.flush()
 
-        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id, item_map)
+        built_items,     basic_items, gst_items = _build_rows(items_raw, og_so.id, OgSaleOrderItem)
+        built_boq_items, basic_boq,  gst_boq   = _build_rows(boq_raw,   og_so.id, OgSaleOrderBoqItem)
+
         for item in built_items:
             db.session.add(item)
+        for item in built_boq_items:
+            db.session.add(item)
 
-        og_so.basic_amount = total_basic
-        og_so.gst_amount   = total_gst
-        og_so.total_amount = round(total_basic + total_gst, 2)
+        og_so.basic_amount = round(basic_items + basic_boq, 2)
+        og_so.gst_amount   = round(gst_items   + gst_boq,  2)
+        og_so.total_amount = round(og_so.basic_amount + og_so.gst_amount, 2)
 
         db.session.commit()
 
@@ -300,16 +279,13 @@ def get_og_sale_order_list(data):
 
         rows = query.order_by(OgSaleOrderMaster.id.desc()).all()
 
-        result = []
-        for row in rows:
-            result.append({
+        result = [
+            {
                 "id":              row.id,
                 "ogSaleOrderNo":   row.og_sale_order_no,
                 "ogSaleOrderDate": _fmt_date(row.og_sale_order_date),
                 "orderNo":         row.order_no,
                 "orderValidity":   _fmt_date(row.order_validity),
-                "prefix": row.prefix,
-                "suffix": row.suffix,
                 "orderTitle":      row.order_title,
                 "basicAmount":     float(row.basic_amount or 0),
                 "gstAmount":       float(row.gst_amount   or 0),
@@ -317,7 +293,9 @@ def get_og_sale_order_list(data):
                 "workflowStatus":  row.workflow_status,
                 "createdBy":       row.creator.username if row.creator else None,
                 "createdAt":       _fmt_date(row.created_at),
-            })
+            }
+            for row in rows
+        ]
 
         return res("OG Sale Order list fetched", result, 200)
 
@@ -328,39 +306,6 @@ def get_og_sale_order_list(data):
 # ══════════════════════════════════════════════════════════════════
 # 3. DETAILS
 # ══════════════════════════════════════════════════════════════════
-
-def _build_detail_payload(og_so):
-    return {
-        "id":               og_so.id,
-        "ogSaleOrderNo":    og_so.og_sale_order_no,
-        "ogSaleOrderUuid":  og_so.og_sale_order_uuid,
-        "ogSaleOrderDate":  _fmt_date(og_so.og_sale_order_date),
-        "orderNo":          og_so.order_no,
-        "orderValidity":    _fmt_date(og_so.order_validity),
-        "orderTitle":       og_so.order_title,
-        "projectCode":      og_so.project_code,
-        "basicAmount":      float(og_so.basic_amount or 0),
-        "gstAmount":        float(og_so.gst_amount   or 0),
-        "totalAmount":      float(og_so.total_amount  or 0),
-        "prefix":           og_so.prefix,
-        "suffix":           og_so.suffix,
-        "attachment1":      og_so.attachment_1,
-        "attachment2":      og_so.attachment_2,
-        "attachment3":      og_so.attachment_3,
-        "workflowStatus":   og_so.workflow_status,
-        "currentLevel":     og_so.current_level,
-        "locked":           og_so.locked,
-        "createdBy":        og_so.creator.username  if og_so.creator  else None,
-        "createdAt":        _fmt_date(og_so.created_at),
-        "submittedBy":      og_so.submitter.username if og_so.submitter else None,
-        "submittedAt":      _fmt_date(og_so.submitted_at),
-        "approvedBy":       og_so.approver.username  if og_so.approver  else None,
-        "finalApprovedAt":  _fmt_date(og_so.final_approved_at),
-        "rejectedBy":       og_so.rejector.username  if og_so.rejector  else None,
-        "rejectedAt":       _fmt_date(og_so.rejected_at),
-        "items":            _serialize_items(og_so.items),
-    }
-
 
 def get_og_sale_order_details(so_id):
     try:
@@ -398,13 +343,13 @@ def edit_og_sale_order(so_id, request, user_id):
         except Exception:
             items_raw = []
 
-        if not items_raw:
-            return res("At least one BOQ item required", [], 400)
+        try:
+            boq_raw = json.loads(data.get("boqItems", "[]"))
+        except Exception:
+            boq_raw = []
 
-        # Validate item codes
-        item_map, errors = _build_item_map(items_raw)
-        if errors:
-            return res("; ".join(errors), [], 400)
+        if not items_raw and not boq_raw:
+            return res("At least one item or BOQ item is required", [], 400)
 
         # Update header fields
         if data.get("ogSaleOrderDate"):
@@ -415,10 +360,6 @@ def edit_og_sale_order(so_id, request, user_id):
             og_so.order_validity = _parse_date(data.get("orderValidity"))
         if data.get("orderTitle"):
             og_so.order_title = data.get("orderTitle").strip()
-        if data.get("prefix") is not None:
-            og_so.prefix = data.get("prefix") or None
-        if data.get("suffix") is not None:
-            og_so.suffix = data.get("suffix") or None
 
         # Upload attachments only if new file provided
         f1 = request.files.get("attachment_1")
@@ -431,17 +372,22 @@ def edit_og_sale_order(so_id, request, user_id):
         if f3 and f3.filename:
             og_so.attachment_3 = _upload_attachment(f3, og_so.og_sale_order_no, "attachment_3")
 
-        # Rebuild items
+        # Rebuild both tables from scratch — switching between tables is handled here
         OgSaleOrderItem.query.filter_by(og_sale_order_id=og_so.id).delete()
+        OgSaleOrderBoqItem.query.filter_by(og_sale_order_id=og_so.id).delete()
         db.session.flush()
 
-        built_items, total_basic, total_gst = _build_items(items_raw, og_so.id, item_map)
+        built_items,     basic_items, gst_items = _build_rows(items_raw, og_so.id, OgSaleOrderItem)
+        built_boq_items, basic_boq,  gst_boq   = _build_rows(boq_raw,   og_so.id, OgSaleOrderBoqItem)
+
         for item in built_items:
             db.session.add(item)
+        for item in built_boq_items:
+            db.session.add(item)
 
-        og_so.basic_amount = total_basic
-        og_so.gst_amount   = total_gst
-        og_so.total_amount = round(total_basic + total_gst, 2)
+        og_so.basic_amount = round(basic_items + basic_boq, 2)
+        og_so.gst_amount   = round(gst_items   + gst_boq,  2)
+        og_so.total_amount = round(og_so.basic_amount + og_so.gst_amount, 2)
 
         if og_so.workflow_status == "Reback":
             og_so.correction_sent_at = None
@@ -472,7 +418,7 @@ def submit_og_sale_order(so_id, submitted_by):
             return res("OG Sale Order not found", [], 404)
         if og_so.workflow_status not in ("Draft", "Reback"):
             return res("OG Sale Order already submitted", [], 400)
-        if not og_so.items:
+        if not og_so.items and not og_so.boq_items:
             return res("OG Sale Order has no items", [], 400)
 
         if og_so.workflow_status == "Reback":
@@ -687,9 +633,8 @@ def get_og_sale_order_history(so_id):
 
         rows = get_history(_MODULE, og_so.id)
 
-        history = []
-        for row in rows:
-            history.append({
+        history = [
+            {
                 "id":        row.id,
                 "action":    row.action,
                 "level":     row.level_no,
@@ -699,7 +644,9 @@ def get_og_sale_order_history(so_id):
                     row.created_at.strftime("%Y-%m-%d %H:%M:%S")
                     if row.created_at else None
                 ),
-            })
+            }
+            for row in rows
+        ]
 
         steps = get_approval_steps(og_so.project_code, _MODULE, og_so, rows)
 

@@ -60,7 +60,7 @@ from .dcMaster import *
 from .bankCash import *
 from .search_history import SearchHistory
 from .dlrMaster import DlrMaster, DlrItem
-from .billingMaster import BillingMaster, BillingItem
+from .billingMaster import BillingMaster, BillingItem, BillingBoqItem
 from .ogSaleOrder import *
 from .saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
 from .purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst

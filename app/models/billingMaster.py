@@ -92,16 +92,11 @@ class BillingItem(db.Model):
         nullable=False,
     )
 
-    sl_no                 = db.Column(db.Integer,    nullable=False)
-    og_sale_order_item_id = db.Column(
-        db.Integer,
-        db.ForeignKey("og_sale_order_items.id"),
-        nullable=True,
-    )
-    item_code      = db.Column(db.String(50),    nullable=True)
-    item_name      = db.Column(db.Text,          nullable=True)
-    item_name_desc = db.Column(db.Text,          nullable=True)
-    unit           = db.Column(db.String(30),    nullable=True)
+    sl_no          = db.Column(db.Integer,    nullable=False)
+    item_code      = db.Column(db.String(50), nullable=True)
+    item_name      = db.Column(db.Text,       nullable=True)
+    item_name_desc = db.Column(db.Text,       nullable=True)
+    unit           = db.Column(db.String(30), nullable=True)
 
     claim_qty   = db.Column(db.Numeric(12, 2), default=0)
     rate        = db.Column(db.Numeric(12, 2), default=0)
@@ -111,9 +106,30 @@ class BillingItem(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    og_so_item = db.relationship(
-        "OgSaleOrderItem",
-        primaryjoin="foreign(BillingItem.og_sale_order_item_id) == OgSaleOrderItem.id",
-        lazy="select",
-        uselist=False,
+
+class BillingBoqItem(db.Model):
+    """BOQ items table — same structure as BillingItem, all manual entry."""
+
+    __tablename__ = "billing_boq_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    billing_id = db.Column(
+        db.Integer,
+        db.ForeignKey("billing_master.id"),
+        nullable=False,
     )
+
+    sl_no          = db.Column(db.Integer,    nullable=False)
+    item_code      = db.Column(db.String(50), nullable=True)
+    item_name      = db.Column(db.Text,       nullable=True)
+    item_name_desc = db.Column(db.Text,       nullable=True)
+    unit           = db.Column(db.String(30), nullable=True)
+
+    claim_qty   = db.Column(db.Numeric(12, 2), default=0)
+    rate        = db.Column(db.Numeric(12, 2), default=0)
+    amount      = db.Column(db.Numeric(14, 2), default=0)
+    gst_percent = db.Column(db.Numeric(5,  2), default=0)
+    gst_amount  = db.Column(db.Numeric(14, 2), default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

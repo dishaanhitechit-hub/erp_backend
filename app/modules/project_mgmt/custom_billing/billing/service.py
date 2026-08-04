@@ -5,9 +5,8 @@ from datetime import datetime
 import uuid as _uuid
 import json
 
-from app.models.billingMaster import BillingMaster, BillingItem
-from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
-from app.models.item import Item
+from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
+from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -32,10 +31,6 @@ def _module_for(mode):
     return "sale_claim_bill" if mode == "sale_claim_bill" else "sale_certified_bill"
 
 
-def _billing_no_prefix(mode):
-    return ""
-
-
 def _upload_billing_attachment(file, billing_no):
     if not file or not file.filename:
         return None
@@ -53,13 +48,6 @@ def _fmt_date(d):
     if isinstance(d, datetime):
         return d.strftime("%Y-%m-%d %H:%M")
     return d.strftime("%Y-%m-%d")
-
-
-def _item_display_code(item_obj):
-    if not item_obj:
-        return None
-    cc = item_obj.cc_code.cc_code if item_obj.cc_code else ""
-    return f"{cc}{item_obj.item_code}"
 
 
 def _get_pre_certified(og_sale_order_no, project_code, mode, exclude_id=None):
@@ -113,7 +101,7 @@ def _get_order_financials(og_sale_order_no, project_code):
 
 
 def generate_billing_no(mode):
-    prefix = _billing_no_prefix(mode)
+    prefix = ""
     last = (
         db.session.query(BillingMaster.billing_no)
         .filter(BillingMaster.mode == mode)
@@ -154,33 +142,54 @@ def _bills_under_og_so(og_sale_order_no, project_code, mode):
     ]
 
 
-def _serialize_items(items):
-    item_codes = [i.item_code for i in items if i.item_code]
-    item_map   = {}
-    if item_codes:
-        objs = Item.query.filter(Item.item_code.in_(item_codes)).all()
-        item_map = {obj.item_code: obj for obj in objs}
-
+def _serialize_rows(rows):
     result = []
-    for item in items:
-        item_obj = item_map.get(item.item_code)
+    for item in rows:
         result.append({
-            "id":                  item.id,
-            "slNo":                item.sl_no,
-            "ogSaleOrderItemId":   item.og_sale_order_item_id,
-            "itemCode":            item.item_code,
+            "id":              item.id,
+            "slNo":            item.sl_no,
+            "itemCode":        item.item_code,
             "itemName":        item.item_name,
-            "itemDisplayCode": _item_display_code(item_obj),
             "itemDescription": item.item_name_desc,
-            "unit":                item.unit,
-            "claimQty":            float(item.claim_qty   or 0),
-            "orderQty": float(item.og_so_item.order_qty or 0) if item.og_so_item else None,
-            "rate":                float(item.rate         or 0),
-            "amount":              float(item.amount       or 0),
-            "gstPercent":          float(item.gst_percent  or 0),
-            "gstAmount":           float(item.gst_amount   or 0),
+            "unit":            item.unit,
+            "claimQty":        float(item.claim_qty   or 0),
+            "rate":            float(item.rate         or 0),
+            "amount":          float(item.amount       or 0),
+            "gstPercent":      float(item.gst_percent  or 0),
+            "gstAmount":       float(item.gst_amount   or 0),
         })
     return result
+
+
+def _build_rows(raw_rows, billing_id, model_class):
+    """Build BillingItem or BillingBoqItem rows; returns (objects, total_basic, total_gst)."""
+    total_basic = 0
+    total_gst   = 0
+    objects     = []
+    for idx, row in enumerate(raw_rows, start=1):
+        claim_qty   = float(row.get("claimQty")  or 0)
+        rate        = float(row.get("rate")       or 0)
+        amount      = round(claim_qty * rate, 2)
+        gst_percent = float(row.get("gstPercent") or 0)
+        gst_amount  = round((amount * gst_percent) / 100, 2)
+
+        obj = model_class(
+            billing_id     = billing_id,
+            sl_no          = row.get("slNo") or idx,
+            item_code      = row.get("itemCode"),
+            item_name      = row.get("itemName"),
+            item_name_desc = row.get("itemDescription"),
+            unit           = row.get("unit"),
+            claim_qty      = claim_qty,
+            rate           = rate,
+            amount         = amount,
+            gst_percent    = gst_percent,
+            gst_amount     = gst_amount,
+        )
+        objects.append(obj)
+        total_basic += amount
+        total_gst   += gst_amount
+    return objects, round(total_basic, 2), round(total_gst, 2)
 
 
 def _build_detail_payload(bill):
@@ -195,6 +204,8 @@ def _build_detail_payload(bill):
     if bill.claim_bill_id:
         cb = BillingMaster.query.get(bill.claim_bill_id)
         claim_bill_no = cb.billing_no if cb else None
+
+    boq_items = BillingBoqItem.query.filter_by(billing_id=bill.id).all()
 
     return {
         "id":                   bill.id,
@@ -231,7 +242,8 @@ def _build_detail_payload(bill):
         "finalApprovedAt":      _fmt_date(bill.final_approved_at),
         "rejectedBy":           bill.rejector.username  if bill.rejector  else None,
         "rejectedAt":           _fmt_date(bill.rejected_at),
-        "items":                _serialize_items(bill.items),
+        "items":                _serialize_rows(bill.items),
+        "boqItems":             _serialize_rows(boq_items),
         "billsUnderOgSo":       bills,
     }
 
@@ -266,28 +278,34 @@ def get_order_lookup(data):
             if claim_bill.project_code != project_code:
                 return res("Claim bill does not belong to this project", [], 403)
 
-            item_codes = [i.item_code for i in claim_bill.items if i.item_code]
-            item_map   = {}
-            if item_codes:
-                objs     = Item.query.filter(Item.item_code.in_(item_codes)).all()
-                item_map = {obj.item_code: obj for obj in objs}
+            claim_boq = BillingBoqItem.query.filter_by(billing_id=claim_bill.id).all()
 
-            claim_items = []
-            for bi in claim_bill.items:
-                item_obj = item_map.get(bi.item_code)
-                claim_items.append({
-                    "ogSaleOrderItemId": bi.og_sale_order_item_id,
-                    "slNo":              bi.sl_no,
-                    "itemCode":          bi.item_code,
-                    "itemDisplayCode":   _item_display_code(item_obj),
-                    "itemName":          bi.item_name,
-                    "itemDescription":   bi.item_name_desc,
-                    "unit":              bi.unit,
-                    "orderQty":          float(bi.og_so_item.order_qty or 0) if bi.og_so_item else None,
-                    "claimQty":          float(bi.claim_qty   or 0),
-                    "rate":              float(bi.rate         or 0),
-                    "gstPercent":        float(bi.gst_percent  or 0),
-                })
+            claim_items = [
+                {
+                    "slNo":            bi.sl_no,
+                    "itemCode":        bi.item_code,
+                    "itemName":        bi.item_name,
+                    "itemDescription": bi.item_name_desc,
+                    "unit":            bi.unit,
+                    "claimQty":        float(bi.claim_qty  or 0),
+                    "rate":            float(bi.rate        or 0),
+                    "gstPercent":      float(bi.gst_percent or 0),
+                }
+                for bi in claim_bill.items
+            ]
+            claim_boq_items = [
+                {
+                    "slNo":            bi.sl_no,
+                    "itemCode":        bi.item_code,
+                    "itemName":        bi.item_name,
+                    "itemDescription": bi.item_name_desc,
+                    "unit":            bi.unit,
+                    "claimQty":        float(bi.claim_qty  or 0),
+                    "rate":            float(bi.rate        or 0),
+                    "gstPercent":      float(bi.gst_percent or 0),
+                }
+                for bi in claim_boq
+            ]
 
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_no, project_code, mode
@@ -307,6 +325,7 @@ def get_order_lookup(data):
                 "totalAmount":        order_fin["totalAmount"] if order_fin else 0,
                 "preCertifiedAmount": pre_certified,
                 "items":              claim_items,
+                "boqItems":           claim_boq_items,
             }, 200)
 
         # ── claim bill: lookup by og sale order number ─────────────
@@ -321,27 +340,34 @@ def get_order_lookup(data):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
-        item_codes = [i.item_code for i in og_so.items if i.item_code]
-        item_map   = {}
-        if item_codes:
-            objs     = Item.query.filter(Item.item_code.in_(item_codes)).all()
-            item_map = {obj.item_code: obj for obj in objs}
-
-        og_items = []
-        for og_item in og_so.items:
-            item_obj = item_map.get(og_item.item_code)
-            og_items.append({
+        og_items = [
+            {
                 "ogSaleOrderItemId": og_item.id,
                 "slNo":              og_item.sl_no,
                 "itemCode":          og_item.item_code,
-                "itemDisplayCode":   _item_display_code(item_obj),
                 "itemName":          og_item.item_name,
                 "itemDescription":   og_item.item_description,
                 "unit":              og_item.unit,
                 "orderQty":          float(og_item.order_qty  or 0),
                 "rate":              float(og_item.rate        or 0),
                 "gstPercent":        float(og_item.gst_percent or 0),
-            })
+            }
+            for og_item in og_so.items
+        ]
+        og_boq_items = [
+            {
+                "ogSaleOrderItemId": og_item.id,
+                "slNo":              og_item.sl_no,
+                "itemCode":          og_item.item_code,
+                "itemName":          og_item.item_name,
+                "itemDescription":   og_item.item_description,
+                "unit":              og_item.unit,
+                "orderQty":          float(og_item.order_qty  or 0),
+                "rate":              float(og_item.rate        or 0),
+                "gstPercent":        float(og_item.gst_percent or 0),
+            }
+            for og_item in og_so.boq_items
+        ]
 
         pre_certified = _get_pre_certified(og_sale_order_no, project_code, mode)
 
@@ -356,6 +382,7 @@ def get_order_lookup(data):
             "totalAmount":        float(og_so.total_amount  or 0),
             "preCertifiedAmount": pre_certified,
             "items":              og_items,
+            "boqItems":           og_boq_items,
         }, 200)
 
     except Exception as e:
@@ -365,62 +392,6 @@ def get_order_lookup(data):
 # ══════════════════════════════════════════════════════════════════
 # 2. CREATE
 # ══════════════════════════════════════════════════════════════════
-
-def _build_items(req, og_so_id):
-    """Parse items from form, fetch og_item snapshots, return (og_item_map, items list)."""
-    items = json.loads(req.form.get("items") or "[]")
-    og_item_ids = [row.get("ogSaleOrderItemId") for row in items if row.get("ogSaleOrderItemId")]
-    og_item_map = {}
-    if og_item_ids and og_so_id:
-        og_item_objs = OgSaleOrderItem.query.filter(
-            OgSaleOrderItem.id.in_(og_item_ids),
-            OgSaleOrderItem.og_sale_order_id == og_so_id,
-        ).all()
-        og_item_map = {obj.id: obj for obj in og_item_objs}
-    return items, og_item_map
-
-
-def _add_billing_items(bill_id, items, og_item_map):
-    """Insert BillingItem rows; returns (total_basic, total_gst)."""
-    total_basic = 0
-    total_gst   = 0
-    for idx, row in enumerate(items, start=1):
-        og_item_id = row.get("ogSaleOrderItemId")
-        og_item    = og_item_map.get(og_item_id) if og_item_id else None
-
-        item_code      = og_item.item_code        if og_item else row.get("itemCode")
-        item_name      = og_item.item_name        if og_item else row.get("itemName")
-        item_name_desc = og_item.item_description if og_item else row.get("itemDescription")
-        unit           = og_item.unit              if og_item else row.get("unit")
-
-        claim_qty   = float(row.get("claimQty")  or 0)
-        rate        = float(row.get("rate")       or 0)
-        amount      = round(claim_qty * rate, 2)
-        gst_percent = float(
-            row.get("gstPercent")
-            if row.get("gstPercent") not in (None, "")
-            else (og_item.gst_percent if og_item else 0)
-        )
-        gst_amount = round((amount * gst_percent) / 100, 2)
-
-        db.session.add(BillingItem(
-            billing_id            = bill_id,
-            sl_no                 = row.get("slNo") or idx,
-            og_sale_order_item_id = og_item_id,
-            item_code             = item_code,
-            item_name             = item_name,
-            item_name_desc        = item_name_desc,
-            unit                  = unit,
-            claim_qty             = claim_qty,
-            rate                  = rate,
-            amount                = amount,
-            gst_percent           = gst_percent,
-            gst_amount            = gst_amount,
-        ))
-        total_basic += amount
-        total_gst   += gst_amount
-    return round(total_basic, 2), round(total_gst, 2)
-
 
 def create_billing(req, user_id):
     try:
@@ -437,13 +408,17 @@ def create_billing(req, user_id):
         if not allowed:
             return res("You are not a billing creator for this module", [], 403)
 
+        items_raw = json.loads(req.form.get("items",    "[]"))
+        boq_raw   = json.loads(req.form.get("boqItems", "[]"))
+        if not items_raw and not boq_raw:
+            return res("At least one BOQ item required", [], 400)
+
         # ── CERTIFIED BILL ────────────────────────────────────────
         if mode == "sale_certified_bill":
             raw_claim_id = req.form.get("claimBillId")
             if not raw_claim_id:
                 return res("claimBillId required for certified bill", [], 400)
 
-            # Lock claim bill row to prevent race conditions
             claim_bill = (
                 BillingMaster.query
                 .filter_by(id=int(raw_claim_id))
@@ -459,7 +434,6 @@ def create_billing(req, user_id):
             if claim_bill.project_code != project_code:
                 return res("Claim bill does not belong to this project", [], 403)
 
-            # Block duplicate active certified bill for same claim
             existing = BillingMaster.query.filter(
                 BillingMaster.claim_bill_id   == claim_bill.id,
                 BillingMaster.mode            == "sale_certified_bill",
@@ -471,11 +445,7 @@ def create_billing(req, user_id):
                     [], 400,
                 )
 
-            items, og_item_map = _build_items(req, claim_bill.og_sale_order_id)
-            if not items:
-                return res("At least one BOQ item required", [], 400)
-
-            billing_no    = claim_bill.billing_no   # same number as claim bill
+            billing_no    = claim_bill.billing_no
             billing_uuid  = str(_uuid.uuid4())
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_no, project_code, mode
@@ -505,7 +475,13 @@ def create_billing(req, user_id):
             db.session.add(bill)
             db.session.flush()
 
-            total_basic, total_gst = _add_billing_items(bill.id, items, og_item_map)
+            built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
+            built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+            for obj in built_items + built_boq:
+                db.session.add(obj)
+
+            total_basic = round(basic_items + basic_boq, 2)
+            total_gst   = round(gst_items   + gst_boq,   2)
             bill.this_bill_claim = total_basic
             bill.gst_amount      = total_gst
             bill.total_claim     = round(pre_certified + total_basic, 2)
@@ -531,13 +507,9 @@ def create_billing(req, user_id):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
-        items, og_item_map = _build_items(req, og_so.id)
-        if not items:
-            return res("At least one BOQ item required", [], 400)
-
-        billing_no    = generate_billing_no(mode)
-        billing_uuid  = str(_uuid.uuid4())
-        pre_certified = _get_pre_certified(og_sale_order_no, project_code, mode)
+        billing_no     = generate_billing_no(mode)
+        billing_uuid   = str(_uuid.uuid4())
+        pre_certified  = _get_pre_certified(og_sale_order_no, project_code, mode)
         attachment_url = _upload_billing_attachment(
             req.files.get("attachment"), billing_no
         )
@@ -562,7 +534,13 @@ def create_billing(req, user_id):
         db.session.add(bill)
         db.session.flush()
 
-        total_basic, total_gst = _add_billing_items(bill.id, items, og_item_map)
+        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
+        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+        for obj in built_items + built_boq:
+            db.session.add(obj)
+
+        total_basic = round(basic_items + basic_boq, 2)
+        total_gst   = round(gst_items   + gst_boq,   2)
         bill.this_bill_claim = total_basic
         bill.gst_amount      = total_gst
         bill.total_claim     = round(pre_certified + total_basic, 2)
@@ -686,20 +664,10 @@ def edit_billing(bill_id, req, user_id):
         if not allowed:
             return res("You are not a billing creator for this module", [], 403)
 
-        items = json.loads(req.form.get("items") or "[]")
-        if not items:
+        items_raw = json.loads(req.form.get("items",    "[]"))
+        boq_raw   = json.loads(req.form.get("boqItems", "[]"))
+        if not items_raw and not boq_raw:
             return res("At least one BOQ item required", [], 400)
-
-        og_so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
-        og_item_map = {}
-        if og_so:
-            og_item_ids = [row.get("ogSaleOrderItemId") for row in items if row.get("ogSaleOrderItemId")]
-            if og_item_ids:
-                og_item_objs = OgSaleOrderItem.query.filter(
-                    OgSaleOrderItem.id.in_(og_item_ids),
-                    OgSaleOrderItem.og_sale_order_id == og_so.id,
-                ).all()
-                og_item_map = {obj.id: obj for obj in og_item_objs}
 
         if req.form.get("billingDate"):
             bill.billing_date = req.form.get("billingDate")
@@ -713,54 +681,23 @@ def edit_billing(bill_id, req, user_id):
             bill.attachment = _upload_billing_attachment(new_file, bill.billing_no)
 
         BillingItem.query.filter_by(billing_id=bill.id).delete()
+        BillingBoqItem.query.filter_by(billing_id=bill.id).delete()
         db.session.flush()
 
-        total_basic = 0
-        total_gst   = 0
-
-        for idx, row in enumerate(items, start=1):
-            og_item_id = row.get("ogSaleOrderItemId")
-            og_item    = og_item_map.get(og_item_id) if og_item_id else None
-
-            item_code      = og_item.item_code        if og_item else row.get("itemCode")
-            item_name      = og_item.item_name        if og_item else row.get("itemName")
-            item_name_desc = og_item.item_description if og_item else row.get("itemDescription")
-            unit           = og_item.unit              if og_item else row.get("unit")
-
-            claim_qty   = float(row.get("claimQty")   or 0)
-            rate        = float(row.get("rate")        or 0)
-            amount      = round(claim_qty * rate, 2)
-            gst_percent = float(
-                row.get("gstPercent")
-                if row.get("gstPercent") not in (None, "")
-                else (og_item.gst_percent if og_item else 0)
-            )
-            gst_amount = round((amount * gst_percent) / 100, 2)
-
-            db.session.add(BillingItem(
-                billing_id            = bill.id,
-                sl_no                 = row.get("slNo") or idx,
-                og_sale_order_item_id = og_item_id,
-                item_code             = item_code,
-                item_name             = item_name,
-                item_name_desc        = item_name_desc,
-                unit                  = unit,
-                claim_qty             = claim_qty,
-                rate                  = rate,
-                amount                = amount,
-                gst_percent           = gst_percent,
-                gst_amount            = gst_amount,
-            ))
-
-            total_basic += amount
-            total_gst   += gst_amount
+        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
+        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+        for obj in built_items + built_boq:
+            db.session.add(obj)
 
         pre_certified = _get_pre_certified(
             bill.og_sale_order_no, bill.project_code, bill.mode, exclude_id=bill.id
         )
 
-        bill.this_bill_claim      = round(total_basic, 2)
-        bill.gst_amount           = round(total_gst, 2)
+        total_basic = round(basic_items + basic_boq, 2)
+        total_gst   = round(gst_items   + gst_boq,   2)
+
+        bill.this_bill_claim      = total_basic
+        bill.gst_amount           = total_gst
         bill.pre_certified_amount = pre_certified
         bill.total_claim          = round(pre_certified + total_basic, 2)
 
@@ -793,7 +730,11 @@ def submit_billing(bill_id, submitted_by):
             return res("Billing record not found", [], 404)
         if bill.workflow_status not in ("Draft", "Reback"):
             return res("Billing record already submitted", [], 400)
-        if not bill.items:
+
+        has_items = bool(bill.items) or bool(
+            BillingBoqItem.query.filter_by(billing_id=bill.id).first()
+        )
+        if not has_items:
             return res("Billing record has no items", [], 400)
 
         if bill.workflow_status == "Reback":
