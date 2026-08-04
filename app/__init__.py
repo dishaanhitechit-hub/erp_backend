@@ -159,6 +159,11 @@ def create_app():
 
     from .models import saleReceipt  # noqa — registers SaleReceiptMaster, SaleReceiptItem, SaleReceiptGst with Alembic
 
+    from .modules.finance.contra_entry.routes import contra_entry_bp
+    app.register_blueprint(contra_entry_bp, url_prefix="/finance/contra-entry")
+
+    from .models import contraEntry  # noqa — registers ContraEntryMaster, ContraEntryLine with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
