@@ -28,6 +28,7 @@ from app.modules.billing.constants import (
     get_billing_type,
     get_module_code,
 )
+from app.alias_helper import get_approval_module
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -344,7 +345,7 @@ def create_brb(data, user_id):
         if not order:
             return res("BRR has no order linked", [], 400)
 
-        allowed = is_creator(data.get("projectCode"), get_module_code(billing_type), user_id)
+        allowed = is_creator(data.get("projectCode"), get_approval_module(get_module_code(billing_type)), user_id)
         if not allowed:
             return res("You are not authorised to create billing", [], 403)
 
@@ -711,7 +712,7 @@ def edit_brb(brb_id, data, user_id):
             return res("Only Draft or Reback billing can be edited", [], 400)
 
         module = get_module_code(brb.billing_type)
-        if not is_creator(brb.project_code, module, user_id):
+        if not is_creator(brb.project_code, get_approval_module(module), user_id):
             return res("You are not authorised to edit billing", [], 403)
 
         items = data.get("items", [])
@@ -883,7 +884,7 @@ def submit_brb(brb_id, submitted_by=None):
         if brb.workflow_status == "Reback":
             brb.current_level = 0
 
-        first_level = get_first_approver(brb.project_code, module)
+        first_level = get_first_approver(brb.project_code, get_approval_module(module))
 
         if not first_level:
             brb.workflow_status   = "Approved"
@@ -929,10 +930,10 @@ def approve_brb(brb_id, approved_by=None, comments=None):
 
         module = get_module_code(brb.billing_type)
 
-        if not is_current_approver(brb.project_code, module, brb.current_level, approved_by):
+        if not is_current_approver(brb.project_code, get_approval_module(module), brb.current_level, approved_by):
             return res("You are not current approver", [], 403)
 
-        next_level = get_next_approver(brb.project_code, module, brb.current_level)
+        next_level = get_next_approver(brb.project_code, get_approval_module(module), brb.current_level)
 
         if next_level:
             create_history(project_code=brb.project_code, module_code=module, record_id=brb.id,
@@ -973,7 +974,7 @@ def reback_brb(brb_id, reback_by=None, comments=None):
 
         module = get_module_code(brb.billing_type)
 
-        if not is_current_approver(brb.project_code, module, brb.current_level, reback_by):
+        if not is_current_approver(brb.project_code, get_approval_module(module), brb.current_level, reback_by):
             return res("You are not current approver", [], 403)
 
         brb.workflow_status    = "Reback"
@@ -1009,7 +1010,7 @@ def reject_brb(brb_id, rejected_by=None, comments=None):
 
         module = get_module_code(brb.billing_type)
 
-        if not is_current_approver(brb.project_code, module, brb.current_level, rejected_by):
+        if not is_current_approver(brb.project_code, get_approval_module(module), brb.current_level, rejected_by):
             return res("You are not current approver", [], 403)
 
         brb.workflow_status = "Rejected"

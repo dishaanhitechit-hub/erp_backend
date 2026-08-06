@@ -1,8 +1,8 @@
 GRN_CATEGORIES = {"Purchases_Order", "Customer_Supply_Order", "Site_Transfer_Order"}
 SRN_CATEGORIES = {"Hire_Order", "Job_Contract_Order", "Work_Order"}
 
-GRN_MODULE = "bill_receive_register"
-SRN_MODULE = "bill_receive_register"
+GRN_MODULE = "billing_by_grn"
+SRN_MODULE = "billing_by_srn"
 
 
 def get_billing_type(category):

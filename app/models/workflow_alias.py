@@ -1,5 +1,4 @@
-
-
+ 
 from app.extensions import db
 
 class WorkflowModuleAlias(db.Model):
