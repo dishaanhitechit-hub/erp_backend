@@ -1137,6 +1137,7 @@ def update_user(userId, request):
 
 def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
 
+    from sqlalchemy import or_
     from app.models.indent_master import IndentMaster
     from app.models.orderMaster import OrderMaster
     from app.models.ORDER_projectwork import ProjectWorkOrderMaster
@@ -1164,42 +1165,55 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
     from app.models.concrete_registry import ConcreteRegistry
     from app.models.drawingRegister import DrawingRegister
 
+    # Each entry: (Model, billing_type_filter, project_filter_fn)
+    # billing_type_filter — None or a string value to filter Model.billing_type
+    # project_filter_fn  — None means use standard Model.project_code == project_code
+    #                      callable(Model, pc) returns a SQLAlchemy filter expression
+
+    def _dc_project_filter(M, pc):
+        return or_(M.to_project_code == pc, M.from_project_code == pc)
+
     _MAP = {
-        "indent":                [(IndentMaster, None)],
-        "order":                 [(OrderMaster, None)],
-        "pw_order":              [(ProjectWorkOrderMaster, None)],
-        "goods_received_note":   [(GrnMaster, None)],
-        "goods_issue_note":      [(GinMaster, None)],
-        "service_received_note": [(SrnMaster, None)],
-        "delivery_challan":      [(DcMaster, None)],
-        "dlr":                   [(DlrMaster, None)],
-        "log_sheet":             [(MachineryLogBook, None)],
-        "batching":              [(BatchingPlantMaster, None)],
-        "bill_receive_register": [(BrrMaster, None)],
-        "billing_by_grn":        [(BvsMaster, None), (BrgMaster, None), (BrbMaster, "GRN")],
-        "billing_by_srn":        [(BssMaster, None), (BrsMaster, None), (BrbMaster, "SRN")],
-        "contra":                [(ContraEntryMaster, None)],
-        "purchases":             [(PurchaseBillMaster, None), (PurchaseVoucherMaster, None)],
-        "sale":                  [(SaleBillMaster, None)],
-        "receipt":               [(SaleReceiptMaster, None)],
-        "sale_order":            [(OgSaleOrderMaster, None)],
-        "bbs_register":          [(BbsRegister, None)],
-        "hindrance_register":    [(HindranceRegister, None)],
-        "concrete_registry":     [(ConcreteRegistry, None)],
-        "drawing_register":      [(DrawingRegister, None)],
+        "indent":                [(IndentMaster,           None, None)],
+        "order":                 [(OrderMaster,            None, None)],
+        "pw_order":              [(ProjectWorkOrderMaster, None, None)],
+        "goods_received_note":   [(GrnMaster,              None, None)],
+        "goods_issue_note":      [(GinMaster,              None, None)],
+        "service_received_note": [(SrnMaster,              None, None)],
+        "delivery_challan":      [(DcMaster,               None, _dc_project_filter)],
+        "dlr":                   [(DlrMaster,              None, None)],
+        "log_sheet":             [(MachineryLogBook,       None, None)],
+        "batching":              [(BatchingPlantMaster,    None, None)],
+        "bill_receive_register": [(BrrMaster,              None, None)],
+        "billing_by_grn":        [(BvsMaster, None, None), (BrgMaster, None, None), (BrbMaster, "GRN", None)],
+        "billing_by_srn":        [(BssMaster, None, None), (BrsMaster, None, None), (BrbMaster, "SRN", None)],
+        "contra":                [(ContraEntryMaster,      None, None)],
+        "purchases":             [(PurchaseBillMaster, None, None), (PurchaseVoucherMaster, None, None)],
+        "sale":                  [(SaleBillMaster,         None, None)],
+        "receipt":               [(SaleReceiptMaster,      None, None)],
+        "sale_order":            [(OgSaleOrderMaster,      None, None)],
+        "bbs_register":          [(BbsRegister,            None, None)],
+        "hindrance_register":    [(HindranceRegister,      None, None)],
+        "concrete_registry":     [(ConcreteRegistry,       None, None)],
+        "drawing_register":      [(DrawingRegister,        None, None)],
     }
 
-    models = _MAP.get(module_code)
+    entries = _MAP.get(module_code)
 
-    if not models:
+    if not entries:
         return
 
     new_valid = sorted(new_valid_levels)
 
-    for (Model, billing_type) in models:
+    for (Model, billing_type, project_filter_fn) in entries:
+
+        if project_filter_fn:
+            project_expr = project_filter_fn(Model, project_code)
+        else:
+            project_expr = Model.project_code == project_code
 
         q = Model.query.filter(
-            Model.project_code == project_code,
+            project_expr,
             Model.workflow_status.like("Pending_L%"),
         )
 
