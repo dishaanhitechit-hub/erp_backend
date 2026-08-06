@@ -1135,6 +1135,94 @@ def update_user(userId, request):
 
 
 
+def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
+
+    from app.models.indent_master import IndentMaster
+    from app.models.orderMaster import OrderMaster
+    from app.models.ORDER_projectwork import ProjectWorkOrderMaster
+    from app.models.grnMaster import GrnMaster
+    from app.models.ginMaster import GinMaster
+    from app.models.srnMaster import SrnMaster
+    from app.models.dcMaster import DcMaster
+    from app.models.dlrMaster import DlrMaster
+    from app.models.machineryLogBook import MachineryLogBook
+    from app.models.batchingPlant import BatchingPlantMaster
+    from app.models.brrMaster import BrrMaster
+    from app.models.bvsMaster import BvsMaster
+    from app.models.bssMaster import BssMaster
+    from app.models.brgMaster import BrgMaster
+    from app.models.brsMaster import BrsMaster
+    from app.models.brbMaster import BrbMaster
+    from app.models.contraEntry import ContraEntryMaster
+    from app.models.purchaseBill import PurchaseBillMaster
+    from app.models.purchaseVoucher import PurchaseVoucherMaster
+    from app.models.saleBill import SaleBillMaster
+    from app.models.saleReceipt import SaleReceiptMaster
+    from app.models.ogSaleOrder import OgSaleOrderMaster
+    from app.models.bbsRegister import BbsRegister
+    from app.models.hindranceRegister import HindranceRegister
+    from app.models.concrete_registry import ConcreteRegistry
+    from app.models.drawingRegister import DrawingRegister
+
+    _MAP = {
+        "indent":                [(IndentMaster, None)],
+        "order":                 [(OrderMaster, None)],
+        "pw_order":              [(ProjectWorkOrderMaster, None)],
+        "goods_received_note":   [(GrnMaster, None)],
+        "goods_issue_note":      [(GinMaster, None)],
+        "service_received_note": [(SrnMaster, None)],
+        "delivery_challan":      [(DcMaster, None)],
+        "dlr":                   [(DlrMaster, None)],
+        "log_sheet":             [(MachineryLogBook, None)],
+        "batching":              [(BatchingPlantMaster, None)],
+        "bill_receive_register": [(BrrMaster, None)],
+        "billing_by_grn":        [(BvsMaster, None), (BrgMaster, None), (BrbMaster, "GRN")],
+        "billing_by_srn":        [(BssMaster, None), (BrsMaster, None), (BrbMaster, "SRN")],
+        "contra":                [(ContraEntryMaster, None)],
+        "purchases":             [(PurchaseBillMaster, None), (PurchaseVoucherMaster, None)],
+        "sale":                  [(SaleBillMaster, None)],
+        "receipt":               [(SaleReceiptMaster, None)],
+        "sale_order":            [(OgSaleOrderMaster, None)],
+        "bbs_register":          [(BbsRegister, None)],
+        "hindrance_register":    [(HindranceRegister, None)],
+        "concrete_registry":     [(ConcreteRegistry, None)],
+        "drawing_register":      [(DrawingRegister, None)],
+    }
+
+    models = _MAP.get(module_code)
+
+    if not models:
+        return
+
+    new_valid = sorted(new_valid_levels)
+
+    for (Model, billing_type) in models:
+
+        q = Model.query.filter(
+            Model.project_code == project_code,
+            Model.workflow_status.like("Pending_L%"),
+        )
+
+        if billing_type:
+            q = q.filter(Model.billing_type == billing_type)
+
+        if new_valid:
+            q = q.filter(Model.current_level.notin_(new_valid))
+
+        for doc in q.all():
+
+            nxt = next(
+                (lvl for lvl in new_valid if lvl > doc.current_level),
+                None
+            )
+
+            if nxt is not None:
+                doc.current_level = nxt
+                doc.workflow_status = f"Pending_L{nxt}"
+            else:
+                doc.workflow_status = "Approved"
+
+
 def create_approval_path(data):
 
     try:
@@ -1246,6 +1334,8 @@ def create_approval_path(data):
             # approvers
             # ------------------
 
+            new_valid_levels = set()
+
             for item in approver_users:
 
                 user_id = item.get(
@@ -1265,6 +1355,7 @@ def create_approval_path(data):
 
                     continue
 
+                new_valid_levels.add(level_no)
 
                 db.session.add(
 
@@ -1288,6 +1379,12 @@ def create_approval_path(data):
                     )
 
                 )
+
+            _resolve_stuck_documents(
+                project_code,
+                module_code,
+                new_valid_levels
+            )
 
 
         db.session.commit()
