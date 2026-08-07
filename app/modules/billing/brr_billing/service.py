@@ -471,12 +471,12 @@ def create_brb(data, user_id):
         brr_total       = float(brr.total_amount or 0)
         existing_billed = _brr_billed_amount(brr_id)
 
-        if brr_total > 0 and existing_billed + new_total > brr_total:
+        if brr_total > 0 and existing_billed + new_total > brr_total + 100:
             db.session.rollback()
-            remaining = brr_total - existing_billed
+            remaining = (brr_total + 100) - existing_billed
             return res(
                 f"Billing exceeds BRR amount. BRR total: {brr_total:.2f}, "
-                f"already billed: {existing_billed:.2f}, remaining: {remaining:.2f}",
+                f"already billed: {existing_billed:.2f}",  #, remaining: {remaining:.2f}, allowed buffer: 100.00",
                 [], 400
             )
 
@@ -820,12 +820,12 @@ def edit_brb(brb_id, data, user_id):
         brr_total       = float(brb.brr.total_amount or 0) if brb.brr else 0
         existing_billed = _brr_billed_amount(brb.brr_id, exclude_brb_id=brb.id)
 
-        if brr_total > 0 and existing_billed + new_total > brr_total:
+        if brr_total > 0 and existing_billed + new_total > brr_total + 100:
             db.session.rollback()
-            remaining = brr_total - existing_billed
+            remaining = (brr_total + 100) - existing_billed
             return res(
                 f"Billing exceeds BRR amount. BRR total: {brr_total:.2f}, "
-                f"already billed: {existing_billed:.2f}, remaining: {remaining:.2f}",
+                f"already billed: {existing_billed:.2f}, remaining: {remaining:.2f}, allowed buffer: 100.00",
                 [], 400
             )
 
