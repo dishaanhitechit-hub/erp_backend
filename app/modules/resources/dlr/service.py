@@ -15,6 +15,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -331,6 +332,10 @@ def approve_dlr(dlr_id, user_id, project_code, comments=None):
         return res("DLR is not pending approval", [], 400)
     if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
         return res("Not authorised to approve at this level", [], 403)
+
+    gap = get_gap_level(project_code, MODULE_CODE, d.current_level)
+    if gap:
+        return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
     create_history(project_code, MODULE_CODE, d.id, d.current_level, "APPROVE", user_id, comments)
 

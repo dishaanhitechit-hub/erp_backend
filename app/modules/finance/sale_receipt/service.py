@@ -15,6 +15,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -730,6 +731,10 @@ def approve_sale_receipt(receipt_id, approved_by, comments=None):
         allowed = is_current_approver(receipt.project_code, _MODULE, receipt.current_level, approved_by)
         if not allowed:
             return res("You are not the current approver", [], 403)
+
+        gap = get_gap_level(receipt.project_code, _MODULE, receipt.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(receipt.project_code, _MODULE, receipt.current_level)
 

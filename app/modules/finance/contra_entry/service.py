@@ -11,6 +11,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -385,6 +386,10 @@ def approve_contra_entry(entry_id, approved_by, comments=None):
         allowed = is_current_approver(entry.project_code, _MODULE, entry.current_level, approved_by)
         if not allowed:
             return res("You are not the current approver", [], 403)
+
+        gap = get_gap_level(entry.project_code, _MODULE, entry.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(entry.project_code, _MODULE, entry.current_level)
 

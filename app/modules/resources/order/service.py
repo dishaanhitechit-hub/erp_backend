@@ -1236,6 +1236,10 @@ def approve_order(
                 403
             )
 
+        gap = get_gap_level(order.project_code, "order", order.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
+
         # ==========================================
         # FIND NEXT LEVEL
         # ==========================================

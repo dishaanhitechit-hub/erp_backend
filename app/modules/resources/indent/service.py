@@ -1034,6 +1034,10 @@ def approve_indent(
                 403
             )
 
+        gap = get_gap_level(indent.project_code, "indent", indent.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
+
         # ==========================================
         # FIND NEXT LEVEL
         # ==========================================

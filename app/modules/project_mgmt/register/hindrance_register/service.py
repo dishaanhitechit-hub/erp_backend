@@ -13,6 +13,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -374,6 +375,10 @@ def approve_hindrance_register(hr_id, approved_by, comments=None):
 
         if not is_current_approver(hr.project_code, MODULE_CODE, hr.current_level, approved_by):
             return res("You are not current approver", [], 403)
+
+        gap = get_gap_level(hr.project_code, MODULE_CODE, hr.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(hr.project_code, MODULE_CODE, hr.current_level)
 

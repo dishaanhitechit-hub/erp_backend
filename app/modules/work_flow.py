@@ -82,6 +82,17 @@ def get_next_approver(
 
 
 # ==========================================
+# GAP LEVEL CHECK
+# ==========================================
+
+def get_gap_level(project_code, module_code, current_level):
+    next_path = get_next_approver(project_code, module_code, current_level)
+    if next_path and next_path.level_no != current_level + 1:
+        return current_level + 1
+    return None
+
+
+# ==========================================
 # LAST APPROVER
 # ==========================================
 
@@ -529,10 +540,30 @@ def get_approval_steps(
 
     steps = []
 
-    for path in levels:
+    if not levels:
+        return steps
 
-        lvl = path.level_no
-        h   = level_history.get(lvl)
+    levels_map = {path.level_no: path for path in levels}
+    max_level  = max(levels_map.keys())
+
+    for lvl in range(1, max_level + 1):
+
+        path = levels_map.get(lvl)
+
+        if path is None:
+            steps.append({
+                "level": lvl,
+                "approver": {
+                    "userId":   None,
+                    "username": "Not Assigned",
+                },
+                "status":   "Not Assigned",
+                "actionAt": None,
+                "comments": None,
+            })
+            continue
+
+        h = level_history.get(lvl)
 
         is_pending = (
             record.workflow_status

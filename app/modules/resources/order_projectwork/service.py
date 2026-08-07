@@ -44,6 +44,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -930,6 +931,10 @@ def approve_pw_order(order_id: int, approved_by=None, comments=None):
         )
         if not allowed:
             return res("You are not current approver", [], 403)
+
+        gap = get_gap_level(order.project_code, get_approval_module("pw_order"), order.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(
             order.project_code, get_approval_module("pw_order"), order.current_level

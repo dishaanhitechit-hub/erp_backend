@@ -12,6 +12,7 @@ from app.modules.work_flow import (
     is_current_approver,
     get_first_approver,
     get_next_approver,
+    get_gap_level,
     create_history,
     get_history,
     get_approval_steps,
@@ -484,6 +485,10 @@ def approve_og_sale_order(so_id, approved_by, comments=None):
         )
         if not allowed:
             return res("You are not the current approver", [], 403)
+
+        gap = get_gap_level(og_so.project_code, _MODULE, og_so.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(og_so.project_code, _MODULE, og_so.current_level)
 
