@@ -1,5 +1,6 @@
 # app/modules/setting/service.py
 import os
+from app.alias_helper import get_approval_module
 import uuid
 from flask import request
 from flask_jwt_extended import get_jwt_identity,get_jwt
@@ -1272,6 +1273,10 @@ def create_approval_path(data):
 
             module_code = module.get(
                 "moduleCode"
+            )
+
+            module_code = get_approval_module(
+                module_code
             )
 
             creator_users = (
