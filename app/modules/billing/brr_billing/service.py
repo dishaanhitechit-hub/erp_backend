@@ -194,7 +194,7 @@ def get_items_by_brr(brr_id):
         if not order:
             return res("BRR has no order linked", [], 400)
 
-        brr_total    = float(brr.total_amount or 0)
+        brr_total    = Decimal(str(brr.total_amount or 0))
         billed_total = _brr_billed_amount(brr_id)
         remaining    = max(brr_total - billed_total, 0)
 
@@ -207,7 +207,7 @@ def get_items_by_brr(brr_id):
             "brrPartyDate":      _fmt_date(brr.party_date),
             "brrBasicAmount":    float(brr.basic_amount or 0),
             "brrGstAmount":      float(brr.gst_amount   or 0),
-            "brrTotal":          brr_total,
+            "brrTotal":          float(brr_total),
             "brrWorkflowStatus": brr.workflow_status,
             "orderCategory":     brr.order_category,
             "billingType":       billing_type,
