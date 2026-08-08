@@ -349,7 +349,165 @@ def get_receipt_items(data):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 3. CREATE CHILD BILLING
+# 3. INVOICE LOOKUP  (by sale_bill_no → auto-fill child billing form)
+# ══════════════════════════════════════════════════════════════════
+
+def get_details_by_invoice_no(data):
+    """
+    Given an Approved sale bill's invoice number, return the linked OG Sale
+    Order, certified bill, and the booked/received/balance accounting rows —
+    ready to pre-fill a new child billing form.
+    """
+    try:
+        invoice_no   = (data.get("invoiceNo")   or "").strip()
+        project_code = (data.get("projectCode") or "").strip()
+
+        if not invoice_no:
+            return res("invoiceNo required", [], 400)
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        sale_bill = SaleBillMaster.query.filter_by(
+            sale_bill_no    = invoice_no,
+            project_code    = project_code,
+            workflow_status = "Approved",
+        ).first()
+
+        if not sale_bill:
+            return res("Approved sale bill not found for this invoice number", [], 404)
+
+        if not sale_bill.certified_bill_id:
+            return res("Sale bill has no linked certified bill", [], 400)
+
+        bill = BillingMaster.query.filter_by(
+            id              = sale_bill.certified_bill_id,
+            mode            = "sale_certified_bill",
+            workflow_status = "Approved",
+        ).first()
+
+        if not bill:
+            return res("Linked certified bill not found or not approved", [], 404)
+
+        # ── BASIC items ───────────────────────────────────────────
+        grouped = _group_by_cc(bill.items)
+
+        result_items = []
+        for g in grouped:
+            cc_code  = g["ccCode"]
+            booked   = Decimal(str(g["basicAmount"]))
+            received = Decimal(str(
+                db.session.query(func.sum(SaleReceiptItem.current_amount))
+                .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptItem.receipt_id)
+                .filter(
+                    SaleReceiptBillingMaster.certified_bill_id == bill.id,
+                    SaleReceiptBillingMaster.workflow_status   != "Rejected",
+                    SaleReceiptItem.cc_code                    == cc_code,
+                )
+                .scalar() or 0
+            ))
+            balance = booked - received
+
+            result_items.append({
+                "slNo":           g["slNo"],
+                "ccCode":         cc_code,
+                "ccName":         g["ccName"],
+                "bookedAmount":   float(booked),
+                "receivedAmount": float(received),
+                "balanceAmount":  float(balance),
+                "currentAmount":  0,
+            })
+
+        # ── GST lines ─────────────────────────────────────────────
+        gst_rows = (
+            db.session.query(
+                SaleBillGst.gst_type,
+                SaleBillGst.cc_code,
+                SaleBillGst.cc_name,
+                SaleBillGst.percent,
+                func.sum(SaleBillGst.gst_amount).label("total"),
+            )
+            .join(SaleBillMaster, SaleBillMaster.id == SaleBillGst.sale_bill_id)
+            .filter(
+                SaleBillMaster.certified_bill_id == bill.id,
+                SaleBillMaster.workflow_status   == "Approved",
+                SaleBillGst.is_selected          == True,
+            )
+            .group_by(
+                SaleBillGst.gst_type,
+                SaleBillGst.cc_code,
+                SaleBillGst.cc_name,
+                SaleBillGst.percent,
+            )
+            .all()
+        )
+
+        result_gst = []
+        if gst_rows:
+            for row in gst_rows:
+                booked_gst = Decimal(str(row.total or 0))
+                received_gst = Decimal(str(
+                    db.session.query(func.sum(SaleReceiptGst.current_amount))
+                    .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptGst.receipt_id)
+                    .filter(
+                        SaleReceiptBillingMaster.certified_bill_id == bill.id,
+                        SaleReceiptBillingMaster.workflow_status   != "Rejected",
+                        SaleReceiptGst.gst_type                    == row.gst_type,
+                    )
+                    .scalar() or 0
+                ))
+                balance_gst = booked_gst - received_gst
+
+                result_gst.append({
+                    "gstType":        row.gst_type,
+                    "ccCode":         row.cc_code,
+                    "ccName":         row.cc_name,
+                    "percent":        float(row.percent or 0),
+                    "bookedAmount":   float(booked_gst),
+                    "receivedAmount": float(received_gst),
+                    "balanceAmount":  float(balance_gst),
+                    "currentAmount":  0,
+                    "isSelected":     True,
+                })
+        else:
+            for gst_type, cc_code, cc_name, pct in [
+                ("IGST", "IGST", "Input-IGST", 18),
+                ("CGST", "CGST", "Input-CGST", 9),
+                ("SGST", "SGST", "Input-SGST", 9),
+            ]:
+                result_gst.append({
+                    "gstType":        gst_type,
+                    "ccCode":         cc_code,
+                    "ccName":         cc_name,
+                    "percent":        pct,
+                    "bookedAmount":   0,
+                    "receivedAmount": 0,
+                    "balanceAmount":  0,
+                    "currentAmount":  0,
+                    "isSelected":     False,
+                })
+
+        return res("Invoice details fetched", {
+            "invoiceNo":        sale_bill.sale_bill_no,
+            "invoiceDate":      _fmt_date(sale_bill.invoice_date),
+            "billToAddress":    sale_bill.bill_to_address,
+            "shipToAddress":    sale_bill.ship_to_address,
+            "billAbstractNo":   sale_bill.bill_abstract_no,
+            "billAbstractDate": _fmt_date(sale_bill.bill_abstract_date),
+            "ogSaleOrderNo":    bill.og_sale_order_no,
+            "ogSaleOrderId":    bill.og_sale_order_id,
+            "saleOrderDate":    _fmt_date(bill.og_so.og_sale_order_date) if bill.og_so else None,
+            "certifiedBillId":  bill.id,
+            "certifiedBillNo":  bill.billing_no,
+            "items":            result_items,
+            "gstLines":         result_gst,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 4. CREATE CHILD BILLING
 # ══════════════════════════════════════════════════════════════════
 
 def create_srb(data, user_id):
