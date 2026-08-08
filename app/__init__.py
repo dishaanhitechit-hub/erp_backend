@@ -157,7 +157,11 @@ def create_app():
     from .modules.finance.sale_receipt.routes import sale_receipt_bp
     app.register_blueprint(sale_receipt_bp, url_prefix="/finance/sale-receipt")
 
-    from .models import saleReceipt  # noqa — registers SaleReceiptMaster, SaleReceiptItem, SaleReceiptGst with Alembic
+    from .modules.finance.sale_receipt_billing.routes import sale_receipt_billing_bp
+    app.register_blueprint(sale_receipt_billing_bp, url_prefix="/finance/sale-receipt-billing")
+
+    from .models import saleReceipt         # noqa — registers SaleReceiptMaster with Alembic
+    from .models import saleReceiptBilling  # noqa — registers SaleReceiptBillingMaster, SaleReceiptItem, SaleReceiptGst with Alembic
 
     from .modules.finance.contra_entry.routes import contra_entry_bp
     app.register_blueprint(contra_entry_bp, url_prefix="/finance/contra-entry")
