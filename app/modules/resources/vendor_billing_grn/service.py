@@ -223,8 +223,8 @@ def get_grns_by_order(order_id):
                 received_qty   = Decimal(str(gi.current_received_qty or 0))
                 available_qty  = max(received_qty - already_billed, 0)
 
-                rate        = float(oi.rate        or 0) if oi else 0
-                gst_percent = float(oi.gst_percent or 0) if oi else 0
+                rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
+                gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
 
                 items.append({
                     "grnItemId":     gi.id,
@@ -239,9 +239,9 @@ def get_grns_by_order(order_id):
                     "receivedQty":   float(received_qty),
                     "alreadyBilled": float(already_billed),
                     "availableQty":  float(available_qty),
-                    "billingQty":    0,           # user fills
-                    "rate":          rate,
-                    "gstPercent":    gst_percent,
+                    "billingQty":    0,
+                    "rate":          float(rate),
+                    "gstPercent":    float(gst_percent),
                     "useLocation":   gi.use_location,
                     "storeLocation": gi.store_location,
                 })

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from collections import defaultdict
 from sqlalchemy import func
 from app.extensions import db
@@ -84,20 +85,20 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
     }
 
     # ── group by CC code ─────────────────────────────────────────
-    groups = defaultdict(lambda: {"items": [], "totalStockAmount": 0.0})
+    groups = defaultdict(lambda: {"items": [], "totalStockAmount": Decimal('0')})
 
     for row in grn_rows:
         code = row.item_code
         item = item_map.get(code)
         gin  = gin_map.get(code)
 
-        receivedQty = float(row.total_received_qty)
-        receivedAmt = float(row.total_received_amount)
-        issuedQty   = float(gin.total_issued_qty) if gin else 0.0
-        issuedAmt   = float(gin.total_issued_amount) if gin else 0.0
+        receivedQty = Decimal(str(row.total_received_qty or 0))
+        receivedAmt = Decimal(str(row.total_received_amount or 0))
+        issuedQty   = Decimal(str(gin.total_issued_qty or 0)) if gin else Decimal('0')
+        issuedAmt   = Decimal(str(gin.total_issued_amount or 0)) if gin else Decimal('0')
 
         stockQty    = receivedQty - issuedQty
-        stockAmount = round(receivedAmt - issuedAmt, 2)
+        stockAmount = receivedAmt - issuedAmt
 
         cc_id     = item.cc_code_id if item else None
         cc        = cc_map.get(cc_id) if cc_id else None
@@ -105,17 +106,15 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
 
         groups[group_key]["ccCode"] = cc.cc_code if cc else None
         groups[group_key]["ccName"] = cc.cc_name if cc else None
-        groups[group_key]["totalStockAmount"] = round(
-            groups[group_key]["totalStockAmount"] + stockAmount, 2
-        )
+        groups[group_key]["totalStockAmount"] = groups[group_key]["totalStockAmount"] + stockAmount
         groups[group_key]["items"].append({
             "itemCode":    code,
             "itemName":    item.item_name if item else None,
             "unit":        item.unit.unit_name if item and item.unit else None,
-            "receivedQty": receivedQty,
-            "issuedQty":   issuedQty,
-            "stockQty":    stockQty,
-            "stockAmount": stockAmount,
+            "receivedQty": float(receivedQty),
+            "issuedQty":   float(issuedQty),
+            "stockQty":    float(stockQty),
+            "stockAmount": float(stockAmount),
         })
 
     # ── filter by cc_codes (case-insensitive, multi-value) ───────
@@ -133,7 +132,7 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
             "slNo":             group_sl,
             "ccCode":           group_data["ccCode"],
             "ccName":           group_data["ccName"],
-            "totalStockAmount": group_data["totalStockAmount"],
+            "totalStockAmount": float(group_data["totalStockAmount"]),
             "items": [
                 {"slNo": f"{group_sl}.{i}", **item_row}
                 for i, item_row in enumerate(group_data["items"], start=1)
@@ -202,20 +201,20 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
         grn_q = grn_q.filter(GrnMaster.grn_date <= to_date)
 
     grn_entries         = []
-    total_received_qty  = 0.0
-    total_received_amt  = 0.0
+    total_received_qty  = Decimal('0')
+    total_received_amt  = Decimal('0')
     for r in grn_q.order_by(GrnMaster.grn_date).all():
-        qty    = float(r.current_received_qty or 0)
-        rate   = float(r.rate or 0)
-        amount = round(qty * rate, 2)
+        qty    = Decimal(str(r.current_received_qty or 0))
+        rate   = Decimal(str(r.rate or 0))
+        amount = qty * rate
         total_received_qty += qty
         total_received_amt += amount
         grn_entries.append({
             "grnNo":         r.grn_no,
             "grnDate":       _fmt_date(r.grn_date),
-            "receivedQty":   qty,
-            "rate":          rate,
-            "amount":        amount,
+            "receivedQty":   float(qty),
+            "rate":          float(rate),
+            "amount":        float(amount),
             "storeLocation": r.store_location,
         })
 
@@ -243,20 +242,20 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
         gin_q = gin_q.filter(GinMaster.gin_date <= to_date)
 
     gin_entries        = []
-    total_issued_qty   = 0.0
-    total_issued_amt   = 0.0
+    total_issued_qty   = Decimal('0')
+    total_issued_amt   = Decimal('0')
     for r in gin_q.order_by(GinMaster.gin_date).all():
-        qty    = float(r.issue_qty or 0)
-        rate   = float(r.rate or 0)
-        amount = round(qty * rate, 2)
+        qty    = Decimal(str(r.issue_qty or 0))
+        rate   = Decimal(str(r.rate or 0))
+        amount = qty * rate
         total_issued_qty += qty
         total_issued_amt += amount
         gin_entries.append({
             "ginNo":       r.gin_no,
             "ginDate":     _fmt_date(r.gin_date),
-            "issuedQty":   qty,
-            "rate":        rate,
-            "amount":      amount,
+            "issuedQty":   float(qty),
+            "rate":        float(rate),
+            "amount":      float(amount),
             "useLocation": r.item_used_location,
         })
 
@@ -268,12 +267,12 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
             "itemCode":            item_code,
             "itemName":            item.item_name if item else None,
             "unit":                item.unit.unit_name if item and item.unit else None,
-            "totalReceivedQty":    round(total_received_qty, 2),
-            "totalReceivedAmount": round(total_received_amt, 2),
-            "totalIssuedQty":      round(total_issued_qty, 2),
-            "totalIssuedAmount":   round(total_issued_amt, 2),
-            "stockQty":            round(total_received_qty - total_issued_qty, 2),
-            "stockAmount":         round(total_received_amt - total_issued_amt, 2),
+            "totalReceivedQty":    float(total_received_qty),
+            "totalReceivedAmount": float(total_received_amt),
+            "totalIssuedQty":      float(total_issued_qty),
+            "totalIssuedAmount":   float(total_issued_amt),
+            "stockQty":            float(total_received_qty - total_issued_qty),
+            "stockAmount":         float(total_received_amt - total_issued_amt),
         },
         "grnEntries": _paginate(grn_entries, grn_page, entries_limit),
         "ginEntries": _paginate(gin_entries, gin_page, entries_limit),

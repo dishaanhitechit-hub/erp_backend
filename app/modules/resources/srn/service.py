@@ -1031,7 +1031,7 @@ def get_srn_by_uuid(srn_uuid):
 
         # ── items ─────────────────────────────────────────────────
         items = []
-        total_received = 0.0
+        total_received = Decimal('0')
 
         for si in srn.items:
             poi = si.pw_order_item
@@ -1042,10 +1042,10 @@ def get_srn_by_uuid(srn_uuid):
                 if poi.item:
                     item_name = poi.item.item_name
                     unit      = poi.item.unit.unit_name if poi.item.unit else None
-                order_qty = float(poi.qty or 0)
+                order_qty = Decimal(str(poi.qty or 0))
 
-            recv_qty       = float(si.current_received_qty or 0)
-            pre_qty        = _pre_received_qty(si.pw_order_item_id) if si.pw_order_item_id else 0.0
+            recv_qty       = Decimal(str(si.current_received_qty or 0))
+            pre_qty        = _pre_received_qty(si.pw_order_item_id) if si.pw_order_item_id else Decimal('0')
             balance_qty    = order_qty - pre_qty
             total_received += recv_qty
 
@@ -1055,10 +1055,10 @@ def get_srn_by_uuid(srn_uuid):
                 "pwOrderItemId":      si.pw_order_item_id,
                 "itemName":           item_name,
                 "unit":               unit,
-                "orderQty":           order_qty,
-                "preReceivedQty":     round(pre_qty, 2),
-                "balanceQty":         round(balance_qty, 2),
-                "currentReceivedQty": recv_qty,
+                "orderQty":           float(order_qty),
+                "preReceivedQty":     float(pre_qty),
+                "balanceQty":         float(balance_qty),
+                "currentReceivedQty": float(recv_qty),
                 "useLocation":        si.use_location,
                 "storeLocation":      si.store_location,
             })
@@ -1121,7 +1121,7 @@ def get_srn_by_uuid(srn_uuid):
             "items":             items,
             "summary": {
                 "totalItems":       len(items),
-                "totalReceivedQty": round(total_received, 2),
+                "totalReceivedQty": float(total_received),
             },
             "history":           history,
         }

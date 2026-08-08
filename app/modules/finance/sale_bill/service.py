@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -80,11 +81,11 @@ def _group_by_cc(billing_items):
             groups[key] = {
                 "ccCode":      cc.cc_code if cc else None,
                 "ccName":      cc.cc_name if cc else "Uncategorized",
-                "basicAmount": 0.0,
+                "basicAmount": Decimal('0'),
             }
             order.append(key)
 
-        groups[key]["basicAmount"] += float(bi.amount or 0)
+        groups[key]["basicAmount"] += Decimal(str(bi.amount or 0))
 
     return [
         {
@@ -93,7 +94,7 @@ def _group_by_cc(billing_items):
             "ccName":      groups[k]["ccName"],
             "description": "",
             "hsnSac":      "",
-            "basicAmount": round(groups[k]["basicAmount"], 2),
+            "basicAmount": float(groups[k]["basicAmount"]),
         }
         for idx, k in enumerate(order)
     ]
@@ -282,14 +283,14 @@ def create_sale_bill(data, user_id):
 
         gst_lines = data.get("gstLines", [])
 
-        basic_total = sum(float(i.get("basicAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("gstAmount") or 0)
+            Decimal(str(g.get("gstAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
-        total     = round(basic_total + gst_total - discount + round_off, 2)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
+        total     = basic_total + gst_total - discount + round_off
 
         sale_bill_no   = generate_sale_bill_no()
         sale_bill_uuid = str(_uuid.uuid4())
@@ -314,8 +315,8 @@ def create_sale_bill(data, user_id):
             bank_ac_id         = data.get("bankAcId"),
             payment_terms      = data.get("paymentTerms"),
             declaration        = data.get("declaration"),
-            basic_amount         = round(basic_total, 2),
-            gst_amount           = round(gst_total,   2),
+            basic_amount         = basic_total,
+            gst_amount           = gst_total,
             discount             = discount,
             round_off            = round_off,
             total_invoice_amount = total,
@@ -335,7 +336,7 @@ def create_sale_bill(data, user_id):
                 cc_name      = row.get("ccName"),
                 description  = row.get("description"),
                 hsn_sac      = row.get("hsnSac"),
-                basic_amount = float(row.get("basicAmount") or 0),
+                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
             ))
 
         for g in gst_lines:
@@ -345,8 +346,8 @@ def create_sale_bill(data, user_id):
                 cc_code      = g.get("ccCode"),
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
-                percent      = float(g.get("percent")   or 0),
-                gst_amount   = float(g.get("gstAmount") or 0) if g.get("isSelected") else 0,
+                percent      = Decimal(str(g.get("percent")   or 0)),
+                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected  = bool(g.get("isSelected")),
             ))
 
@@ -491,13 +492,13 @@ def edit_sale_bill(bill_id, data, user_id):
         SaleBillGst.query.filter_by(sale_bill_id=bill.id).delete()
         db.session.flush()
 
-        basic_total = sum(float(i.get("basicAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("gstAmount") or 0)
+            Decimal(str(g.get("gstAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
             db.session.add(SaleBillItem(
@@ -507,7 +508,7 @@ def edit_sale_bill(bill_id, data, user_id):
                 cc_name      = row.get("ccName"),
                 description  = row.get("description"),
                 hsn_sac      = row.get("hsnSac"),
-                basic_amount = float(row.get("basicAmount") or 0),
+                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
             ))
 
         for g in gst_lines:
@@ -517,16 +518,16 @@ def edit_sale_bill(bill_id, data, user_id):
                 cc_code      = g.get("ccCode"),
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
-                percent      = float(g.get("percent")   or 0),
-                gst_amount   = float(g.get("gstAmount") or 0) if g.get("isSelected") else 0,
+                percent      = Decimal(str(g.get("percent")   or 0)),
+                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected  = bool(g.get("isSelected")),
             ))
 
-        bill.basic_amount         = round(basic_total, 2)
-        bill.gst_amount           = round(gst_total,   2)
+        bill.basic_amount         = basic_total
+        bill.gst_amount           = gst_total
         bill.discount             = discount
         bill.round_off            = round_off
-        bill.total_invoice_amount = round(basic_total + gst_total - discount + round_off, 2)
+        bill.total_invoice_amount = basic_total + gst_total - discount + round_off
 
         if bill.workflow_status == "Reback":
             bill.correction_sent_at = None

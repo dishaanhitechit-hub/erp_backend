@@ -17,6 +17,7 @@
 
 import uuid as _uuid
 from collections import defaultdict
+from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -225,10 +226,10 @@ def get_item_list_by_subcategories(
 
         result = []
         for row in rows:
-            ordered = float(row.ordered_qty)
+            ordered = Decimal(str(row.ordered_qty or 0))
             max_qty = get_item_max_qty(project_code, row.item_code)
             balance = (
-                round(max_qty - ordered, 4) if max_qty is not None else None
+                float(max_qty - ordered) if max_qty is not None else None
             )
 
             result.append({
@@ -237,7 +238,7 @@ def get_item_list_by_subcategories(
                 "itemUnit":    row.item_unit,
                 "subCode":     row.sub_code,
                 "subCodeName": row.sub_code_name,
-                "orderedQty":  ordered,
+                "orderedQty":  float(ordered),
                 "maxQty":      max_qty,
                 "balanceQty":  balance,
                 "orderQty":    0,
@@ -333,14 +334,14 @@ def create_pw_order(data, user_id, files=None):
         db.session.add(order)
         db.session.flush()
 
-        total_basic = 0
-        total_gst   = 0
+        total_basic = Decimal('0')
+        total_gst   = Decimal('0')
 
         # ── items ─────────────────────────────────────────────────
         for row in items:
 
             item_code    = row.get("itemCode")
-            requested_qty = float(row.get("qty", 0))
+            requested_qty = Decimal(str(row.get("qty", 0) or 0))
 
             # validate item exists
             item_obj = Item.query.filter_by(item_code=item_code).first()
@@ -361,7 +362,7 @@ def create_pw_order(data, user_id, files=None):
             # not push the running total past that limit.
             max_qty = get_item_max_qty(order.project_code, item_code)
 
-            already_ordered = float(
+            already_ordered = Decimal(str(
                 db.session.query(
                     func.coalesce(
                         func.sum(ProjectWorkOrderItem.qty), 0
@@ -376,8 +377,8 @@ def create_pw_order(data, user_id, files=None):
                     ProjectWorkOrderItem.item_code      == item_code,
                     ProjectWorkOrderMaster.workflow_status != "Rejected",
                 )
-                .scalar()
-            )
+                .scalar() or 0
+            ))
 
             if max_qty is not None:
                 if already_ordered + requested_qty > max_qty:
@@ -392,13 +393,13 @@ def create_pw_order(data, user_id, files=None):
                     )
 
             # ── financials ────────────────────────────────────────
-            rate        = float(row.get("rate", 0))
-            gst_percent = float(row.get("gstPercent", 0))
+            rate        = Decimal(str(row.get("rate", 0) or 0))
+            gst_percent = Decimal(str(row.get("gstPercent", 0) or 0))
             amount      = requested_qty * rate
             gst_amount  = (amount * gst_percent) / 100
 
             balance_qty = (
-                round(max_qty - already_ordered - requested_qty, 4)
+                max_qty - already_ordered - requested_qty
                 if max_qty is not None
                 else 0
             )
@@ -530,13 +531,13 @@ def edit_pw_order(order_id, data, user_id, files=None):
         db.session.flush()
 
         # ── rebuild items ─────────────────────────────────────────
-        total_basic = 0
-        total_gst   = 0
+        total_basic = Decimal('0')
+        total_gst   = Decimal('0')
 
         for row in items:
 
             item_code     = row.get("itemCode")
-            requested_qty = float(row.get("qty", 0))
+            requested_qty = Decimal(str(row.get("qty", 0) or 0))
 
             item_obj = Item.query.filter_by(item_code=item_code).first()
             if not item_obj:
@@ -552,7 +553,7 @@ def edit_pw_order(order_id, data, user_id, files=None):
             # (items were wiped above, so the subquery is clean).
             max_qty = get_item_max_qty(order.project_code, item_code)
 
-            already_ordered = float(
+            already_ordered = Decimal(str(
                 db.session.query(
                     func.coalesce(
                         func.sum(ProjectWorkOrderItem.qty), 0
@@ -567,8 +568,8 @@ def edit_pw_order(order_id, data, user_id, files=None):
                     ProjectWorkOrderItem.item_code      == item_code,
                     ProjectWorkOrderMaster.workflow_status != "Rejected",
                 )
-                .scalar()
-            )
+                .scalar() or 0
+            ))
 
             if max_qty is not None:
                 if already_ordered + requested_qty > max_qty:
@@ -582,13 +583,13 @@ def edit_pw_order(order_id, data, user_id, files=None):
                         400,
                     )
 
-            rate        = float(row.get("rate", 0))
-            gst_percent = float(row.get("gstPercent", 0))
+            rate        = Decimal(str(row.get("rate", 0) or 0))
+            gst_percent = Decimal(str(row.get("gstPercent", 0) or 0))
             amount      = requested_qty * rate
             gst_amount  = (amount * gst_percent) / 100
 
             balance_qty = (
-                round(max_qty - already_ordered - requested_qty, 4)
+                max_qty - already_ordered - requested_qty
                 if max_qty is not None
                 else 0
             )
@@ -1288,11 +1289,11 @@ def get_pw_order_by_uuid(order_uuid: str):
         items_list = []
         for item in order.items:
             itm        = item.item
-            qty        = float(item.qty or 0)
-            rate       = float(item.rate or 0)
-            amount     = float(item.amount or 0)
-            gst_pct    = float(item.gst_percent or 0)
-            gst_amount = float(item.gst_amount or 0)
+            qty        = Decimal(str(item.qty or 0))
+            rate       = Decimal(str(item.rate or 0))
+            amount     = Decimal(str(item.amount or 0))
+            gst_pct    = Decimal(str(item.gst_percent or 0))
+            gst_amount = Decimal(str(item.gst_amount or 0))
             items_list.append({
                 "lineId":          item.id,
                 "itemCode":        item.item_code,
@@ -1302,26 +1303,26 @@ def get_pw_order_by_uuid(order_uuid: str):
                 "unit":            itm.unit.short_name if itm and itm.unit else None,
                 "customNote":      item.custom_note,
                 "location":        item.location,
-                "qty":             qty,
+                "qty":             float(qty),
                 "amendQty":        float(item.amend_qty or 0),
                 "usedQty":         float(item.used_qty or 0),
                 "balanceQty":      float(item.balance_qty or 0),
-                "rate":            rate,
-                "basicAmount":     amount,
-                "gstPercent":      gst_pct,
-                "gstAmount":       gst_amount,
-                "lineTotal":       round(amount + gst_amount, 2),
+                "rate":            float(rate),
+                "basicAmount":     float(amount),
+                "gstPercent":      float(gst_pct),
+                "gstAmount":       float(gst_amount),
+                "lineTotal":       float(amount + gst_amount),
                 "itemStatus":      item.item_status,
                 "maxQty":          get_item_max_qty(order.project_code, item.item_code),
             })
 
         # ── GST breakup by slab ────────────────────────────────────
         gst_slab_map = defaultdict(lambda: {
-            "gstPercent":  0.0,
+            "gstPercent":  Decimal('0'),
             "itemCount":   0,
-            "basicAmount": 0.0,
-            "gstAmount":   0.0,
-            "totalAmount": 0.0,
+            "basicAmount": Decimal('0'),
+            "gstAmount":   Decimal('0'),
+            "totalAmount": Decimal('0'),
             "hsnList":     []
         })
         for row in items_list:
@@ -1329,14 +1330,22 @@ def get_pw_order_by_uuid(order_uuid: str):
             slab = gst_slab_map[key]
             slab["gstPercent"]  = row["gstPercent"]
             slab["itemCount"]  += 1
-            slab["basicAmount"] = round(slab["basicAmount"] + row["basicAmount"], 4)
-            slab["gstAmount"]   = round(slab["gstAmount"]   + row["gstAmount"],   4)
-            slab["totalAmount"] = round(slab["totalAmount"]  + row["lineTotal"],   4)
+            slab["basicAmount"] = slab["basicAmount"] + Decimal(str(row["basicAmount"]))
+            slab["gstAmount"]   = slab["gstAmount"]   + Decimal(str(row["gstAmount"]))
+            slab["totalAmount"] = slab["totalAmount"]  + Decimal(str(row["lineTotal"]))
             hsn = row.get("hsnSac")
             if hsn and hsn not in slab["hsnList"]:
                 slab["hsnList"].append(hsn)
 
-        gst_breakup = sorted(gst_slab_map.values(), key=lambda x: x["gstPercent"])
+        gst_breakup = sorted(
+            [
+                {**s, "basicAmount": float(s["basicAmount"]),
+                       "gstAmount":   float(s["gstAmount"]),
+                       "totalAmount": float(s["totalAmount"])}
+                for s in gst_slab_map.values()
+            ],
+            key=lambda x: x["gstPercent"],
+        )
 
         # ── Terms & conditions (parsed) ────────────────────────────
         terms_list = []

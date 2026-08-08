@@ -161,8 +161,8 @@ def get_grns_by_brr(brr_id):
                 received_qty   = Decimal(str(gi.current_received_qty or 0))
                 available_qty  = max(received_qty - already_billed, 0)
 
-                rate        = float(oi.rate        or 0) if oi else 0
-                gst_percent = float(oi.gst_percent or 0) if oi else 0
+                rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
+                gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
 
                 items.append({
                     "grnItemId":     gi.id,
@@ -178,8 +178,8 @@ def get_grns_by_brr(brr_id):
                     "alreadyBilled": float(already_billed),
                     "availableQty":  float(available_qty),
                     "billingQty":    0,
-                    "rate":          rate,
-                    "gstPercent":    gst_percent,
+                    "rate":          float(rate),
+                    "gstPercent":    float(gst_percent),
                     "useLocation":   gi.use_location,
                     "storeLocation": gi.store_location,
                 })
@@ -191,16 +191,16 @@ def get_grns_by_brr(brr_id):
                 "items":   items,
             })
 
-        brr_total    = float(brr.total_amount or 0)
+        brr_total    = Decimal(str(brr.total_amount or 0))
         billed_total = _brr_billed_amount(brr_id)
         remaining    = max(brr_total - billed_total, 0)
 
         data = {
             "brrId":           brr.id,
             "brrNo":           brr.brr_no,
-            "brrTotal":        brr_total,
-            "billedSoFar":     billed_total,
-            "remainingAmount": remaining,
+            "brrTotal":        float(brr_total),
+            "billedSoFar":     float(billed_total),
+            "remainingAmount": float(remaining),
             "orderId":         order.id,
             "orderNo":         order.order_no,
             "orderDate":       _fmt_date(order.order_date),
@@ -597,7 +597,7 @@ def edit_brg(brg_id, data, user_id):
             total_gst   += gst_amount
 
         new_total       = total_basic + total_gst
-        brr_total       = float(brg.brr.total_amount or 0) if brg.brr else 0
+        brr_total       = Decimal(str(brg.brr.total_amount or 0)) if brg.brr else Decimal('0')
         existing_billed = _brr_billed_amount(brg.brr_id, exclude_brg_id=brg.id)
 
         if brr_total > 0 and existing_billed + new_total > brr_total:

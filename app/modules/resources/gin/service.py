@@ -1014,7 +1014,7 @@ def get_gin_by_uuid(gin_uuid):
 
         # ── items ─────────────────────────────────────────────────
         items = []
-        total_issue_qty = 0.0
+        total_issue_qty = Decimal('0')
         for gi in gin.items:
             oi = gi.order_item
             item_name = hsn_sac = unit = None
@@ -1024,9 +1024,9 @@ def get_gin_by_uuid(gin_uuid):
                     item_name = oi.item.item_name
                     hsn_sac   = oi.item.hsn_sac   if hasattr(oi.item, "hsn_sac") else None
                     unit      = oi.item.unit.unit_name if oi.item.unit else None
-                order_qty = float(oi.qty or 0)
+                order_qty = Decimal(str(oi.qty or 0))
 
-            issue_qty  = float(gi.issue_qty or 0)
+            issue_qty  = Decimal(str(gi.issue_qty or 0))
             stock_qty  = float(_stock_qty(gi.order_item_id)) if gi.order_item_id else 0.0
             total_issue_qty += issue_qty
 
@@ -1037,8 +1037,8 @@ def get_gin_by_uuid(gin_uuid):
                 "itemName":        item_name,
                 "hsnSac":          hsn_sac,
                 "unit":            unit,
-                "orderQty":        order_qty,
-                "issueQty":        issue_qty,
+                "orderQty":        float(order_qty),
+                "issueQty":        float(issue_qty),
                 "stockQty":        stock_qty,
                 "stockLocation":   gi.stock_location,
                 "itemUsedLocation": gi.item_used_location,
@@ -1100,7 +1100,7 @@ def get_gin_by_uuid(gin_uuid):
             "items":             items,
             "summary": {
                 "totalItems":    len(items),
-                "totalIssueQty": round(total_issue_qty, 2),
+                "totalIssueQty": float(total_issue_qty),
             },
             "history":           history,
         }

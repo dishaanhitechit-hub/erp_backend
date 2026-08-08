@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -77,16 +78,16 @@ def _build_rows(raw_rows, og_sale_order_id, model_class):
     All fields are manual — amount and gstAmount are computed server-side.
     Works for both OgSaleOrderItem and OgSaleOrderBoqItem.
     """
-    rows       = []
-    total_basic = 0
-    total_gst   = 0
+    rows        = []
+    total_basic = Decimal('0')
+    total_gst   = Decimal('0')
 
     for idx, row in enumerate(raw_rows, start=1):
-        order_qty   = float(row.get("orderQty")   or 0)
-        rate        = float(row.get("rate")        or 0)
-        gst_percent = float(row.get("gstPercent")  or 0)
-        amount      = round(order_qty * rate, 2)
-        gst_amount  = round((amount * gst_percent) / 100, 2)
+        order_qty   = Decimal(str(row.get("orderQty")   or 0))
+        rate        = Decimal(str(row.get("rate")        or 0))
+        gst_percent = Decimal(str(row.get("gstPercent")  or 0))
+        amount      = order_qty * rate
+        gst_amount  = (amount * gst_percent) / 100
 
         rows.append(model_class(
             og_sale_order_id = og_sale_order_id,
@@ -106,7 +107,7 @@ def _build_rows(raw_rows, og_sale_order_id, model_class):
         total_basic += amount
         total_gst   += gst_amount
 
-    return rows, round(total_basic, 2), round(total_gst, 2)
+    return rows, total_basic, total_gst
 
 
 def _serialize_rows(rows):
@@ -233,9 +234,9 @@ def create_og_sale_order(request, user_id):
         for item in built_boq_items:
             db.session.add(item)
 
-        og_so.basic_amount = round(basic_items + basic_boq, 2)
-        og_so.gst_amount   = round(gst_items   + gst_boq,  2)
-        og_so.total_amount = round(og_so.basic_amount + og_so.gst_amount, 2)
+        og_so.basic_amount = basic_items + basic_boq
+        og_so.gst_amount   = gst_items   + gst_boq
+        og_so.total_amount = og_so.basic_amount + og_so.gst_amount
 
         db.session.commit()
 
@@ -386,9 +387,9 @@ def edit_og_sale_order(so_id, request, user_id):
         for item in built_boq_items:
             db.session.add(item)
 
-        og_so.basic_amount = round(basic_items + basic_boq, 2)
-        og_so.gst_amount   = round(gst_items   + gst_boq,  2)
-        og_so.total_amount = round(og_so.basic_amount + og_so.gst_amount, 2)
+        og_so.basic_amount = basic_items + basic_boq
+        og_so.gst_amount   = gst_items   + gst_boq
+        og_so.total_amount = og_so.basic_amount + og_so.gst_amount
 
         if og_so.workflow_status == "Reback":
             og_so.correction_sent_at = None

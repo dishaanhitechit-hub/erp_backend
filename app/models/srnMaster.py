@@ -117,7 +117,7 @@ class SrnItem(db.Model):
 
     srnl = db.Column(db.String(50), nullable=True)
 
-    current_received_qty = db.Column(db.Numeric(12, 2), default=0)
+    current_received_qty = db.Column(db.Numeric(17, 4), default=0)
     use_location         = db.Column(db.String(150),    nullable=True)
     store_location       = db.Column(db.String(150),    nullable=True)
 

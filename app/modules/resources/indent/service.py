@@ -3,6 +3,7 @@ import uuid as _uuid
 from collections import defaultdict
 from datetime import datetime,date
 from sqlalchemy.exc import SQLAlchemyError
+from unicodedata import decimal
 
 from app.extensions import db
 from app.response import res
@@ -424,7 +425,7 @@ def get_indent_details(indent_id):
                 "itemName": row.item.item_name
                 if row.item else None,
 
-                "qty": float(row.qty),
+                "qty": decimal(float(row.qty)),
 
                 "location": row.location,
 

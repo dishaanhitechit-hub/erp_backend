@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -170,8 +171,8 @@ def create_brr(data, user_id, files=None):
 
         brr_no = generate_brr_no()
 
-        basic  = float(data.get("basicAmount") or 0)
-        gst    = float(data.get("gstAmount")   or 0)
+        basic  = Decimal(str(data.get("basicAmount") or 0))
+        gst    = Decimal(str(data.get("gstAmount")   or 0))
         total  = basic + gst
 
         # ── file upload ────────────────────────────────────────
@@ -416,8 +417,8 @@ def edit_brr(brr_id, data, user_id, files=None):
             brr.pw_order_id = order_id_val if billing_type == "SRN" else brr.pw_order_id
 
         if data.get("basicAmount") is not None or data.get("gstAmount") is not None:
-            basic = float(data.get("basicAmount") or brr.basic_amount or 0)
-            gst   = float(data.get("gstAmount")   or brr.gst_amount   or 0)
+            basic = Decimal(str(data.get("basicAmount") or brr.basic_amount or 0))
+            gst   = Decimal(str(data.get("gstAmount")   or brr.gst_amount   or 0))
             brr.basic_amount = basic
             brr.gst_amount   = gst
             brr.total_amount = basic + gst

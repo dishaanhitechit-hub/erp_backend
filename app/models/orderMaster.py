@@ -301,26 +301,26 @@ class OrderItem(db.Model):
         db.Text
     )
     qty=db.Column(
-        db.Numeric(12,2)
+        db.Numeric(17,4)
     )
 
     amend_qty=db.Column(
-        db.Numeric(12,2),
+        db.Numeric(17,4),
         default=0
     )
 
     used_qty=db.Column(
-        db.Numeric(12,2),
+        db.Numeric(17,4),
         default=0
     )
 
     balance_qty=db.Column(
-        db.Numeric(12,2),
+        db.Numeric(17,4),
         default=0
     )
 
     rate=db.Column(
-        db.Numeric(12,2)
+        db.Numeric(17,4)
     )
 
     amount=db.Column(

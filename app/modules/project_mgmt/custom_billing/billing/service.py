@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -164,15 +165,15 @@ def _serialize_rows(rows):
 
 def _build_rows(raw_rows, billing_id, model_class):
     """Build BillingItem or BillingBoqItem rows; returns (objects, total_basic, total_gst)."""
-    total_basic = 0
-    total_gst   = 0
+    total_basic = Decimal('0')
+    total_gst   = Decimal('0')
     objects     = []
     for idx, row in enumerate(raw_rows, start=1):
-        claim_qty   = float(row.get("claimQty")  or 0)
-        rate        = float(row.get("rate")       or 0)
-        amount      = round(claim_qty * rate, 2)
-        gst_percent = float(row.get("gstPercent") or 0)
-        gst_amount  = round((amount * gst_percent) / 100, 2)
+        claim_qty   = Decimal(str(row.get("claimQty")  or 0))
+        rate        = Decimal(str(row.get("rate")       or 0))
+        amount      = claim_qty * rate
+        gst_percent = Decimal(str(row.get("gstPercent") or 0))
+        gst_amount  = (amount * gst_percent) / 100
 
         obj = model_class(
             billing_id     = billing_id,
@@ -190,7 +191,7 @@ def _build_rows(raw_rows, billing_id, model_class):
         objects.append(obj)
         total_basic += amount
         total_gst   += gst_amount
-    return objects, round(total_basic, 2), round(total_gst, 2)
+    return objects, total_basic, total_gst
 
 
 def _build_detail_payload(bill):
@@ -481,8 +482,8 @@ def create_billing(req, user_id):
             for obj in built_items + built_boq:
                 db.session.add(obj)
 
-            total_basic = round(basic_items + basic_boq, 2)
-            total_gst   = round(gst_items   + gst_boq,   2)
+            total_basic = basic_items + basic_boq
+            total_gst   = gst_items   + gst_boq
             bill.this_bill_claim = total_basic
             bill.gst_amount      = total_gst
             bill.total_claim     = round(pre_certified + total_basic, 2)

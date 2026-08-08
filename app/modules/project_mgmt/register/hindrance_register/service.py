@@ -104,9 +104,9 @@ def create_hindrance_register(data, user_id, files=None):
         new_uuid = str(_uuid.uuid4())
         hindrance_no = _generate_hindrance_no()
 
-        manpower_amount       = float(data.get("manpowerAmount") or 0)
-        plant_machinery_amount = float(data.get("plantMachineryAmount") or 0)
-        materials_amount      = float(data.get("materialsAmount") or 0)
+        manpower_amount       = Decimal(str(data.get("manpowerAmount") or 0))
+        plant_machinery_amount = Decimal(str(data.get("plantMachineryAmount") or 0))
+        materials_amount      = Decimal(str(data.get("materialsAmount") or 0))
         total                 = _calc_total(manpower_amount, plant_machinery_amount, materials_amount)
 
         attachment = None
@@ -271,9 +271,9 @@ def edit_hindrance_register(hr_id, data, user_id, files=None):
 
         # Recalculate amounts if any amount field is provided
         if any(k in data for k in ("manpowerAmount", "plantMachineryAmount", "materialsAmount")):
-            hr.manpower_amount        = float(data.get("manpowerAmount") or hr.manpower_amount or 0)
-            hr.plant_machinery_amount = float(data.get("plantMachineryAmount") or hr.plant_machinery_amount or 0)
-            hr.materials_amount       = float(data.get("materialsAmount") or hr.materials_amount or 0)
+            hr.manpower_amount        = Decimal(str(data.get("manpowerAmount") or hr.manpower_amount or 0))
+            hr.plant_machinery_amount = Decimal(str(data.get("plantMachineryAmount") or hr.plant_machinery_amount or 0))
+            hr.materials_amount       = Decimal(str(data.get("materialsAmount") or hr.materials_amount or 0))
             hr.total_effected_amount  = _calc_total(
                 hr.manpower_amount,
                 hr.plant_machinery_amount,

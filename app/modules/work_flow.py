@@ -525,7 +525,7 @@ def get_approval_steps(
     level_history = {}
     for row in history_rows:
         if (
-            row.action in ("APPROVE", "REJECT", "REBACK")
+            row.action in ("APPROVE", "FINAL_APPROVE", "REJECT", "REBACK")
             and row.level_no
         ):
             existing = level_history.get(row.level_no)
@@ -533,9 +533,10 @@ def get_approval_steps(
                 level_history[row.level_no] = row
 
     ACTION_STATUS = {
-        "APPROVE": "Approved",
-        "REJECT":  "Rejected",
-        "REBACK":  "Rebacked",
+        "APPROVE":        "Approved",
+        "FINAL_APPROVE":  "Final Approved",
+        "REJECT":         "Rejected",
+        "REBACK":         "Rebacked",
     }
 
     steps = []

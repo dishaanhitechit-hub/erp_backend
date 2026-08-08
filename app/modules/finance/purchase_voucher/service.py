@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -129,14 +130,14 @@ def create_purchase_voucher(data, user_id):
 
         gst_lines = data.get("gstLines", [])
 
-        basic_total = sum(float(i.get("basicAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("gstAmount") or 0)
+            Decimal(str(g.get("gstAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
-        total     = round(basic_total + gst_total - discount + round_off, 2)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
+        total     = basic_total + gst_total - discount + round_off
 
         voucher_no   = _generate_voucher_no()
         voucher_uuid = str(_uuid.uuid4())
@@ -150,8 +151,8 @@ def create_purchase_voucher(data, user_id):
             project_code      = project_code,
             vendor_id         = int(vendor_id),
             remarks           = data.get("remarks"),
-            basic_amount         = round(basic_total, 2),
-            gst_amount           = round(gst_total,   2),
+            basic_amount         = basic_total,
+            gst_amount           = gst_total,
             discount             = discount,
             round_off            = round_off,
             total_invoice_amount = total,
@@ -169,7 +170,7 @@ def create_purchase_voucher(data, user_id):
                 sl_no        = row.get("slNo") or idx,
                 cc_code_id   = row.get("ccCodeId"),
                 description  = row.get("description"),
-                basic_amount = float(row.get("basicAmount") or 0),
+                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
             ))
 
         for g in gst_lines:
@@ -179,8 +180,8 @@ def create_purchase_voucher(data, user_id):
                 cc_code     = g.get("ccCode"),
                 cc_name     = g.get("ccName"),
                 description = g.get("description"),
-                percent     = float(g.get("percent")   or 0),
-                gst_amount  = float(g.get("gstAmount") or 0) if g.get("isSelected") else 0,
+                percent     = Decimal(str(g.get("percent")   or 0)),
+                gst_amount  = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected = bool(g.get("isSelected")),
             ))
 
@@ -314,13 +315,13 @@ def edit_purchase_voucher(voucher_id, data, user_id):
         PurchaseVoucherGst.query.filter_by(voucher_id=v.id).delete()
         db.session.flush()
 
-        basic_total = sum(float(i.get("basicAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("gstAmount") or 0)
+            Decimal(str(g.get("gstAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
             db.session.add(PurchaseVoucherItem(
@@ -328,7 +329,7 @@ def edit_purchase_voucher(voucher_id, data, user_id):
                 sl_no        = row.get("slNo") or idx,
                 cc_code_id   = row.get("ccCodeId"),
                 description  = row.get("description"),
-                basic_amount = float(row.get("basicAmount") or 0),
+                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
             ))
 
         for g in gst_lines:
@@ -338,16 +339,16 @@ def edit_purchase_voucher(voucher_id, data, user_id):
                 cc_code     = g.get("ccCode"),
                 cc_name     = g.get("ccName"),
                 description = g.get("description"),
-                percent     = float(g.get("percent")   or 0),
-                gst_amount  = float(g.get("gstAmount") or 0) if g.get("isSelected") else 0,
+                percent     = Decimal(str(g.get("percent")   or 0)),
+                gst_amount  = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected = bool(g.get("isSelected")),
             ))
 
-        v.basic_amount         = round(basic_total, 2)
-        v.gst_amount           = round(gst_total,   2)
+        v.basic_amount         = basic_total
+        v.gst_amount           = gst_total
         v.discount             = discount
         v.round_off            = round_off
-        v.total_invoice_amount = round(basic_total + gst_total - discount + round_off, 2)
+        v.total_invoice_amount = basic_total + gst_total - discount + round_off
 
         if v.workflow_status == "Reback":
             v.correction_sent_at = None

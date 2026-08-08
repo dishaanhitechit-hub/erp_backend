@@ -1923,7 +1923,7 @@ def get_order_by_uuid(order_uuid):
                 "basicAmount":   amount,
                 "gstPercent":    gst_pct,
                 "gstAmount":     gst_amount,
-                "lineTotal":     round(amount + gst_amount, 2),
+                "lineTotal":     amount + gst_amount,
                 "itemStatus":    item.item_status,
             })
 
@@ -1941,9 +1941,9 @@ def get_order_by_uuid(order_uuid):
             slab = gst_slab_map[key]
             slab["gstPercent"]  = row["gstPercent"]
             slab["itemCount"]  += 1
-            slab["basicAmount"] = round(slab["basicAmount"] + row["basicAmount"], 4)
-            slab["gstAmount"]   = round(slab["gstAmount"]   + row["gstAmount"],   4)
-            slab["totalAmount"] = round(slab["totalAmount"]  + row["lineTotal"],   4)
+            slab["basicAmount"] = slab["basicAmount"] + row["basicAmount"]
+            slab["gstAmount"]   = slab["gstAmount"]   + row["gstAmount"]
+            slab["totalAmount"] = slab["totalAmount"]  + row["lineTotal"]
             hsn = row.get("hsnSac")
             if hsn and hsn not in slab["hsnList"]:
                 slab["hsnList"].append(hsn)

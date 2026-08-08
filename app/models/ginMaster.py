@@ -214,7 +214,7 @@ class GinItem(db.Model):
     )
 
     issue_qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         default=0
     )
 

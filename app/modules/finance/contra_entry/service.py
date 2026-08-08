@@ -120,9 +120,9 @@ def create_contra_entry(data, user_id):
         if len(lines_data) < 2:
             return res("At least one Dr and one Cr line required", [], 400)
 
-        total_debit  = sum(float(l.get("debitAmount")  or 0) for l in lines_data)
-        total_credit = sum(float(l.get("creditAmount") or 0) for l in lines_data)
-        if round(total_debit, 2) != round(total_credit, 2):
+        total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
+        total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
+        if total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         entry = ContraEntryMaster(
@@ -131,7 +131,7 @@ def create_contra_entry(data, user_id):
             entry_date      = date.today(),
             project_code    = project_code,
             remarks         = data.get("remarks"),
-            total_amount    = round(total_debit, 2),
+            total_amount    = total_debit,
             workflow_status = "Draft",
             current_level   = 0,
             locked          = False,
@@ -141,10 +141,10 @@ def create_contra_entry(data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            opening  = float(row.get("openingBalance") or 0)
-            debit    = float(row.get("debitAmount")    or 0)
-            credit   = float(row.get("creditAmount")   or 0)
-            closing  = round(opening - debit + credit, 2)
+            opening  = Decimal(str(row.get("openingBalance") or 0))
+            debit    = Decimal(str(row.get("debitAmount")    or 0))
+            credit   = Decimal(str(row.get("creditAmount")   or 0))
+            closing  = opening - debit + credit
             db.session.add(ContraEntryLine(
                 contra_id       = entry.id,
                 sl_no           = row.get("slNo") or idx,
@@ -269,9 +269,9 @@ def edit_contra_entry(entry_id, data, user_id):
         if len(lines_data) < 2:
             return res("At least one Dr and one Cr line required", [], 400)
 
-        total_debit  = sum(float(l.get("debitAmount")  or 0) for l in lines_data)
-        total_credit = sum(float(l.get("creditAmount") or 0) for l in lines_data)
-        if round(total_debit, 2) != round(total_credit, 2):
+        total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
+        total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
+        if total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         if data.get("remarks") is not None:
@@ -281,10 +281,10 @@ def edit_contra_entry(entry_id, data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            opening = float(row.get("openingBalance") or 0)
-            debit   = float(row.get("debitAmount")    or 0)
-            credit  = float(row.get("creditAmount")   or 0)
-            closing = round(opening - debit + credit, 2)
+            opening = Decimal(str(row.get("openingBalance") or 0))
+            debit   = Decimal(str(row.get("debitAmount")    or 0))
+            credit  = Decimal(str(row.get("creditAmount")   or 0))
+            closing = opening - debit + credit
             db.session.add(ContraEntryLine(
                 contra_id       = entry.id,
                 sl_no           = row.get("slNo") or idx,
@@ -296,7 +296,7 @@ def edit_contra_entry(entry_id, data, user_id):
                 closing_balance = closing,
             ))
 
-        entry.total_amount = round(total_debit, 2)
+        entry.total_amount = total_debit
 
         if entry.workflow_status == "Reback":
             entry.correction_sent_at = None

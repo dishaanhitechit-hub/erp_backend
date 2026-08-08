@@ -122,8 +122,8 @@ class BrgItem(db.Model):
         nullable=False
     )
 
-    billing_qty = db.Column(db.Numeric(12, 2), default=0)
-    rate        = db.Column(db.Numeric(12, 2), default=0)
+    billing_qty = db.Column(db.Numeric(17, 4), default=0)
+    rate        = db.Column(db.Numeric(17, 4), default=0)
     amount      = db.Column(db.Numeric(14, 2), default=0)
     gst_percent = db.Column(db.Numeric(5,  2), default=0)
     gst_amount  = db.Column(db.Numeric(14, 2), default=0)

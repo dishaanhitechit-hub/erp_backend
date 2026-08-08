@@ -1111,10 +1111,10 @@ def get_grn_by_uuid(grn_uuid):
 
         # ── items + GST breakup ───────────────────────────────────
         items = []
-        gst_slabs = defaultdict(lambda: {"qty": 0.0, "basicAmount": 0.0, "gstAmount": 0.0, "totalAmount": 0.0, "hsnSacCodes": set()})
-        total_basic   = 0.0
-        total_gst     = 0.0
-        total_received = 0.0
+        gst_slabs = defaultdict(lambda: {"qty": Decimal('0'), "basicAmount": Decimal('0'), "gstAmount": Decimal('0'), "totalAmount": Decimal('0'), "hsnSacCodes": set()})
+        total_basic    = Decimal('0')
+        total_gst      = Decimal('0')
+        total_received = Decimal('0')
 
         for gi in grn.items:
             oi = gi.order_item
@@ -1127,14 +1127,14 @@ def get_grn_by_uuid(grn_uuid):
                     item_name = oi.item.item_name
                     hsn_sac   = oi.item.hsn_sac if hasattr(oi.item, "hsn_sac") else None
                     unit      = oi.item.unit.unit_name if oi.item.unit else None
-                order_qty = float(oi.qty or 0)
-                rate      = float(oi.rate or 0)      if hasattr(oi, "rate")      else 0.0
-                gst_pct   = float(oi.gst_percent or 0) if hasattr(oi, "gst_percent") else 0.0
+                order_qty = Decimal(str(oi.qty or 0))
+                rate      = Decimal(str(oi.rate or 0))      if hasattr(oi, "rate")      else Decimal('0')
+                gst_pct   = Decimal(str(oi.gst_percent or 0)) if hasattr(oi, "gst_percent") else Decimal('0')
 
-            recv_qty   = float(gi.current_received_qty or 0)
-            basic_amt  = round(recv_qty * rate, 2)
-            gst_amt    = round(basic_amt * gst_pct / 100, 2)
-            line_total = round(basic_amt + gst_amt, 2)
+            recv_qty   = Decimal(str(gi.current_received_qty or 0))
+            basic_amt  = recv_qty * rate
+            gst_amt    = basic_amt * gst_pct / 100
+            line_total = basic_amt + gst_amt
 
             total_basic    += basic_amt
             total_gst      += gst_amt
@@ -1162,15 +1162,15 @@ def get_grn_by_uuid(grn_uuid):
                 "itemName":           item_name,
                 "hsnSac":             hsn_sac,
                 "unit":               gi.unit or unit,
-                "orderQty":           order_qty,
+                "orderQty":           float(order_qty),
                 "preReceivedQty":     float(gi.pre_received_qty or 0),
                 "balanceQty":         float(gi.balance_qty or 0),
                 "currentReceivedQty": float(gi.current_received_qty or 0),
-                "rate":               rate,
-                "basicAmount":        basic_amt,
-                "gstPercent":         gst_pct,
-                "gstAmount":          gst_amt,
-                "lineTotal":          line_total,
+                "rate":               float(rate),
+                "basicAmount":        float(basic_amt),
+                "gstPercent":         float(gst_pct),
+                "gstAmount":          float(gst_amt),
+                "lineTotal":          float(line_total),
                 "useLocation":        gi.use_location,
                 "storeLocation":      gi.store_location,
                 "note":               gi.note,
@@ -1179,11 +1179,11 @@ def get_grn_by_uuid(grn_uuid):
         gst_breakup = []
         for pct, slab in sorted(gst_slabs.items()):
             gst_breakup.append({
-                "gstPercent":  pct,
-                "qty":         round(slab["qty"], 2),
-                "basicAmount": round(slab["basicAmount"], 2),
-                "gstAmount":   round(slab["gstAmount"], 2),
-                "totalAmount": round(slab["totalAmount"], 2),
+                "gstPercent":  float(pct),
+                "qty":         float(slab["qty"]),
+                "basicAmount": float(slab["basicAmount"]),
+                "gstAmount":   float(slab["gstAmount"]),
+                "totalAmount": float(slab["totalAmount"]),
                 "hsnSacCodes": sorted(slab["hsnSacCodes"]),
             })
 
@@ -1247,10 +1247,10 @@ def get_grn_by_uuid(grn_uuid):
             "gstBreakup":        gst_breakup,
             "summary": {
                 "totalItems":         len(items),
-                "totalReceivedQty":   round(total_received, 2),
-                "totalBasicAmount":   round(total_basic, 2),
-                "totalGstAmount":     round(total_gst, 2),
-                "totalAmount":        round(total_basic + total_gst, 2),
+                "totalReceivedQty":   float(total_received),
+                "totalBasicAmount":   float(total_basic),
+                "totalGstAmount":     float(total_gst),
+                "totalAmount":        float(total_basic + total_gst),
             },
             "history":           history,
         }

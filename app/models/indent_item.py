@@ -42,7 +42,7 @@ class IndentItem(db.Model):
     )
 
     qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         nullable=False
     )
 

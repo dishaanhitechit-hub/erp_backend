@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -80,18 +81,18 @@ def _group_by_cc(billing_items):
             groups[key] = {
                 "ccCode":      cc.cc_code if cc else None,
                 "ccName":      cc.cc_name if cc else "Uncategorized",
-                "basicAmount": 0.0,
+                "basicAmount": Decimal('0'),
             }
             order.append(key)
 
-        groups[key]["basicAmount"] += float(bi.amount or 0)
+        groups[key]["basicAmount"] += Decimal(str(bi.amount or 0))
 
     return [
         {
             "slNo":        idx + 1,
             "ccCode":      groups[k]["ccCode"],
             "ccName":      groups[k]["ccName"],
-            "basicAmount": round(groups[k]["basicAmount"], 2),
+            "basicAmount": float(groups[k]["basicAmount"]),
         }
         for idx, k in enumerate(order)
     ]
@@ -257,16 +258,16 @@ def get_receipt_items(data):
                 .scalar() or 0
             )
 
-            received = round(float(received), 2)
-            balance  = round(booked - received, 2)
+            received = Decimal(str(received))
+            balance  = booked - received
 
             result_items.append({
                 "slNo":           g["slNo"],
                 "ccCode":         cc_code,
                 "ccName":         g["ccName"],
-                "bookedAmount":   booked,
-                "receivedAmount": received,
-                "balanceAmount":  balance,
+                "bookedAmount":   float(booked),
+                "receivedAmount": float(received),
+                "balanceAmount":  float(balance),
                 "currentAmount":  0,
             })
 
@@ -297,9 +298,9 @@ def get_receipt_items(data):
         result_gst = []
         if gst_rows:
             for row in gst_rows:
-                booked_gst = round(float(row.total or 0), 2)
+                booked_gst = Decimal(str(row.total or 0))
 
-                received_gst = (
+                received_gst = Decimal(str(
                     db.session.query(func.sum(SaleReceiptGst.current_amount))
                     .join(SaleReceiptMaster, SaleReceiptMaster.id == SaleReceiptGst.receipt_id)
                     .filter(
@@ -308,19 +309,18 @@ def get_receipt_items(data):
                         SaleReceiptGst.gst_type             == row.gst_type,
                     )
                     .scalar() or 0
-                )
+                ))
 
-                received_gst = round(float(received_gst), 2)
-                balance_gst  = round(booked_gst - received_gst, 2)
+                balance_gst = booked_gst - received_gst
 
                 result_gst.append({
                     "gstType":        row.gst_type,
                     "ccCode":         row.cc_code,
                     "ccName":         row.cc_name,
                     "percent":        float(row.percent or 0),
-                    "bookedAmount":   booked_gst,
-                    "receivedAmount": received_gst,
-                    "balanceAmount":  balance_gst,
+                    "bookedAmount":   float(booked_gst),
+                    "receivedAmount": float(received_gst),
+                    "balanceAmount":  float(balance_gst),
                     "currentAmount":  0,
                     "isSelected":     True,
                 })
@@ -390,14 +390,14 @@ def create_sale_receipt(data, user_id):
 
         gst_lines = data.get("gstLines", [])
 
-        basic_total = sum(float(i.get("currentAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("currentAmount") or 0)
+            Decimal(str(g.get("currentAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
-        total     = round(basic_total + gst_total - discount + round_off, 2)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
+        total     = basic_total + gst_total - discount + round_off
 
         sale_order_date = None
         if cert_bill.og_so:
@@ -424,8 +424,8 @@ def create_sale_receipt(data, user_id):
             bank_ac_id         = data.get("bankAcId"),
             utr_voucher_no     = data.get("utrVoucherNo"),
             payment_remarks    = data.get("paymentRemarks"),
-            basic_amount         = round(basic_total, 2),
-            gst_amount           = round(gst_total,   2),
+            basic_amount         = basic_total,
+            gst_amount           = gst_total,
             discount             = discount,
             round_off            = round_off,
             total_invoice_amount = total,
@@ -438,10 +438,10 @@ def create_sale_receipt(data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(items, start=1):
-            booked   = float(row.get("bookedAmount")   or 0)
-            received = float(row.get("receivedAmount") or 0)
-            balance  = float(row.get("balanceAmount")  or 0)
-            current  = float(row.get("currentAmount")  or 0)
+            booked   = Decimal(str(row.get("bookedAmount")   or 0))
+            received = Decimal(str(row.get("receivedAmount") or 0))
+            balance  = Decimal(str(row.get("balanceAmount")  or 0))
+            current  = Decimal(str(row.get("currentAmount")  or 0))
             db.session.add(SaleReceiptItem(
                 receipt_id      = receipt.id,
                 sl_no           = row.get("slNo") or idx,
@@ -459,11 +459,11 @@ def create_sale_receipt(data, user_id):
                 gst_type        = g.get("gstType"),
                 cc_code         = g.get("ccCode"),
                 cc_name         = g.get("ccName"),
-                percent         = float(g.get("percent")        or 0),
-                booked_amount   = float(g.get("bookedAmount")   or 0),
-                received_amount = float(g.get("receivedAmount") or 0),
-                balance_amount  = float(g.get("balanceAmount")  or 0),
-                current_amount  = float(g.get("currentAmount")  or 0) if g.get("isSelected") else 0,
+                percent         = Decimal(str(g.get("percent")        or 0)),
+                booked_amount   = Decimal(str(g.get("bookedAmount")   or 0)),
+                received_amount = Decimal(str(g.get("receivedAmount") or 0)),
+                balance_amount  = Decimal(str(g.get("balanceAmount")  or 0)),
+                current_amount  = Decimal(str(g.get("currentAmount")  or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected     = bool(g.get("isSelected")),
             ))
 
@@ -602,13 +602,13 @@ def edit_sale_receipt(receipt_id, data, user_id):
         SaleReceiptGst.query.filter_by(receipt_id=receipt.id).delete()
         db.session.flush()
 
-        basic_total = sum(float(i.get("currentAmount") or 0) for i in items)
+        basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
         gst_total   = sum(
-            float(g.get("currentAmount") or 0)
+            Decimal(str(g.get("currentAmount") or 0))
             for g in gst_lines if g.get("isSelected")
         )
-        discount  = float(data.get("discount")  or 0)
-        round_off = float(data.get("roundOff")  or 0)
+        discount  = Decimal(str(data.get("discount")  or 0))
+        round_off = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
             db.session.add(SaleReceiptItem(
@@ -616,10 +616,10 @@ def edit_sale_receipt(receipt_id, data, user_id):
                 sl_no           = row.get("slNo") or idx,
                 cc_code         = row.get("ccCode"),
                 cc_name         = row.get("ccName"),
-                booked_amount   = float(row.get("bookedAmount")   or 0),
-                received_amount = float(row.get("receivedAmount") or 0),
-                balance_amount  = float(row.get("balanceAmount")  or 0),
-                current_amount  = float(row.get("currentAmount")  or 0),
+                booked_amount   = Decimal(str(row.get("bookedAmount")   or 0)),
+                received_amount = Decimal(str(row.get("receivedAmount") or 0)),
+                balance_amount  = Decimal(str(row.get("balanceAmount")  or 0)),
+                current_amount  = Decimal(str(row.get("currentAmount")  or 0)),
             ))
 
         for g in gst_lines:
@@ -628,19 +628,19 @@ def edit_sale_receipt(receipt_id, data, user_id):
                 gst_type        = g.get("gstType"),
                 cc_code         = g.get("ccCode"),
                 cc_name         = g.get("ccName"),
-                percent         = float(g.get("percent")        or 0),
-                booked_amount   = float(g.get("bookedAmount")   or 0),
-                received_amount = float(g.get("receivedAmount") or 0),
-                balance_amount  = float(g.get("balanceAmount")  or 0),
-                current_amount  = float(g.get("currentAmount")  or 0) if g.get("isSelected") else 0,
+                percent         = Decimal(str(g.get("percent")        or 0)),
+                booked_amount   = Decimal(str(g.get("bookedAmount")   or 0)),
+                received_amount = Decimal(str(g.get("receivedAmount") or 0)),
+                balance_amount  = Decimal(str(g.get("balanceAmount")  or 0)),
+                current_amount  = Decimal(str(g.get("currentAmount")  or 0)) if g.get("isSelected") else Decimal('0'),
                 is_selected     = bool(g.get("isSelected")),
             ))
 
-        receipt.basic_amount         = round(basic_total, 2)
-        receipt.gst_amount           = round(gst_total,   2)
+        receipt.basic_amount         = basic_total
+        receipt.gst_amount           = gst_total
         receipt.discount             = discount
         receipt.round_off            = round_off
-        receipt.total_invoice_amount = round(basic_total + gst_total - discount + round_off, 2)
+        receipt.total_invoice_amount = basic_total + gst_total - discount + round_off
 
         if receipt.workflow_status == "Reback":
             receipt.correction_sent_at = None

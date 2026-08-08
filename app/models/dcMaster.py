@@ -131,7 +131,7 @@ class DcItem(db.Model):
         nullable=True
     )
 
-    issue_qty = db.Column(db.Numeric(12, 2), default=0)
+    issue_qty = db.Column(db.Numeric(17, 4), default=0)
     stock_location = db.Column(db.String(150), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

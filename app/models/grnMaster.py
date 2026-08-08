@@ -293,22 +293,22 @@ class GrnItem(db.Model):
     )
 
     order_qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         default=0
     )
 
     pre_received_qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         default=0
     )
 
     balance_qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         default=0
     )
 
     current_received_qty = db.Column(
-        db.Numeric(12, 2),
+        db.Numeric(17, 4),
         default=0
     )
 

@@ -221,8 +221,8 @@ def get_srns_by_order(order_id):
                 received_qty   = Decimal(str(si.current_received_qty or 0))
                 available_qty  = max(received_qty - already_billed, 0)
 
-                rate        = float(oi.rate        or 0) if oi else 0
-                gst_percent = float(oi.gst_percent or 0) if oi else 0
+                rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
+                gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
 
                 items.append({
                     "srnItemId":     si.id,
@@ -238,8 +238,8 @@ def get_srns_by_order(order_id):
                     "alreadyBilled": float(already_billed),
                     "availableQty":  float(available_qty),
                     "billingQty":    0,
-                    "rate":          rate,
-                    "gstPercent":    gst_percent,
+                    "rate":          float(rate),
+                    "gstPercent":    float(gst_percent),
                     "useLocation":   si.use_location,
                     "storeLocation": si.store_location,
                 })
