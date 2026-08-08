@@ -425,7 +425,7 @@ def get_indent_details(indent_id):
                 "itemName": row.item.item_name
                 if row.item else None,
 
-                "qty": decimal(float(row.qty)),
+                "qty": float(row.qty),
 
                 "location": row.location,
 
