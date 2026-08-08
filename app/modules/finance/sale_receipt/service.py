@@ -245,7 +245,7 @@ def get_receipt_items(data):
         result_items = []
         for g in grouped:
             cc_code = g["ccCode"]
-            booked  = g["basicAmount"]
+            booked  = Decimal(str(g["basicAmount"]))
 
             received = (
                 db.session.query(func.sum(SaleReceiptItem.current_amount))

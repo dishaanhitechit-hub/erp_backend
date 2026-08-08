@@ -43,9 +43,9 @@ class BatchingPlantMaster(db.Model):
 
     unit_of_concrete = db.Column(db.String(50), nullable=True)
 
-    volume_of_concrete = db.Column(db.Numeric(12, 2), nullable=True)
+    volume_of_concrete = db.Column(db.Numeric(17, 4), nullable=True)
 
-    weight_of_concrete = db.Column(db.Numeric(12, 2), nullable=True)
+    weight_of_concrete = db.Column(db.Numeric(17, 4), nullable=True)
 
     # ── Production Details ─────────────────────────────────────────
     production_unit_name = db.Column(db.String(100), nullable=True)

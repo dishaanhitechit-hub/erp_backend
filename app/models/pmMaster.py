@@ -29,7 +29,7 @@ class PMMaster(db.Model):
 
     fuel_consumption_unit = db.Column(db.String(100), nullable=True)
 
-    purchased_bill_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    purchased_bill_amount = db.Column(db.Numeric(17, 4), nullable=True)
     purchased_bill_date   = db.Column(db.Date, nullable=True)
     purchased_bill_file   = db.Column(db.String(300), nullable=True)
 
@@ -56,7 +56,7 @@ class PMServiceHistory(db.Model):
 
     service_type    = db.Column(db.String(100), nullable=True)
     service_date    = db.Column(db.Date, nullable=True)
-    bill_amount     = db.Column(db.Numeric(12, 2), nullable=True)
+    bill_amount     = db.Column(db.Numeric(17, 4), nullable=True)
     party_bill_no   = db.Column(db.String(100), nullable=True)
     party_bill_file = db.Column(db.String(300), nullable=True)
     service_location  = db.Column(db.String(200), nullable=True)
@@ -84,7 +84,7 @@ class PMServiceSchedule(db.Model):
     service_type      = db.Column(db.String(100), nullable=True)
     service_date      = db.Column(db.Date, nullable=True)
     reading_under     = db.Column(db.String(100), nullable=True)
-    expected_expenses = db.Column(db.Numeric(12, 2), nullable=True)
+    expected_expenses = db.Column(db.Numeric(17, 4), nullable=True)
     responsible_person = db.Column(db.String(200), nullable=True)
 
     status     = db.Column(db.String(30), default="Active")

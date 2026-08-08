@@ -66,11 +66,11 @@ def _get_pre_certified(og_sale_order_no, project_code, mode, exclude_id=None):
     )
     if exclude_id:
         q = q.filter(BillingMaster.id != exclude_id)
-    return float(q.scalar())
+    return Decimal(str(q.scalar() or 0))
 
 
 def _get_billed_amount(og_sale_order_no, project_code, mode):
-    return float(
+    return Decimal(str(
         db.session.query(
             func.coalesce(func.sum(BillingMaster.this_bill_claim), 0)
         )
@@ -80,8 +80,8 @@ def _get_billed_amount(og_sale_order_no, project_code, mode):
             BillingMaster.mode             == mode,
             BillingMaster.workflow_status  == "Approved",
         )
-        .scalar()
-    )
+        .scalar() or 0
+    ))
 
 
 def _get_order_financials(og_sale_order_no, project_code):
@@ -199,8 +199,8 @@ def _build_detail_payload(bill):
     order_fin = _get_order_financials(bill.og_sale_order_no, bill.project_code)
     billed    = _get_billed_amount(bill.og_sale_order_no, bill.project_code, mode)
     bills     = _bills_under_og_so(bill.og_sale_order_no, bill.project_code, mode)
-    order_basic = order_fin["basicAmount"] if order_fin else 0
-    job_balance = round(order_basic - billed, 2)
+    order_basic = Decimal(str(order_fin["basicAmount"])) if order_fin else Decimal('0')
+    job_balance = float(order_basic - billed)
 
     claim_bill_no = None
     if bill.claim_bill_id:
@@ -486,7 +486,7 @@ def create_billing(req, user_id):
             total_gst   = gst_items   + gst_boq
             bill.this_bill_claim = total_basic
             bill.gst_amount      = total_gst
-            bill.total_claim     = round(pre_certified + total_basic, 2)
+            bill.total_claim     = pre_certified + total_basic
 
             db.session.commit()
             return res("Certified bill created", {
@@ -541,11 +541,11 @@ def create_billing(req, user_id):
         for obj in built_items + built_boq:
             db.session.add(obj)
 
-        total_basic = round(basic_items + basic_boq, 2)
-        total_gst   = round(gst_items   + gst_boq,   2)
+        total_basic = basic_items + basic_boq
+        total_gst   = gst_items   + gst_boq
         bill.this_bill_claim = total_basic
         bill.gst_amount      = total_gst
-        bill.total_claim     = round(pre_certified + total_basic, 2)
+        bill.total_claim     = pre_certified + total_basic
 
         db.session.commit()
         return res("Billing record created", {
@@ -601,8 +601,8 @@ def get_billing_list(data):
             order_fin = _get_order_financials(row.og_sale_order_no, row.project_code)
             bills     = _bills_under_og_so(row.og_sale_order_no, row.project_code, mode)
 
-            order_basic = order_fin["basicAmount"] if order_fin else 0
-            job_balance = round(order_basic - billed, 2)
+            order_basic = Decimal(str(order_fin["basicAmount"])) if order_fin else Decimal('0')
+            job_balance = float(order_basic - billed)
 
             result.append({
                 "id":                  row.id,
@@ -695,13 +695,13 @@ def edit_billing(bill_id, req, user_id):
             bill.og_sale_order_no, bill.project_code, bill.mode, exclude_id=bill.id
         )
 
-        total_basic = round(basic_items + basic_boq, 2)
-        total_gst   = round(gst_items   + gst_boq,   2)
+        total_basic = basic_items + basic_boq
+        total_gst   = gst_items   + gst_boq
 
         bill.this_bill_claim      = total_basic
         bill.gst_amount           = total_gst
         bill.pre_certified_amount = pre_certified
-        bill.total_claim          = round(pre_certified + total_basic, 2)
+        bill.total_claim          = pre_certified + total_basic
 
         if bill.workflow_status == "Reback":
             bill.correction_sent_at = None
