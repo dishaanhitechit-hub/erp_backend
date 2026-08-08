@@ -2,6 +2,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+from decimal import Decimal
 import json
 
 from app.models.brrMaster import BrrMaster
@@ -54,7 +55,7 @@ def _already_billed_qty(srn_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 def _brr_billed_amount(brr_id, exclude_brs_id=None):
@@ -71,7 +72,7 @@ def _brr_billed_amount(brr_id, exclude_brs_id=None):
     if exclude_brs_id:
         brs_q = brs_q.filter(BrsMaster.id != exclude_brs_id)
 
-    return float(brg_q.scalar()) + float(brs_q.scalar())
+    return Decimal(str(brg_q.scalar() or 0)) + Decimal(str(brs_q.scalar() or 0))
 
 
 def _get_brs_cc_summary(brs_id):
@@ -157,7 +158,7 @@ def get_srns_by_brr(brr_id):
 
                 oi             = si.pw_order_item
                 already_billed = _already_billed_qty(si.id)
-                received_qty   = float(si.current_received_qty or 0)
+                received_qty   = Decimal(str(si.current_received_qty or 0))
                 available_qty  = max(received_qty - already_billed, 0)
 
                 rate        = float(oi.rate        or 0) if oi else 0
@@ -173,9 +174,9 @@ def get_srns_by_brr(brr_id):
                         if oi and oi.item and oi.item.unit else None
                     ),
                     "note":          oi.custom_note if oi else None,
-                    "receivedQty":   received_qty,
-                    "alreadyBilled": already_billed,
-                    "availableQty":  available_qty,
+                    "receivedQty":   float(received_qty),
+                    "alreadyBilled": float(already_billed),
+                    "availableQty":  float(available_qty),
                     "billingQty":    0,
                     "rate":          rate,
                     "gstPercent":    gst_percent,
@@ -300,7 +301,7 @@ def create_brs(data, user_id):
         for row in items:
 
             srn_item_id = row.get("srnItemId")
-            billing_qty = float(row.get("billingQty", 0))
+            billing_qty = Decimal(str(row.get("billingQty") or 0))
 
             if billing_qty <= 0:
                 db.session.rollback()
@@ -312,7 +313,7 @@ def create_brs(data, user_id):
                 return res(f"SRN item {srn_item_id} not found", [], 404)
 
             already_billed = _already_billed_qty(srn_item_id)
-            available      = float(srn_item.current_received_qty or 0) - already_billed
+            available      = Decimal(str(srn_item.current_received_qty or 0)) - already_billed
 
             if billing_qty > available:
                 db.session.rollback()
@@ -322,8 +323,8 @@ def create_brs(data, user_id):
                 )
 
             oi          = srn_item.pw_order_item
-            rate        = float(oi.rate        or 0) if oi else 0
-            gst_percent = float(oi.gst_percent or 0) if oi else 0
+            rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
+            gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
             amount      = billing_qty * rate
             gst_amount  = (amount * gst_percent) / 100
 
@@ -342,7 +343,7 @@ def create_brs(data, user_id):
             total_gst   += gst_amount
 
         new_total       = total_basic + total_gst
-        brr_total       = float(brr.total_amount or 0)
+        brr_total       = Decimal(str(brr.total_amount or 0))
         existing_billed = _brr_billed_amount(brr_id)
 
         if brr_total > 0 and existing_billed + new_total > brr_total:
@@ -459,7 +460,7 @@ def get_brs_details(brs_id):
             srn = bi.srn
 
             already_billed = _already_billed_qty(bi.srn_item_id)
-            received_qty   = float(si.current_received_qty or 0) if si else 0
+            received_qty   = Decimal(str(si.current_received_qty or 0)) if si else Decimal('0')
             available_qty  = max(received_qty - already_billed, 0)
 
             items.append({
@@ -476,9 +477,9 @@ def get_brs_details(brs_id):
                     if oi and oi.item and oi.item.unit else None
                 ),
                 "note":          oi.custom_note if oi else None,
-                "receivedQty":   received_qty,
-                "alreadyBilled": already_billed,
-                "availableQty":  available_qty,
+                "receivedQty":   float(received_qty),
+                "alreadyBilled": float(already_billed),
+                "availableQty":  float(available_qty),
                 "billingQty":    float(bi.billing_qty or 0),
                 "rate":          float(bi.rate        or 0),
                 "amount":        float(bi.amount      or 0),
@@ -597,7 +598,7 @@ def edit_brs(brs_id, data, user_id):
         for row in items:
 
             srn_item_id = row.get("srnItemId")
-            billing_qty = float(row.get("billingQty", 0))
+            billing_qty = Decimal(str(row.get("billingQty") or 0))
 
             if billing_qty <= 0:
                 db.session.rollback()
@@ -609,7 +610,7 @@ def edit_brs(brs_id, data, user_id):
                 return res(f"SRN item {srn_item_id} not found", [], 404)
 
             already_billed = _already_billed_qty(srn_item_id)
-            available      = float(srn_item.current_received_qty or 0) - already_billed
+            available      = Decimal(str(srn_item.current_received_qty or 0)) - already_billed
 
             if billing_qty > available:
                 db.session.rollback()
@@ -619,8 +620,8 @@ def edit_brs(brs_id, data, user_id):
                 )
 
             oi          = srn_item.pw_order_item
-            rate        = float(oi.rate        or 0) if oi else 0
-            gst_percent = float(oi.gst_percent or 0) if oi else 0
+            rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
+            gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
             amount      = billing_qty * rate
             gst_amount  = (amount * gst_percent) / 100
 

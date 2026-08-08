@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
 from collections import defaultdict
+from decimal import Decimal
 import uuid as _uuid
 
 from app.models.orderMaster import OrderMaster, OrderItem
@@ -60,7 +61,7 @@ def _pre_received_qty(order_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 def generate_grnl_no(line_no):
@@ -196,7 +197,7 @@ def get_order_items_for_grn(order_id):
         for oi in order.items:
 
             pre_qty = _pre_received_qty(oi.id)
-            order_qty = float(oi.qty or 0)
+            order_qty = Decimal(str(oi.qty or 0))
             balance_qty = order_qty - pre_qty
 
             items.append({
@@ -219,9 +220,9 @@ def get_order_items_for_grn(order_id):
                 "note": oi.custom_note,
 
                 # qty columns
-                "orderQty": order_qty,
-                "preReceivedQty": pre_qty,
-                "balanceQty": balance_qty,
+                "orderQty": float(order_qty),
+                "preReceivedQty": float(pre_qty),
+                "balanceQty": float(balance_qty),
 
                 # user fills these
                 "currentReceivedQty": 0,
@@ -334,7 +335,7 @@ def create_grn(data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
-            current_received_qty = float(row.get("currentReceivedQty", 0))
+            current_received_qty = Decimal(str(row.get("currentReceivedQty") or 0))
 
             if current_received_qty <= 0:
                 db.session.rollback()
@@ -353,7 +354,7 @@ def create_grn(data, user_id, files=None):
                 )
 
             pre_qty = _pre_received_qty(order_item_id)
-            balance = float(order_item.qty or 0) - pre_qty
+            balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
             if current_received_qty > balance:
                 db.session.rollback()
@@ -496,8 +497,8 @@ def get_grn_details(grn_id):
                 "note": oi.custom_note if oi else None,
 
                 "orderQty": float(oi.qty or 0) if oi else 0,
-                "preReceivedQty": pre_qty,
-                "balanceQty": float(oi.qty or 0) - pre_qty if oi else 0,
+                "preReceivedQty": float(pre_qty),
+                "balanceQty": float(Decimal(str(oi.qty or 0)) - pre_qty) if oi else 0,
                 "currentReceivedQty": float(gi.current_received_qty or 0),
 
                 "useLocation": gi.use_location,
@@ -931,7 +932,7 @@ def edit_grn(grn_id, data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
-            current_received_qty = float(row.get("currentReceivedQty", 0))
+            current_received_qty = Decimal(str(row.get("currentReceivedQty") or 0))
 
             if current_received_qty <= 0:
                 db.session.rollback()
@@ -950,7 +951,7 @@ def edit_grn(grn_id, data, user_id, files=None):
 
             # pre_received excludes current GRN (already wiped above)
             pre_qty = _pre_received_qty(order_item_id)
-            balance = float(order_item.qty or 0) - pre_qty
+            balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
             if current_received_qty > balance:
                 db.session.rollback()

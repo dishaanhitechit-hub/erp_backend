@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
 from collections import defaultdict
+from decimal import Decimal
 import uuid as _uuid
 import json
 
@@ -53,7 +54,7 @@ def _pre_received_qty(pw_order_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 def generate_srnl_no(line_no):
@@ -175,7 +176,7 @@ def get_pw_order_items_for_srn(order_id):
         for oi in order.items:
 
             pre_qty   = _pre_received_qty(oi.id)
-            order_qty = float(oi.qty or 0)
+            order_qty = Decimal(str(oi.qty or 0))
             balance   = order_qty - pre_qty
 
             items.append({
@@ -187,9 +188,9 @@ def get_pw_order_items_for_srn(order_id):
                     if oi.item and oi.item.unit else None
                 ),
                 "note":               oi.custom_note,
-                "orderQty":           order_qty,
-                "preReceivedQty":     pre_qty,
-                "balanceQty":         balance,
+                "orderQty":           float(order_qty),
+                "preReceivedQty":     float(pre_qty),
+                "balanceQty":         float(balance),
                 "currentReceivedQty": 0,
                 "useLocation":        None,
                 "storeLocation":      None,
@@ -307,7 +308,7 @@ def create_srn(data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             pw_order_item_id     = row.get("pwOrderItemId")
-            current_received_qty = float(row.get("currentReceivedQty", 0))
+            current_received_qty = Decimal(str(row.get("currentReceivedQty") or 0))
 
             if current_received_qty <= 0:
                 db.session.rollback()
@@ -325,7 +326,7 @@ def create_srn(data, user_id, files=None):
                 )
 
             pre_qty = _pre_received_qty(pw_order_item_id)
-            balance = float(pw_order_item.qty or 0) - pre_qty
+            balance = Decimal(str(pw_order_item.qty or 0)) - pre_qty
 
             if current_received_qty > balance:
                 db.session.rollback()
@@ -439,8 +440,8 @@ def get_srn_details(srn_id):
                 ),
                 "note":                oi.custom_note if oi else None,
                 "orderQty":            float(oi.qty or 0) if oi else 0,
-                "preReceivedQty":      pre_qty,
-                "balanceQty":          float(oi.qty or 0) - pre_qty if oi else 0,
+                "preReceivedQty":      float(pre_qty),
+                "balanceQty":          float(Decimal(str(oi.qty or 0)) - pre_qty) if oi else 0,
                 "currentReceivedQty":  float(si.current_received_qty or 0),
                 "useLocation":         si.use_location,
                 "storeLocation":       si.store_location,
@@ -849,7 +850,7 @@ def edit_srn(srn_id, data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             pw_order_item_id     = row.get("pwOrderItemId")
-            current_received_qty = float(row.get("currentReceivedQty", 0))
+            current_received_qty = Decimal(str(row.get("currentReceivedQty") or 0))
 
             if current_received_qty <= 0:
                 db.session.rollback()
@@ -867,7 +868,7 @@ def edit_srn(srn_id, data, user_id, files=None):
                 )
 
             pre_qty = _pre_received_qty(pw_order_item_id)
-            balance = float(pw_order_item.qty or 0) - pre_qty
+            balance = Decimal(str(pw_order_item.qty or 0)) - pre_qty
 
             if current_received_qty > balance:
                 db.session.rollback()

@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
 from collections import defaultdict
+from decimal import Decimal
 import uuid as _uuid
 
 from app.models.orderMaster import OrderMaster, OrderItem
@@ -50,7 +51,7 @@ def _total_received_qty(order_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 def _pre_issued_qty(order_item_id):
@@ -66,7 +67,7 @@ def _pre_issued_qty(order_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 def _stock_qty(order_item_id):
@@ -208,8 +209,8 @@ def get_order_items_for_gin(order_id):
                     if oi.item and oi.item.unit else None
                 ),
                 "note": oi.custom_note,
-                "stockQty": stock,
-                "preIssuedQty": pre_issued,
+                "stockQty": float(stock),
+                "preIssuedQty": float(pre_issued),
                 "issueQty": 0,
                 "stockLocation": None,
                 "itemUsedLocation": None,
@@ -310,7 +311,7 @@ def create_gin(data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
-            issue_qty = float(row.get("issueQty", 0))
+            issue_qty = Decimal(str(row.get("issueQty") or 0))
 
             if issue_qty <= 0:
                 db.session.rollback()
@@ -445,8 +446,8 @@ def get_gin_details(gin_id):
                     if oi and oi.item and oi.item.unit else None
                 ),
                 "note": oi.custom_note if oi else None,
-                "stockQty": stock,
-                "preIssuedQty": pre_issued,
+                "stockQty": float(stock),
+                "preIssuedQty": float(pre_issued),
                 "issueQty": float(gi.issue_qty or 0),
                 "stockLocation": gi.stock_location,
                 "itemUsedLocation": gi.item_used_location,
@@ -843,7 +844,7 @@ def edit_gin(gin_id, data, user_id, files=None):
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
-            issue_qty = float(row.get("issueQty", 0))
+            issue_qty = Decimal(str(row.get("issueQty") or 0))
 
             if issue_qty <= 0:
                 db.session.rollback()
@@ -1026,7 +1027,7 @@ def get_gin_by_uuid(gin_uuid):
                 order_qty = float(oi.qty or 0)
 
             issue_qty  = float(gi.issue_qty or 0)
-            stock_qty  = _stock_qty(gi.order_item_id) if gi.order_item_id else 0.0
+            stock_qty  = float(_stock_qty(gi.order_item_id)) if gi.order_item_id else 0.0
             total_issue_qty += issue_qty
 
             items.append({

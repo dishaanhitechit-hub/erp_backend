@@ -5,6 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+from decimal import Decimal
 
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.dcMaster import DcMaster, DcItem
@@ -71,7 +72,7 @@ def _pre_issued_dc_qty(order_item_id):
         )
         .scalar()
     )
-    return float(result)
+    return Decimal(str(result or 0))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -139,7 +140,7 @@ def get_order_items_for_dc(order_id):
 
         for oi in order.items:
             already_dispatched = _pre_issued_dc_qty(oi.id)
-            order_qty = float(oi.qty or 0)
+            order_qty = Decimal(str(oi.qty or 0))
             balance_qty = order_qty - already_dispatched
 
             if balance_qty <= 0:
@@ -150,10 +151,10 @@ def get_order_items_for_dc(order_id):
                 "itemCode":     oi.item_code,
                 "itemName":     oi.item.item_name if oi.item else None,
                 "itemUnit":     oi.item.unit.unit_name if oi.item and oi.item.unit else None,
-                "orderQty":     order_qty,
-                "dispatchedQty": already_dispatched,
-                "balanceQty":   balance_qty,
-                "issueQty":     balance_qty,  # default to full balance
+                "orderQty":     float(order_qty),
+                "dispatchedQty": float(already_dispatched),
+                "balanceQty":   float(balance_qty),
+                "issueQty":     float(balance_qty),  # default to full balance
                 "stockLocation": oi.location,
             })
 
@@ -305,7 +306,7 @@ def create_dc(data, user_id, files=None):
 
         for row in items:
             order_item_id = row.get("orderItemId")
-            issue_qty     = float(row.get("issueQty", 0))
+            issue_qty     = Decimal(str(row.get("issueQty") or 0))
 
             if issue_qty <= 0:
                 continue
@@ -317,7 +318,7 @@ def create_dc(data, user_id, files=None):
 
             # check balance
             already_dispatched = _pre_issued_dc_qty(order_item_id)
-            balance = float(order_item.qty or 0) - already_dispatched
+            balance = Decimal(str(order_item.qty or 0)) - already_dispatched
 
             if issue_qty > balance:
                 db.session.rollback()

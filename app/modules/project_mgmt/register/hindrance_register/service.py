@@ -1,5 +1,6 @@
 import uuid as _uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -43,9 +44,9 @@ def _generate_hindrance_no():
 
 def _calc_total(manpower, plant_machinery, materials):
     return (
-        float(manpower or 0) +
-        float(plant_machinery or 0) +
-        float(materials or 0)
+        Decimal(str(manpower or 0)) +
+        Decimal(str(plant_machinery or 0)) +
+        Decimal(str(materials or 0))
     )
 
 

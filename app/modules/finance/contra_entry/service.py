@@ -1,6 +1,7 @@
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
+from decimal import Decimal
 import uuid as _uuid
 
 from app.models.contraEntry import ContraEntryMaster, ContraEntryLine
@@ -212,7 +213,7 @@ def get_contra_entry_list(data):
                 cr_type = cr_line.account.type if cr_line and cr_line.account else None
                 key = _summary_key(dr_type, cr_type)
                 if key:
-                    summary[key] = round(summary[key] + float(r.total_amount or 0), 2)
+                    summary[key] = summary[key] + Decimal(str(r.total_amount or 0))
 
             result.append({
                 "id":             r.id,
@@ -226,7 +227,7 @@ def get_contra_entry_list(data):
                 "createdAt":      _fmt_date(r.created_at),
             })
 
-        return res("Contra entry list fetched", {"list": result, "summary": summary}, 200)
+        return res("Contra entry list fetched", {"list": result, "summary": {k: float(v) for k, v in summary.items()}}, 200)
 
     except Exception as e:
         return res(str(e), [], 500)

@@ -1,5 +1,6 @@
 import uuid as _uuid
 from collections import defaultdict
+from decimal import Decimal
 from sqlalchemy import func, case, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -303,12 +304,11 @@ files=None,
                 "indentItemId"
             )
 
-            requested_qty=float(
+            requested_qty=Decimal(str(
                 row.get(
-                    "qty",
-                    0
-                )
-            )
+                    "qty"
+                ) or 0
+            ))
 
             if indent_item_id:
                 # ── indent-linked item ────────────────────────
@@ -336,7 +336,7 @@ files=None,
                     .scalar()
                 )
 
-                remaining_qty=float(indent_item.qty)-float(previous_qty)
+                remaining_qty=Decimal(str(indent_item.qty or 0))-Decimal(str(previous_qty or 0))
 
                 if requested_qty<=0:
                     db.session.rollback()
@@ -379,8 +379,8 @@ files=None,
                 location=row.get("location")
                 balance_qty=0
 
-            rate=float(row.get("rate", 0))
-            gst_percent=float(row.get("gstPercent", 0))
+            rate=Decimal(str(row.get("rate") or 0))
+            gst_percent=Decimal(str(row.get("gstPercent") or 0))
             amount=requested_qty*rate
             gst_amount=(amount*gst_percent)/100
 
@@ -2146,7 +2146,7 @@ def edit_order(order_id, data, user_id, files=None):
         for row in items:
 
             indent_item_id = row.get("indentItemId")
-            qty = float(row.get("qty", 0))
+            qty = Decimal(str(row.get("qty") or 0))
 
             if indent_item_id:
                 # ── indent-linked item ────────────────────────
@@ -2167,7 +2167,7 @@ def edit_order(order_id, data, user_id, files=None):
                     .scalar()
                 )
 
-                remaining_qty = float(indent_item.qty) - float(previous_qty)
+                remaining_qty = Decimal(str(indent_item.qty or 0)) - Decimal(str(previous_qty or 0))
 
                 if qty <= 0:
                     db.session.rollback()
@@ -2205,8 +2205,8 @@ def edit_order(order_id, data, user_id, files=None):
                 location = row.get("location")
                 balance_qty = 0
 
-            rate = float(row.get("rate", 0))
-            gst = float(row.get("gstPercent", 0))
+            rate = Decimal(str(row.get("rate") or 0))
+            gst = Decimal(str(row.get("gstPercent") or 0))
             amount = qty * rate
             gst_amount = (amount * gst) / 100
 
