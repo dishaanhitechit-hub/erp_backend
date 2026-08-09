@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from flask import g
+from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.response import res
 from app.models.dlrMaster import DlrMaster, DlrItem
@@ -128,10 +129,11 @@ def _build_items(rows):
 
         man_id_str = None
         if worker_db_id:
+            worker = None
             try:
                 worker = ManpowerWorker.query.get(int(worker_db_id))
             except (ValueError, TypeError):
-                worker = None
+                worker = ManpowerWorker.query.filter_by(man_id=str(worker_db_id)).first()
             if worker:
                 man_id_str = worker.man_id
                 full_name = full_name or worker.full_name
@@ -325,72 +327,106 @@ def submit_dlr(dlr_id, user_id, project_code):
 # ── APPROVE ───────────────────────────────────────────────────────
 
 def approve_dlr(dlr_id, user_id, project_code, comments=None):
-    d = DlrMaster.query.get(dlr_id)
-    if not d:
-        return res("DLR not found", [], 404)
-    if not d.workflow_status.startswith("Pending"):
-        return res("DLR is not pending approval", [], 400)
-    if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
-        return res("Not authorised to approve at this level", [], 403)
+    try:
+        d = DlrMaster.query.get(dlr_id)
+        if not d:
+            return res("DLR not found", [], 404)
+        if not d.workflow_status.startswith("Pending"):
+            return res("DLR is not pending approval", [], 400)
+        if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
+            return res("Not authorised to approve at this level", [], 403)
 
-    gap = get_gap_level(project_code, MODULE_CODE, d.current_level)
-    if gap:
-        return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
+        gap = get_gap_level(project_code, MODULE_CODE, d.current_level)
+        if gap:
+            return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
-    create_history(project_code, MODULE_CODE, d.id, d.current_level, "APPROVE", user_id, comments)
+        nxt = get_next_approver(project_code, MODULE_CODE, d.current_level)
+        if nxt:
+            create_history(project_code, MODULE_CODE, d.id, d.current_level, "APPROVE", user_id, comments)
+            d.workflow_status = f"Pending_L{nxt.level_no}"
+            d.current_level = nxt.level_no
+        else:
+            create_history(project_code, MODULE_CODE, d.id, d.current_level, "FINAL_APPROVE", user_id, comments)
+            d.workflow_status = "Approved"
+            d.approved_by = user_id
+            d.final_approved_at = datetime.utcnow()
 
-    nxt = get_next_approver(project_code, MODULE_CODE, d.current_level)
-    if nxt:
-        d.workflow_status = f"Pending_L{nxt.level_no}"
-        d.current_level = nxt.level_no
-    else:
-        d.workflow_status = "Approved"
-        d.approved_by = user_id
-        d.final_approved_at = datetime.utcnow()
+        d.updated_by = user_id
+        d.updated_at = datetime.utcnow()
+        db.session.commit()
+        return res("DLR approved", {"dlrId": d.id, "workflowStatus": d.workflow_status, "currentLevel": d.current_level}, 200)
 
-    db.session.commit()
-    return res("DLR approved", [_serialize(d)], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
 
 
 # ── REBACK ────────────────────────────────────────────────────────
 
 def reback_dlr(dlr_id, user_id, project_code, comments=None):
-    d = DlrMaster.query.get(dlr_id)
-    if not d:
-        return res("DLR not found", [], 404)
-    if not d.workflow_status.startswith("Pending"):
-        return res("DLR is not pending", [], 400)
-    if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
-        return res("Not authorised to reback at this level", [], 403)
+    try:
+        d = DlrMaster.query.get(dlr_id)
+        if not d:
+            return res("DLR not found", [], 404)
+        if not d.workflow_status.startswith("Pending"):
+            return res("DLR is not pending", [], 400)
+        if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
+            return res("Not authorised to reback at this level", [], 403)
 
-    create_history(project_code, MODULE_CODE, d.id, d.current_level, "REBACK", user_id, comments)
-    d.workflow_status = "Rebacked"
-    d.current_level = 0
-    d.locked = False
+        create_history(project_code, MODULE_CODE, d.id, d.current_level, "REBACK", user_id, comments)
+        d.workflow_status = "Rebacked"
+        d.current_level = 0
+        d.locked = False
+        d.updated_by = user_id
+        d.updated_at = datetime.utcnow()
+        d.correction_sent_at = datetime.utcnow()
 
-    db.session.commit()
-    return res("DLR rebacked", [_serialize(d)], 200)
+        db.session.commit()
+        return res("DLR rebacked", {"dlrId": d.id, "workflowStatus": d.workflow_status}, 200)
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
 
 
 # ── REJECT ────────────────────────────────────────────────────────
 
 def reject_dlr(dlr_id, user_id, project_code, comments=None):
-    d = DlrMaster.query.get(dlr_id)
-    if not d:
-        return res("DLR not found", [], 404)
-    if not d.workflow_status.startswith("Pending"):
-        return res("DLR is not pending", [], 400)
-    if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
-        return res("Not authorised to reject at this level", [], 403)
+    try:
+        d = DlrMaster.query.get(dlr_id)
+        if not d:
+            return res("DLR not found", [], 404)
+        if not d.workflow_status.startswith("Pending"):
+            return res("DLR is not pending", [], 400)
+        if not is_current_approver(project_code, MODULE_CODE, d.current_level, user_id):
+            return res("Not authorised to reject at this level", [], 403)
 
-    create_history(project_code, MODULE_CODE, d.id, d.current_level, "REJECT", user_id, comments)
-    d.workflow_status = "Rejected"
-    d.rejected_by = user_id
-    d.rejected_at = datetime.utcnow()
-    d.locked = True
+        create_history(project_code, MODULE_CODE, d.id, d.current_level, "REJECT", user_id, comments)
+        d.workflow_status = "Rejected"
+        d.rejected_by = user_id
+        d.rejected_at = datetime.utcnow()
+        d.locked = True
+        d.updated_by = user_id
+        d.updated_at = datetime.utcnow()
 
-    db.session.commit()
-    return res("DLR rejected", [_serialize(d)], 200)
+        db.session.commit()
+        return res("DLR rejected", {"dlrId": d.id, "workflowStatus": d.workflow_status}, 200)
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
 
 
 # ── HISTORY ───────────────────────────────────────────────────────
