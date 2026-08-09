@@ -434,26 +434,35 @@ def reject_dlr(dlr_id, user_id, project_code, comments=None):
 # ── HISTORY ───────────────────────────────────────────────────────
 
 def get_dlr_history(dlr_id, project_code):
-    d = DlrMaster.query.get(dlr_id)
-    if not d:
-        return res("DLR not found", [], 404)
+    try:
+        d = DlrMaster.query.get(dlr_id)
+        if not d:
+            return res("DLR not found", [], 404)
 
-    rows = get_history(MODULE_CODE, dlr_id)
-    steps = get_approval_steps(project_code, MODULE_CODE, d, rows)
+        rows = get_history(MODULE_CODE, dlr_id)
+        steps = get_approval_steps(project_code, MODULE_CODE, d, rows)
 
-    history = [
-        {
-            "id": h.id,
-            "levelNo": h.level_no,
-            "action": h.action,
-            "actionBy": h.action_by,
-            "comments": h.comments,
-            "createdAt": h.created_at.isoformat() if h.created_at else None,
-        }
-        for h in rows
-    ]
+        history = [
+            {
+                "id": h.id,
+                "level": h.level_no,
+                "action": h.action,
+                "actionBy": h.user.username if h.user else None,
+                "comments": h.comments,
+                "createdAt": h.created_at.strftime("%Y%m%d %H:%M:%S") if h.created_at else None,
+            }
+            for h in rows
+        ]
 
-    return res("DLR history fetched", [{"history": history, "steps": steps}], 200)
+        return res("DLR history fetched", {
+            "workflowStatus": d.workflow_status,
+            "currentLevel": d.current_level,
+            "approvalSteps": steps,
+            "history": history,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
 
 
 # ── MY APPROVAL STATUS ────────────────────────────────────────────
