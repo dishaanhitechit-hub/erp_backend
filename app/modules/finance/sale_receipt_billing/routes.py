@@ -3,6 +3,7 @@ from app.middleware.auth_middleware import login_required
 from app.modules.finance.sale_receipt_billing.service import (
     get_certified_bills_for_order,
     get_receipt_items,
+    get_invoices_by_sale_order,
     get_details_by_invoice_no,
     create_srb,
     get_srb_list,
@@ -34,7 +35,14 @@ def api_srb_receipt_items():
     return get_receipt_items(request.args.to_dict())
 
 
-# ── 3. INVOICE LOOKUP ────────────────────────────────────────────
+# ── 3. INVOICES BY SALE ORDER ────────────────────────────────────
+@sale_receipt_billing_bp.route("/invoices-by-sale-order", methods=["GET"])
+@login_required
+def api_srb_invoices_by_sale_order():
+    return get_invoices_by_sale_order(request.args.to_dict())
+
+
+# ── 4. INVOICE LOOKUP ────────────────────────────────────────────
 @sale_receipt_billing_bp.route("/invoice-lookup", methods=["GET"])
 @login_required
 def api_srb_invoice_lookup():

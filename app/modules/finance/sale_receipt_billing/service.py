@@ -349,7 +349,46 @@ def get_receipt_items(data):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 3. INVOICE LOOKUP  (by sale_bill_no → auto-fill child billing form)
+# 3. INVOICES BY SALE ORDER  (dropdown list before invoice-lookup)
+# ══════════════════════════════════════════════════════════════════
+
+def get_invoices_by_sale_order(data):
+    """Return all Approved sale bills for a given OG Sale Order No."""
+    try:
+        og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
+        project_code     = (data.get("projectCode")   or "").strip()
+
+        if not og_sale_order_no:
+            return res("ogSaleOrderNo required", [], 400)
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        bills = SaleBillMaster.query.filter_by(
+            sale_order_no   = og_sale_order_no,
+            project_code    = project_code,
+            workflow_status = "Approved",
+        ).order_by(SaleBillMaster.id.asc()).all()
+
+        result = [
+            {
+                "id":                 b.id,
+                "saleBillNo":         b.sale_bill_no,
+                "invoiceDate":        _fmt_date(b.invoice_date),
+                "mode":               b.mode,
+                "certifiedBillNo":    b.certified_bill_no,
+                "totalInvoiceAmount": float(b.total_invoice_amount or 0),
+            }
+            for b in bills
+        ]
+
+        return res("Invoices fetched", result, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 4. INVOICE LOOKUP  (by sale_bill_no → auto-fill child billing form)
 # ══════════════════════════════════════════════════════════════════
 
 def get_details_by_invoice_no(data):

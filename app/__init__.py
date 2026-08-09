@@ -168,6 +168,11 @@ def create_app():
 
     from .models import contraEntry  # noqa — registers ContraEntryMaster, ContraEntryLine with Alembic
 
+    from .modules.finance.debit_note.routes import debit_note_bp
+    app.register_blueprint(debit_note_bp, url_prefix="/finance/debit-note")
+
+    from .models import debitNote  # noqa — registers DebitNoteMaster, DebitNoteItem, DebitNoteGst with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
