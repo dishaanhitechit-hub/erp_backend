@@ -173,6 +173,11 @@ def create_app():
 
     from .models import debitNote  # noqa — registers DebitNoteMaster, DebitNoteItem, DebitNoteGst with Alembic
 
+    from .modules.finance.credit_note.routes import credit_note_bp
+    app.register_blueprint(credit_note_bp, url_prefix="/finance/credit-note")
+
+    from .models import creditNote  # noqa — registers CreditNoteMaster, CreditNoteItem, CreditNoteGst with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
