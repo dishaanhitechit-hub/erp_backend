@@ -133,6 +133,8 @@ def _build_items(rows):
             try:
                 worker = ManpowerWorker.query.get(int(worker_db_id))
             except (ValueError, TypeError):
+                worker = None
+            if not worker:
                 worker = ManpowerWorker.query.filter_by(man_id=str(worker_db_id)).first()
             if worker:
                 man_id_str = worker.man_id
@@ -481,7 +483,8 @@ def get_labour_by_supplier(supplier_id):
     data = [
         {
             "id": w.id,
-            "manId": w.man_id,
+            "manId": w.id,
+            "manCode": w.man_id,
             "fullName": w.full_name,
             "category": w.category,
         }
