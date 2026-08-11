@@ -178,6 +178,16 @@ def create_app():
 
     from .models import creditNote  # noqa — registers CreditNoteMaster, CreditNoteItem, CreditNoteGst with Alembic
 
+    from .modules.finance.payment_voucher.routes import payment_voucher_bp
+    app.register_blueprint(payment_voucher_bp, url_prefix="/finance/payment-voucher")
+
+    from .models import paymentVoucher  # noqa — registers PaymentVoucherMaster, PaymentVoucherItem, PaymentVoucherGst with Alembic
+
+    from .modules.finance.bill_payment.routes import bill_payment_bp
+    app.register_blueprint(bill_payment_bp, url_prefix="/finance/bill-payment")
+
+    from .models import billPaymentReceipt  # noqa — registers BillPaymentReceiptMaster, BillPaymentReceiptItem, BillPaymentReceiptGst with Alembic
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
