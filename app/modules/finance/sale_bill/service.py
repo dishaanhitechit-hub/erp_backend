@@ -285,7 +285,7 @@ def create_sale_bill(data, user_id):
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            Decimal(str(g.get("gstAmount") or 0))
+            (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01"))
             for g in gst_lines if g.get("isSelected")
         )
         discount  = Decimal(str(data.get("discount")  or 0))
@@ -347,7 +347,7 @@ def create_sale_bill(data, user_id):
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
                 percent      = Decimal(str(g.get("percent")   or 0)),
-                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
+                gst_amount   = (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
                 is_selected  = bool(g.get("isSelected")),
             ))
 
@@ -494,7 +494,7 @@ def edit_sale_bill(bill_id, data, user_id):
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            Decimal(str(g.get("gstAmount") or 0))
+            (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01"))
             for g in gst_lines if g.get("isSelected")
         )
         discount  = Decimal(str(data.get("discount")  or 0))
@@ -519,7 +519,7 @@ def edit_sale_bill(bill_id, data, user_id):
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
                 percent      = Decimal(str(g.get("percent")   or 0)),
-                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal('0'),
+                gst_amount   = (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
                 is_selected  = bool(g.get("isSelected")),
             ))
 

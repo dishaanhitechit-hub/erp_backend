@@ -325,8 +325,9 @@ def create_bill_payment_receipt(data, user_id):
         gst_lines = data.get("gstLines", [])
 
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
-        gst_total   = sum(
-            Decimal(str(g.get("currentAmount") or 0))
+        pct_map   = {bg.gst_type: Decimal(str(bg.percent or 0)) for bg in bill.gst_lines}
+        gst_total = sum(
+            (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01"))
             for g in gst_lines if g.get("isSelected")
         )
         discount  = Decimal(str(data.get("discount")  or 0))
@@ -382,7 +383,7 @@ def create_bill_payment_receipt(data, user_id):
                 cc_code        = g.get("ccCode"),
                 cc_name        = g.get("ccName"),
                 booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
-                current_amount = Decimal(str(g.get("currentAmount") or 0)) if g.get("isSelected") else Decimal("0"),
+                current_amount = (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
                 is_selected    = bool(g.get("isSelected")),
             ))
 
@@ -528,8 +529,10 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         db.session.flush()
 
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
-        gst_total   = sum(
-            Decimal(str(g.get("currentAmount") or 0))
+        bill_ref  = PurchaseBillMaster.query.get(r.purchase_bill_id)
+        pct_map   = {bg.gst_type: Decimal(str(bg.percent or 0)) for bg in (bill_ref.gst_lines if bill_ref else [])}
+        gst_total = sum(
+            (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01"))
             for g in gst_lines if g.get("isSelected")
         )
         discount  = Decimal(str(data.get("discount")  or 0))
@@ -553,7 +556,7 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
                 cc_code        = g.get("ccCode"),
                 cc_name        = g.get("ccName"),
                 booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
-                current_amount = Decimal(str(g.get("currentAmount") or 0)) if g.get("isSelected") else Decimal("0"),
+                current_amount = (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
                 is_selected    = bool(g.get("isSelected")),
             ))
 

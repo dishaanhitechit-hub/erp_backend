@@ -133,7 +133,7 @@ def create_credit_note(data, user_id):
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
-            Decimal(str(g.get("gstAmount") or 0))
+            (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01"))
             for g in gst_lines if g.get("isSelected")
         )
 
@@ -146,6 +146,7 @@ def create_credit_note(data, user_id):
             bill_date        = _parse_date(data.get("billDate")),
             order_number     = data.get("orderNumber"),
             order_date       = _parse_date(data.get("orderDate")),
+            vendor_id        = data.get("vendorId") or None,
             vendor_name      = data.get("vendorName"),
             vendor_gstn      = data.get("vendorGstn"),
             debit_note_no    = data.get("debitNoteNo"),
@@ -184,7 +185,7 @@ def create_credit_note(data, user_id):
                 cc_code        = g.get("ccCode"),
                 cc_name        = g.get("ccName"),
                 percent        = Decimal(str(g.get("percent")   or 0)),
-                gst_amount     = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal("0"),
+                gst_amount     = (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
                 is_selected    = bool(g.get("isSelected")),
             ))
 
@@ -296,6 +297,7 @@ def edit_credit_note(cn_id, data, user_id):
             ("billDate",      "bill_date"),
             ("orderNumber",   "order_number"),
             ("orderDate",     "order_date"),
+            ("vendorId",      "vendor_id"),
             ("vendorName",    "vendor_name"),
             ("vendorGstn",    "vendor_gstn"),
             ("debitNoteNo",   "debit_note_no"),
@@ -329,7 +331,8 @@ def edit_credit_note(cn_id, data, user_id):
 
         gst_total = Decimal("0")
         for g in gst_lines:
-            amt = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal("0")
+            pct = Decimal(str(g.get("percent") or 0))
+            amt = (basic_total * pct / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0")
             gst_total += amt
             db.session.add(CreditNoteGst(
                 credit_note_id = cn.id,

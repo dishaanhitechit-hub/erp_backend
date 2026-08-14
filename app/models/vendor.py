@@ -4,6 +4,7 @@
 
 from app.extensions import db
 from datetime import datetime
+import uuid as _uuid
 
 class Vendor(db.Model):
     __tablename__ = "vendors"
@@ -22,6 +23,14 @@ class Vendor(db.Model):
         unique=True,
         nullable=False
     )  # Auto Generated
+
+    vendor_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True,
+        default=lambda: str(_uuid.uuid4())
+    )
 
     ledger_name = db.Column(
         db.String(200),

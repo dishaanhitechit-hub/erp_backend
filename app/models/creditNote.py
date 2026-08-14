@@ -17,6 +17,7 @@ class CreditNoteMaster(db.Model):
     order_number = db.Column(db.String(200), nullable=True)
     order_date   = db.Column(db.Date,        nullable=True)
 
+    vendor_id   = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
     vendor_name = db.Column(db.String(300), nullable=True)
     vendor_gstn = db.Column(db.String(50),  nullable=True)
 
