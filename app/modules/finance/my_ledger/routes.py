@@ -7,5 +7,5 @@ my_ledger_bp = Blueprint("my_ledger", __name__)
 
 @my_ledger_bp.route("", methods=["GET"])
 @login_required
-def my_ledger_view(user_id):
+def my_ledger_view():
     return get_my_ledger(request.args)

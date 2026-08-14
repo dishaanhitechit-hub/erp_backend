@@ -7,7 +7,7 @@ vendor_ledger_bp = Blueprint("vendor_ledger", __name__)
 
 @vendor_ledger_bp.route("", methods=["GET"])
 @login_required
-def vendor_ledger_view(user_id):
+def vendor_ledger_view():
     return get_vendor_ledger(request.args)
 
 
