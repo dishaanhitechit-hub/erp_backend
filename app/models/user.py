@@ -38,15 +38,16 @@ class User(db.Model):
     # relationships
     global_role = db.relationship("Role", backref="users")
 
-@event.listens_for(User, "before_insert")
-def gen_login_username(mapper, connection, target):
+def _build_login_username(target):
     cl_user = target.username.replace(" ", "").lower()
     target.login_username = f"{cl_user}_{target.emp_code}"
-        # Update in DB
-    # connection.execute(
-    # User.__table__.update()
-    # .where(User.id == target.id)
-    # .values(login_username=login_username)
-    #     )
+
+@event.listens_for(User, "before_insert")
+def gen_login_username(mapper, connection, target):
+    _build_login_username(target)
+
+@event.listens_for(User, "before_update")
+def sync_login_username(mapper, connection, target):
+    _build_login_username(target)
 
 
