@@ -488,10 +488,9 @@ def get_indent_details(indent_id):
 
         return res(str(e), [], 500)
 
-def get_items_by_category(category_code, asset_only=False):
-
+def get_items_by_category(category_code, asset_filter="exclude"):
+    # asset_filter: "only" | "exclude" | "all"
     try:
-
         query = (
             db.session.query(
                 Item.id,
@@ -511,13 +510,14 @@ def get_items_by_category(category_code, asset_only=False):
         if category_code:
             query = query.filter(Item.category_code == category_code)
 
-        if asset_only:
+        if asset_filter == "only":
             query = query.filter(GroupMaster.group_name == "Fixed Asset")
-        else:
+        elif asset_filter == "exclude":
             query = query.filter(
                 (GroupMaster.group_name != "Fixed Asset") |
                 (GroupMaster.group_name == None)
             )
+        # "all" -> no group_name filter at all, so both assets and materials come through
 
         rows = query.all()
 

@@ -34,11 +34,17 @@ def api_verify_indent_pdf(token):
 @indent_bp.route("/items-by-category", methods=["GET"])
 @login_required
 def items_by_category():
-
     category_code = request.args.get("categoryCode") or None
-    asset_only    = request.args.get("assetOnly", "false").lower() == "true"
+    asset_only_raw = request.args.get("assetOnly")  # no default here
 
-    return get_items_by_category(category_code, asset_only)
+    if asset_only_raw is None:
+        asset_filter = "all"                         # not passed -> combined list
+    elif asset_only_raw.lower() == "true":
+        asset_filter = "only"
+    else:
+        asset_filter = "exclude"                      # explicit "false"
+
+    return get_items_by_category(category_code, asset_filter)
 
 @indent_bp.route("/create", methods=["POST"])
 @login_required
