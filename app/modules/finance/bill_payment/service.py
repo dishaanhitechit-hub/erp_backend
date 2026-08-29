@@ -118,7 +118,7 @@ def _build_detail_payload(r):
             "ccName":        i.cc_name,
             "bookedAmount":  booked,
             "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
+            "balanceAmount": max(booked - paid - current, 0),
             "currentAmount": current,
         })
 
@@ -134,7 +134,7 @@ def _build_detail_payload(r):
             "ccName":        g.cc_name,
             "bookedAmount":  booked,
             "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
+            "balanceAmount": max(booked - paid - current, 0),
             "currentAmount": current,
             "isSelected":    g.is_selected,
         })
