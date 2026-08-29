@@ -583,7 +583,7 @@ def get_items_by_category(category_code, asset_filter="exclude"):
                         float(row.gst_percentage)
                         if row.gst_percentage else 0
                     ),
-                    "isAsset": True
+                    #"isAsset": True
                 })
 
         return res(
