@@ -22,6 +22,7 @@ from app.models.unit import Unit
 from sqlalchemy import func, case
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.companies import Company
+from app.models.asset import Asset
 
 
 
@@ -546,6 +547,44 @@ def get_items_by_category(category_code, asset_filter="exclude"):
                     if row.gst_percentage else 0
                 )
             })
+
+        # When asset_filter == "all" and category is MAT_001,
+        # also pull from the Asset table and concat into result
+        if asset_filter == "all" and category_code == "MAT_001":
+            asset_rows = (
+                db.session.query(
+                    Asset.id,
+                    Asset.asset_code,
+                    Asset.asset_name,
+                    Asset.asset_description,
+                    Asset.gst_percentage,
+                    Unit.short_name.label("unit_name"),
+                    CCCode.cc_code.label("cc_code")
+                )
+                .outerjoin(CCCode, CCCode.id == Asset.cc_code_id)
+                .outerjoin(Unit, Unit.id == Asset.unit_id)
+                .filter(Asset.status == "Active")
+                .filter(Asset.category_code == "MAT_001")
+                .all()
+            )
+
+            for row in asset_rows:
+                result.append({
+                    "id": row.id,
+                    "itemCode": row.asset_code,
+                    "itemDisplayCode": (
+                        f"{row.cc_code}{row.asset_code}"
+                        if row.cc_code else None
+                    ),
+                    "itemName": row.asset_name,
+                    "description": row.asset_description,
+                    "unit": row.unit_name,
+                    "gst": (
+                        float(row.gst_percentage)
+                        if row.gst_percentage else 0
+                    ),
+                    "isAsset": True
+                })
 
         return res(
             "Items fetched successfully",
