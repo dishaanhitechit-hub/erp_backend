@@ -52,23 +52,31 @@ def _generate_voucher_no():
 
 
 def _build_line_payload(line):
-    if line.account_type == "CC" and line.cc:
-        account_id   = line.cc_id
-        account_code = line.cc.cc_code
-        account_name = line.cc.cc_name
-    elif line.account_type == "Vendor" and line.vendor:
-        account_id   = line.vendor_id
-        account_code = line.vendor.ledger_code
-        account_name = line.vendor.ledger_name
-    else:
-        account_id = account_code = account_name = None
+    cc_code = cc_name = None
+    vendor_code = vendor_name = None
+
+    if line.cc:
+        cc_code = line.cc.cc_code
+        cc_name = line.cc.cc_name
+    if line.vendor:
+        vendor_code = line.vendor.ledger_code
+        vendor_name = line.vendor.ledger_name
+
+    # unified display fields (whichever is populated)
+    account_code = cc_code or vendor_code
+    account_name = cc_name or vendor_name
 
     return {
         "id":             line.id,
         "slNo":           line.sl_no,
         "accountType":    line.account_type,
         "drCr":           line.dr_cr,
-        "accountId":      account_id,
+        "ccId":           line.cc_id,
+        "ccCode":         cc_code,
+        "ccName":         cc_name,
+        "vendorId":       line.vendor_id,
+        "vendorCode":     vendor_code,
+        "vendorName":     vendor_name,
         "accountCode":    account_code,
         "accountName":    account_name,
         "openingBalance": float(line.opening_balance or 0),
