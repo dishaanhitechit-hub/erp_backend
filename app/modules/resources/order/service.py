@@ -357,7 +357,7 @@ files=None,
                 item_code=indent_item.item_code
                 note=row.get("note") or indent_item.note
                 location=indent_item.location
-                balance_qty=remaining_qty-requested_qty
+                balance_qty=round(float(remaining_qty or 0) - float(requested_qty or 0), 3)
 
             else:
                 # ── direct item (no indent) ───────────────────
@@ -594,20 +594,8 @@ def get_indent_pending_qty_list(
 
         for row in rows:
 
-            used_qty = float(
-                row.used_qty
-            )
-
-            balance_qty = (
-
-                    float(
-                        row.indent_qty
-                    )
-
-                    -
-
-                    used_qty
-            )
+            used_qty    = round(float(row.used_qty    or 0), 3)
+            balance_qty = round(float(row.indent_qty or 0) - used_qty, 3)
 
             if balance_qty <= 0:
                 continue
@@ -631,21 +619,10 @@ def get_indent_pending_qty_list(
                 row.item_name,
                 "itemUnit":
                 row.item_unit,
-                "indentQty":
-                float(
-                    row.indent_qty
-                ),
-
-                "usedQty":
-                float(
-                    used_qty
-                ),
-
-                "balanceQty":
-                balance_qty,
-
-                "orderQty":
-                balance_qty,
+                "indentQty":  round(float(row.indent_qty or 0), 3),
+                "usedQty":    round(float(used_qty or 0), 3),
+                "balanceQty": balance_qty,
+                "orderQty":   balance_qty,
 
                 "location":
                 row.location
@@ -2183,7 +2160,7 @@ def edit_order(order_id, data, user_id, files=None):
                 item_code = indent_item.item_code
                 note = row.get("note") or indent_item.note
                 location = indent_item.location
-                balance_qty = remaining_qty - qty
+                balance_qty = round(float(remaining_qty or 0) - float(qty or 0), 3)
 
             else:
                 # ── direct item (no indent) ───────────────────
