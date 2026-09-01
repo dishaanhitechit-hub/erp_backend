@@ -188,6 +188,11 @@ def create_app():
 
     from .models import billPaymentReceipt  # noqa — registers BillPaymentReceiptMaster, BillPaymentReceiptItem, BillPaymentReceiptGst with Alembic
 
+    from .modules.finance.journal_entry.routes import journal_entry_bp
+    app.register_blueprint(journal_entry_bp, url_prefix="/finance/journal-entry")
+
+    from .models import journalEntry  # noqa — registers JournalEntryMaster, JournalEntryLine with Alembic
+
     from .modules.finance.vendor_ledger.routes import vendor_ledger_bp
     app.register_blueprint(vendor_ledger_bp, url_prefix="/finance/vendor-ledger")
 
