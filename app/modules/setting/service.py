@@ -762,7 +762,7 @@ def add_designation_to_project(request):
 #  Get All Users
 def get_all_users(projectCode=None):  # Test done & pass
 
-    query = User.query.all()
+    query = User.query
 
     if projectCode:
 
