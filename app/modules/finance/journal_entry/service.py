@@ -147,9 +147,9 @@ def create_journal_entry(data, user_id):
             debit   = Decimal(str(row.get("debitAmount")    or 0))
             credit  = Decimal(str(row.get("creditAmount")   or 0))
             closing = opening + credit - debit
-            acc_type = row.get("accountType")
-            cc_id     = row.get("accountId") if acc_type == "CC"     else None
-            vendor_id = row.get("accountId") if acc_type == "Vendor" else None
+            cc_id     = row.get("ccId")
+            vendor_id = row.get("vendorId")
+            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
             db.session.add(JournalEntryLine(
                 journal_id      = entry.id,
                 sl_no           = row.get("slNo") or idx,
@@ -291,9 +291,9 @@ def edit_journal_entry(entry_id, data, user_id):
             debit   = Decimal(str(row.get("debitAmount")    or 0))
             credit  = Decimal(str(row.get("creditAmount")   or 0))
             closing = opening + credit - debit
-            acc_type = row.get("accountType")
-            cc_id     = row.get("accountId") if acc_type == "CC"     else None
-            vendor_id = row.get("accountId") if acc_type == "Vendor" else None
+            cc_id     = row.get("ccId")
+            vendor_id = row.get("vendorId")
+            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
             db.session.add(JournalEntryLine(
                 journal_id      = entry.id,
                 sl_no           = row.get("slNo") or idx,

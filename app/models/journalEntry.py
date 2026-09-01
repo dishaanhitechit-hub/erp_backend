@@ -61,7 +61,7 @@ class JournalEntryLine(db.Model):
     journal_id = db.Column(db.Integer, db.ForeignKey("journal_entry_master.id"), nullable=False)
 
     sl_no        = db.Column(db.Integer,    nullable=False)
-    account_type = db.Column(db.String(20), nullable=False)  # CC / Vendor
+    account_type = db.Column(db.String(20), nullable=True)   # CC / Vendor — derived from cc_id / vendor_id
     dr_cr        = db.Column(db.String(3),  nullable=False)  # Dr / Cr
 
     cc_id     = db.Column(db.Integer, db.ForeignKey("cc_codes.id"), nullable=True)
