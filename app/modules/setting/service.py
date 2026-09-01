@@ -79,6 +79,8 @@ def create_user(request): # Test done & pass
             fileName="signature"
         )
 
+    db.session.commit()
+
     data = [{
         "id": user.id,
         "username": user.username,
