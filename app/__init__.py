@@ -193,6 +193,15 @@ def create_app():
 
     from .models import journalEntry  # noqa — registers JournalEntryMaster, JournalEntryLine with Alembic
 
+    from .modules.finance.petty_cash.budget.routes import petty_cash_budget_bp
+    app.register_blueprint(petty_cash_budget_bp, url_prefix="/finance/petty-cash/budget")
+
+    from .modules.finance.petty_cash.docket_voucher.routes import petty_cash_docket_voucher_bp
+    app.register_blueprint(petty_cash_docket_voucher_bp, url_prefix="/finance/petty-cash/docket-voucher")
+
+    from .models import pettyCashBudget        # noqa — registers PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
+    from .models import pettyCashDocketVoucher  # noqa — registers PettyCashDocketVoucher, PettyCashDocketVoucherDetail
+
     from .modules.finance.vendor_ledger.routes import vendor_ledger_bp
     app.register_blueprint(vendor_ledger_bp, url_prefix="/finance/vendor-ledger")
 
