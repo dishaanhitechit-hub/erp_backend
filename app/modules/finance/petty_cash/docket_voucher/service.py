@@ -1,3 +1,4 @@
+import json
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -9,6 +10,7 @@ from app.models.pettyCashDocketVoucher import (
     PettyCashDocketVoucherDetail,
 )
 from app.models.pettyCashBudget import PettyCashBudget, PettyCashBudgetDetail
+from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -35,6 +37,32 @@ def _fmt_date(d):
     if isinstance(d, datetime):
         return d.strftime("%Y-%m-%d %H:%M")
     return d.strftime("%Y-%m-%d")
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _parse_details(data):
+    details = data.get("details", [])
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except Exception:
+            details = []
+    return details
+
+
+def _parse_int(val):
+    try:
+        return int(val) if val else None
+    except Exception:
+        return None
 
 
 def _generate_voucher_no():
@@ -66,31 +94,31 @@ def _build_detail_row(row):
 
 def _build_payload(voucher):
     return {
-        "id":             voucher.id,
-        "voucherNo":      voucher.voucher_no,
-        "voucherUuid":    voucher.voucher_uuid,
-        "voucherDate":    _fmt_date(voucher.voucher_date),
-        "budgetId":       voucher.budget_id,
-        "budgetNo":       voucher.budget.budget_no if voucher.budget else None,
-        "expensesBy":     voucher.expenses_by,
-        "modeOfPayment":  voucher.mode_of_payment,
-        "fundSource":     voucher.fund_source,
-        "paymentRefId":   voucher.payment_ref_id,
-        "attachment":     voucher.attachment,
-        "projectCode":    voucher.project_code,
-        "totalAmount":    float(voucher.total_amount or 0),
-        "workflowStatus": voucher.workflow_status,
-        "currentLevel":   voucher.current_level,
-        "locked":         voucher.locked,
-        "createdBy":      voucher.creator.username   if voucher.creator   else None,
-        "createdAt":      _fmt_date(voucher.created_at),
-        "submittedBy":    voucher.submitter.username if voucher.submitter else None,
-        "submittedAt":    _fmt_date(voucher.submitted_at),
-        "approvedBy":     voucher.approver.username  if voucher.approver  else None,
-        "finalApprovedAt":_fmt_date(voucher.final_approved_at),
-        "rejectedBy":     voucher.rejector.username  if voucher.rejector  else None,
-        "rejectedAt":     _fmt_date(voucher.rejected_at),
-        "details":        [_build_detail_row(r) for r in voucher.details],
+        "id":              voucher.id,
+        "voucherNo":       voucher.voucher_no,
+        "voucherUuid":     voucher.voucher_uuid,
+        "voucherDate":     _fmt_date(voucher.voucher_date),
+        "budgetId":        voucher.budget_id,
+        "budgetNo":        voucher.budget.budget_no if voucher.budget else None,
+        "expensesBy":      voucher.expenses_by,
+        "modeOfPayment":   voucher.mode_of_payment,
+        "fundSource":      voucher.fund_source,
+        "paymentRefId":    voucher.payment_ref_id,
+        "attachment":      voucher.attachment,
+        "projectCode":     voucher.project_code,
+        "totalAmount":     float(voucher.total_amount or 0),
+        "workflowStatus":  voucher.workflow_status,
+        "currentLevel":    voucher.current_level,
+        "locked":          voucher.locked,
+        "createdBy":       voucher.creator.username   if voucher.creator   else None,
+        "createdAt":       _fmt_date(voucher.created_at),
+        "submittedBy":     voucher.submitter.username if voucher.submitter else None,
+        "submittedAt":     _fmt_date(voucher.submitted_at),
+        "approvedBy":      voucher.approver.username  if voucher.approver  else None,
+        "finalApprovedAt": _fmt_date(voucher.final_approved_at),
+        "rejectedBy":      voucher.rejector.username  if voucher.rejector  else None,
+        "rejectedAt":      _fmt_date(voucher.rejected_at),
+        "details":         [_build_detail_row(r) for r in voucher.details],
     }
 
 
@@ -99,7 +127,6 @@ def _build_payload(voucher):
 # ══════════════════════════════════════════════════════════════════
 
 def get_budget_rows_for_voucher(budget_id):
-    """Return budget detail rows so the frontend can pre-fill voucher lines."""
     try:
         budget = PettyCashBudget.query.get(budget_id)
         if not budget:
@@ -119,11 +146,11 @@ def get_budget_rows_for_voucher(budget_id):
         ]
 
         return res("Budget rows fetched", {
-            "budgetId":    budget.id,
-            "budgetNo":    budget.budget_no,
-            "fromDate":    _fmt_date(budget.from_date),
-            "toDate":      _fmt_date(budget.to_date),
-            "rows":        rows,
+            "budgetId": budget.id,
+            "budgetNo": budget.budget_no,
+            "fromDate": _fmt_date(budget.from_date),
+            "toDate":   _fmt_date(budget.to_date),
+            "rows":     rows,
         }, 200)
 
     except Exception as e:
@@ -134,7 +161,7 @@ def get_budget_rows_for_voucher(budget_id):
 # 1. CREATE
 # ══════════════════════════════════════════════════════════════════
 
-def create_petty_cash_docket_voucher(data, user_id):
+def create_petty_cash_docket_voucher(data, user_id, files=None):
     try:
         project_code = data.get("projectCode")
         if not project_code:
@@ -142,10 +169,6 @@ def create_petty_cash_docket_voucher(data, user_id):
 
         if not is_creator(project_code, _MODULE, user_id):
             return res("You are not authorized to create docket vouchers", [], 403)
-
-        details_data = data.get("details", [])
-        if not details_data:
-            return res("At least one detail row required", [], 400)
 
         expenses_by     = data.get("expensesBy")
         mode_of_payment = data.get("modeOfPayment")
@@ -158,13 +181,28 @@ def create_petty_cash_docket_voucher(data, user_id):
         if not fund_source:
             return res("fundSource required", [], 400)
 
-        budget_id = data.get("budgetId")
+        details_data = _parse_details(data)
+        if not details_data:
+            return res("At least one detail row required", [], 400)
+
+        budget_id = _parse_int(data.get("budgetId"))
         if budget_id:
             budget = PettyCashBudget.query.get(budget_id)
             if not budget:
                 return res("Referenced budget not found", [], 404)
             if budget.workflow_status != "Approved":
                 return res("Referenced budget must be Approved", [], 400)
+
+        attachment_url = None
+        if files:
+            f = files.get("attachment")
+            if f:
+                attachment_url = upload_file_to_bunny(
+                    file=f,
+                    mainFolder="petty_cash",
+                    subFolder="docket_voucher",
+                    fileName=str(_uuid.uuid4()),
+                )
 
         total = sum(Decimal(str(r.get("amount") or 0)) for r in details_data)
 
@@ -177,6 +215,7 @@ def create_petty_cash_docket_voucher(data, user_id):
             mode_of_payment = mode_of_payment,
             fund_source     = fund_source,
             payment_ref_id  = data.get("paymentRefId"),
+            attachment      = attachment_url,
             project_code    = project_code,
             total_amount    = total,
             workflow_status = "Draft",
@@ -294,7 +333,7 @@ def get_petty_cash_docket_voucher_by_uuid(voucher_uuid):
 # 5. EDIT (Draft / Reback only)
 # ══════════════════════════════════════════════════════════════════
 
-def edit_petty_cash_docket_voucher(voucher_id, data, user_id):
+def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
     try:
         voucher = PettyCashDocketVoucher.query.get(voucher_id)
         if not voucher:
@@ -307,28 +346,39 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id):
         if not is_creator(voucher.project_code, _MODULE, user_id):
             return res("You are not authorized to edit this docket voucher", [], 403)
 
-        details_data = data.get("details", [])
+        details_data = _parse_details(data)
         if not details_data:
             return res("At least one detail row required", [], 400)
 
-        if data.get("expensesBy") is not None:
+        if data.get("expensesBy"):
             voucher.expenses_by = data["expensesBy"]
-        if data.get("modeOfPayment") is not None:
+        if data.get("modeOfPayment"):
             voucher.mode_of_payment = data["modeOfPayment"]
-        if data.get("fundSource") is not None:
+        if data.get("fundSource"):
             voucher.fund_source = data["fundSource"]
         if data.get("paymentRefId") is not None:
             voucher.payment_ref_id = data["paymentRefId"]
 
-        budget_id = data.get("budgetId")
-        if budget_id is not None:
+        raw_budget_id = data.get("budgetId")
+        if raw_budget_id is not None:
+            budget_id = _parse_int(raw_budget_id)
             if budget_id:
                 budget = PettyCashBudget.query.get(budget_id)
                 if not budget:
                     return res("Referenced budget not found", [], 404)
                 if budget.workflow_status != "Approved":
                     return res("Referenced budget must be Approved", [], 400)
-            voucher.budget_id = budget_id or None
+            voucher.budget_id = budget_id
+
+        if files:
+            f = files.get("attachment")
+            if f:
+                voucher.attachment = upload_file_to_bunny(
+                    file=f,
+                    mainFolder="petty_cash",
+                    subFolder="docket_voucher",
+                    fileName=str(_uuid.uuid4()),
+                )
 
         PettyCashDocketVoucherDetail.query.filter_by(voucher_id=voucher.id).delete()
         db.session.flush()

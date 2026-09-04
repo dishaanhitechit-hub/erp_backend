@@ -22,9 +22,9 @@ petty_cash_docket_voucher_bp = Blueprint("petty_cash_docket_voucher", __name__)
 @petty_cash_docket_voucher_bp.route("/create", methods=["POST"])
 @login_required
 def api_create_petty_cash_docket_voucher():
-    data    = request.get_json() or {}
+    data    = dict(request.form)
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    return create_petty_cash_docket_voucher(data, user_id)
+    return create_petty_cash_docket_voucher(data, user_id, files=request.files)
 
 
 # ── 2. LIST ───────────────────────────────────────────────────────
@@ -51,9 +51,9 @@ def api_petty_cash_docket_voucher_by_uuid(voucher_uuid):
 @petty_cash_docket_voucher_bp.route("/edit/<int:voucher_id>", methods=["PUT"])
 @login_required
 def api_edit_petty_cash_docket_voucher(voucher_id):
-    data    = request.get_json() or {}
+    data    = dict(request.form)
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
-    return edit_petty_cash_docket_voucher(voucher_id, data, user_id)
+    return edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=request.files)
 
 
 # ── 6. SUBMIT ─────────────────────────────────────────────────────

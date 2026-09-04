@@ -1,3 +1,4 @@
+import json
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -9,6 +10,7 @@ from app.models.pettyCashBudget import (
     PettyCashBudgetDetail,
     PettyCashBudgetRevision,
 )
+from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -35,6 +37,25 @@ def _fmt_date(d):
     if isinstance(d, datetime):
         return d.strftime("%Y-%m-%d %H:%M")
     return d.strftime("%Y-%m-%d")
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _parse_details(data):
+    details = data.get("details", [])
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except Exception:
+            details = []
+    return details
 
 
 def _generate_budget_no():
@@ -95,7 +116,7 @@ def _build_payload(budget):
 # 1. CREATE
 # ══════════════════════════════════════════════════════════════════
 
-def create_petty_cash_budget(data, user_id):
+def create_petty_cash_budget(data, user_id, files=None):
     try:
         project_code = data.get("projectCode")
         if not project_code:
@@ -104,19 +125,31 @@ def create_petty_cash_budget(data, user_id):
         if not is_creator(project_code, _MODULE, user_id):
             return res("You are not authorized to create petty cash budgets", [], 403)
 
-        details_data = data.get("details", [])
+        details_data = _parse_details(data)
         if not details_data:
             return res("At least one budget detail row required", [], 400)
 
         total = sum(Decimal(str(r.get("budgetAmount") or 0)) for r in details_data)
+
+        attachment_url = None
+        if files:
+            f = files.get("attachment")
+            if f:
+                attachment_url = upload_file_to_bunny(
+                    file=f,
+                    mainFolder="petty_cash",
+                    subFolder="budget",
+                    fileName=str(_uuid.uuid4()),
+                )
 
         budget = PettyCashBudget(
             budget_uuid         = str(_uuid.uuid4()),
             budget_no           = _generate_budget_no(),
             budget_date         = date.today(),
             budget_frequency    = data.get("budgetFrequency"),
-            from_date           = data.get("fromDate"),
-            to_date             = data.get("toDate"),
+            from_date           = _parse_date(data.get("fromDate")),
+            to_date             = _parse_date(data.get("toDate")),
+            attachment          = attachment_url,
             project_code        = project_code,
             total_budget_amount = total,
             workflow_status     = "Draft",
@@ -140,8 +173,8 @@ def create_petty_cash_budget(data, user_id):
         db.session.commit()
 
         return res("Petty cash budget created", {
-            "id":       budget.id,
-            "budgetNo": budget.budget_no,
+            "id":         budget.id,
+            "budgetNo":   budget.budget_no,
             "budgetUuid": budget.budget_uuid,
         }, 201)
 
@@ -231,7 +264,7 @@ def get_petty_cash_budget_by_uuid(budget_uuid):
 # 5. EDIT (Draft / Reback only)
 # ══════════════════════════════════════════════════════════════════
 
-def edit_petty_cash_budget(budget_id, data, user_id):
+def edit_petty_cash_budget(budget_id, data, user_id, files=None):
     try:
         budget = PettyCashBudget.query.get(budget_id)
         if not budget:
@@ -244,16 +277,26 @@ def edit_petty_cash_budget(budget_id, data, user_id):
         if not is_creator(budget.project_code, _MODULE, user_id):
             return res("You are not authorized to edit this budget", [], 403)
 
-        details_data = data.get("details", [])
+        details_data = _parse_details(data)
         if not details_data:
             return res("At least one budget detail row required", [], 400)
 
         if data.get("budgetFrequency") is not None:
             budget.budget_frequency = data["budgetFrequency"]
         if data.get("fromDate") is not None:
-            budget.from_date = data["fromDate"]
+            budget.from_date = _parse_date(data["fromDate"])
         if data.get("toDate") is not None:
-            budget.to_date = data["toDate"]
+            budget.to_date = _parse_date(data["toDate"])
+
+        if files:
+            f = files.get("attachment")
+            if f:
+                budget.attachment = upload_file_to_bunny(
+                    file=f,
+                    mainFolder="petty_cash",
+                    subFolder="budget",
+                    fileName=str(_uuid.uuid4()),
+                )
 
         PettyCashBudgetDetail.query.filter_by(budget_id=budget.id).delete()
         db.session.flush()
@@ -540,11 +583,6 @@ def get_petty_cash_budget_my_approval_status(budget_id, user_id):
 # ══════════════════════════════════════════════════════════════════
 
 def revise_petty_cash_budget(budget_id, data, user_id):
-    """
-    Approver can adjust individual line amounts after the budget is Approved.
-    Each change is recorded in PettyCashBudgetRevision for audit trail.
-    Body: { "revisions": [ { "detailRowId": int, "newAmount": float, "remark": str } ] }
-    """
     try:
         budget = PettyCashBudget.query.get(budget_id)
         if not budget:
