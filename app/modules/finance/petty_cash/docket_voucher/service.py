@@ -24,7 +24,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE = "petty_cash_docket_voucher"
+_MODULE = "petty_cash"
 
 
 # ══════════════════════════════════════════════════════════════════
