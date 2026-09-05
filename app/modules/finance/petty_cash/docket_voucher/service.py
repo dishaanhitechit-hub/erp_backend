@@ -135,8 +135,8 @@ def get_budget_rows_for_voucher(budget_id):
         if budget.workflow_status != "Approved":
             return res("Only Approved budgets can be referenced in a Docket Voucher", [], 400)
 
-        # Sum used amounts per budget_detail_id from active vouchers (exclude Draft & Rejected)
-        _EXCLUDED = ("Draft", "Rejected")
+        # Sum used amounts per budget_detail_id from active vouchers (exclude only Rejected)
+        _EXCLUDED = ("Rejected",)
         used_map = dict(
             db.session.query(
                 PettyCashDocketVoucherDetail.budget_detail_id,

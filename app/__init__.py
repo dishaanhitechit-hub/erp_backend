@@ -202,6 +202,9 @@ def create_app():
     from .models import pettyCashBudget        # noqa — registers PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
     from .models import pettyCashDocketVoucher  # noqa — registers PettyCashDocketVoucher, PettyCashDocketVoucherDetail
 
+    from .modules.finance.petty_cash.ledger.routes import petty_cash_ledger_bp
+    app.register_blueprint(petty_cash_ledger_bp, url_prefix="/finance/petty-cash/ledger")
+
     from .modules.finance.vendor_ledger.routes import vendor_ledger_bp
     app.register_blueprint(vendor_ledger_bp, url_prefix="/finance/vendor-ledger")
 
