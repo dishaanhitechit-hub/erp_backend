@@ -65,9 +65,11 @@ class PettyCashDocketVoucherDetail(db.Model):
     voucher_id = db.Column(db.Integer, db.ForeignKey("petty_cash_docket_voucher.id"), nullable=False)
 
     sl_no             = db.Column(db.Integer,     nullable=False)
+    budget_detail_id  = db.Column(db.Integer, db.ForeignKey("petty_cash_budget_detail.id"), nullable=True)
     cc_code           = db.Column(db.String(20),  nullable=True)
     cc_name           = db.Column(db.String(100), nullable=True)
     short_description = db.Column(db.String(255), nullable=True)
     amount            = db.Column(db.Numeric(15, 2), default=0)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    budget_detail = db.relationship("PettyCashBudgetDetail", foreign_keys=[budget_detail_id])

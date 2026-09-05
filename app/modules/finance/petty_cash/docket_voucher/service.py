@@ -1,4 +1,5 @@
 import json
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -134,16 +135,38 @@ def get_budget_rows_for_voucher(budget_id):
         if budget.workflow_status != "Approved":
             return res("Only Approved budgets can be referenced in a Docket Voucher", [], 400)
 
-        rows = [
-            {
+        # Sum used amounts per budget_detail_id from active vouchers (exclude Draft & Rejected)
+        _EXCLUDED = ("Draft", "Rejected")
+        used_map = dict(
+            db.session.query(
+                PettyCashDocketVoucherDetail.budget_detail_id,
+                func.coalesce(func.sum(PettyCashDocketVoucherDetail.amount), 0),
+            )
+            .join(PettyCashDocketVoucher,
+                  PettyCashDocketVoucher.id == PettyCashDocketVoucherDetail.voucher_id)
+            .filter(
+                PettyCashDocketVoucher.budget_id == budget_id,
+                PettyCashDocketVoucherDetail.budget_detail_id.isnot(None),
+                PettyCashDocketVoucher.workflow_status.notin_(_EXCLUDED),
+            )
+            .group_by(PettyCashDocketVoucherDetail.budget_detail_id)
+            .all()
+        )
+
+        rows = []
+        for r in budget.details:
+            budget_amt = float(r.budget_amount or 0)
+            used_amt   = float(used_map.get(r.id, 0))
+            rows.append({
+                "budgetDetailId":   r.id,
                 "slNo":             r.sl_no,
                 "ccCode":           r.cc_code,
                 "ccName":           r.cc_name,
                 "shortDescription": r.short_description,
-                "budgetAmount":     float(r.budget_amount or 0),
-            }
-            for r in budget.details
-        ]
+                "budgetAmount":     budget_amt,
+                "usedAmount":       used_amt,
+                "remaining":        round(budget_amt - used_amt, 2),
+            })
 
         return res("Budget rows fetched", {
             "budgetId": budget.id,
@@ -230,6 +253,7 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
             db.session.add(PettyCashDocketVoucherDetail(
                 voucher_id        = voucher.id,
                 sl_no             = row.get("slNo") or idx,
+                budget_detail_id  = _parse_int(row.get("budgetDetailId")),
                 cc_code           = row.get("ccCode"),
                 cc_name           = row.get("ccName"),
                 short_description = row.get("shortDescription"),
@@ -390,6 +414,7 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
             db.session.add(PettyCashDocketVoucherDetail(
                 voucher_id        = voucher.id,
                 sl_no             = row.get("slNo") or idx,
+                budget_detail_id  = _parse_int(row.get("budgetDetailId")),
                 cc_code           = row.get("ccCode"),
                 cc_name           = row.get("ccName"),
                 short_description = row.get("shortDescription"),
