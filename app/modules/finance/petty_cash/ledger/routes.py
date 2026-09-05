@@ -19,4 +19,4 @@ def api_petty_cash_ledger_list():
 @petty_cash_ledger_bp.route("/budget/<int:budget_id>", methods=["GET"])
 @login_required
 def api_petty_cash_ledger_detail(budget_id):
-    return get_petty_cash_ledger_detail(budget_id)
+    return get_petty_cash_ledger_detail(budget_id, request.args.to_dict())

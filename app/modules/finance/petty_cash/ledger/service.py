@@ -16,7 +16,7 @@ from app.modules.work_flow import get_history
 
 _BUDGET_MODULE  = "petty_cash_budget"
 _VOUCHER_MODULE = "petty_cash_docket_voucher"
-_EXCLUDED       = ("Draft", "Rejected")
+_EXCLUDED       = ("Rejected",)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -47,20 +47,19 @@ def _history_rows(module, record_id):
 
 
 def _used_map_for_budget(budget_id):
-    """Returns {budget_detail_id: used_amount} for all active vouchers under a budget."""
+    """Returns {cc_code: used_amount} for all active vouchers under a budget."""
     rows = (
         db.session.query(
-            PettyCashDocketVoucherDetail.budget_detail_id,
+            PettyCashDocketVoucherDetail.cc_code,
             func.coalesce(func.sum(PettyCashDocketVoucherDetail.amount), 0),
         )
         .join(PettyCashDocketVoucher,
               PettyCashDocketVoucher.id == PettyCashDocketVoucherDetail.voucher_id)
         .filter(
             PettyCashDocketVoucher.budget_id == budget_id,
-            PettyCashDocketVoucherDetail.budget_detail_id.isnot(None),
             PettyCashDocketVoucher.workflow_status.notin_(_EXCLUDED),
         )
-        .group_by(PettyCashDocketVoucherDetail.budget_detail_id)
+        .group_by(PettyCashDocketVoucherDetail.cc_code)
         .all()
     )
     return {r[0]: float(r[1]) for r in rows}
@@ -97,6 +96,9 @@ def get_petty_cash_ledger_list(params):
         if not project_code:
             return res("projectCode required", [], 400)
 
+        page      = max(1, int(params.get("page", 1) or 1))
+        page_size = max(1, int(params.get("pageSize", 10) or 10))
+
         query = PettyCashBudget.query.filter(PettyCashBudget.project_code == project_code)
 
         if params.get("workflowStatus"):
@@ -108,7 +110,8 @@ def get_petty_cash_ledger_list(params):
         if params.get("toDate"):
             query = query.filter(PettyCashBudget.to_date <= params["toDate"])
 
-        budgets = query.order_by(PettyCashBudget.id.desc()).all()
+        total   = query.count()
+        budgets = query.order_by(PettyCashBudget.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
         result = []
         for b in budgets:
@@ -130,7 +133,16 @@ def get_petty_cash_ledger_list(params):
                 "createdAt":          _fmt(b.created_at),
             })
 
-        return res("Petty cash ledger list fetched", {"list": result}, 200)
+        import math
+        return res("Petty cash ledger list fetched", {
+            "list": result,
+            "pagination": {
+                "page":       page,
+                "pageSize":   page_size,
+                "total":      total,
+                "totalPages": math.ceil(total / page_size) if page_size else 1,
+            },
+        }, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
@@ -140,8 +152,13 @@ def get_petty_cash_ledger_list(params):
 # 2. DETAIL — full ledger for one budget
 # ══════════════════════════════════════════════════════════════════
 
-def get_petty_cash_ledger_detail(budget_id):
+def get_petty_cash_ledger_detail(budget_id, params=None):
     try:
+        params = params or {}
+        import math
+        v_page      = max(1, int(params.get("voucherPage", 1) or 1))
+        v_page_size = max(1, int(params.get("voucherPageSize", 10) or 10))
+
         budget = PettyCashBudget.query.get(budget_id)
         if not budget:
             return res("Budget not found", [], 404)
@@ -190,7 +207,7 @@ def get_petty_cash_ledger_detail(budget_id):
         cc_summary = []
         for d in budget.details:
             budget_amt = float(d.budget_amount or 0)
-            used_amt   = used_map.get(d.id, 0.0)
+            used_amt   = used_map.get(d.cc_code, 0.0)
             cc_summary.append({
                 "budgetDetailId":   d.id,
                 "slNo":             d.sl_no,
@@ -203,12 +220,13 @@ def get_petty_cash_ledger_detail(budget_id):
             })
 
         # ── Vouchers ──────────────────────────────────────────────
-        vouchers_q = (
+        vouchers_base = (
             PettyCashDocketVoucher.query
             .filter_by(budget_id=budget.id)
             .order_by(PettyCashDocketVoucher.id.asc())
-            .all()
         )
+        total_vouchers = vouchers_base.count()
+        vouchers_q = vouchers_base.offset((v_page - 1) * v_page_size).limit(v_page_size).all()
 
         vouchers = []
         status_counts = {"approvedVouchers": 0, "pendingVouchers": 0,
@@ -260,12 +278,12 @@ def get_petty_cash_ledger_detail(budget_id):
 
         # ── Overall summary ───────────────────────────────────────
         total_budget    = float(budget.total_budget_amount or 0)
-        total_used      = sum(used_map.get(d.id, 0.0) for d in budget.details)
+        total_used      = sum(used_map.get(d.cc_code, 0.0) for d in budget.details)
         overall_summary = {
             "totalBudgetAmount": total_budget,
             "totalUsed":         round(total_used, 2),
             "totalRemaining":    round(total_budget - total_used, 2),
-            "voucherCount":      len(vouchers_q),
+            "voucherCount":      total_vouchers,
             **status_counts,
         }
 
@@ -273,6 +291,12 @@ def get_petty_cash_ledger_detail(budget_id):
             "budget":    budget_block,
             "ccSummary": cc_summary,
             "vouchers":  vouchers,
+            "voucherPagination": {
+                "page":       v_page,
+                "pageSize":   v_page_size,
+                "total":      total_vouchers,
+                "totalPages": math.ceil(total_vouchers / v_page_size) if v_page_size else 1,
+            },
             "summary":   overall_summary,
         }, 200)
 
