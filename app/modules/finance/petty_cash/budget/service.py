@@ -587,8 +587,8 @@ def revise_petty_cash_budget(budget_id, data, user_id):
         budget = PettyCashBudget.query.get(budget_id)
         if not budget:
             return res("Petty cash budget not found", [], 404)
-        if budget.workflow_status != "Approved":
-            return res("Only Approved budgets can be revised", [], 400)
+        if not budget.workflow_status.startswith("Pending"):
+            return res("Budget can only be revised while it is pending approval", [], 400)
 
         if not is_current_approver(budget.project_code, _MODULE, budget.current_level, user_id):
             return res("You are not authorized to revise this budget", [], 403)
