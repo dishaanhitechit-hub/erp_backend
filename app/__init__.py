@@ -205,6 +205,11 @@ def create_app():
     from .modules.finance.petty_cash.ledger.routes import petty_cash_ledger_bp
     app.register_blueprint(petty_cash_ledger_bp, url_prefix="/finance/petty-cash/ledger")
 
+    from .modules.finance.journal_entry.journal_voucher.routes import journal_voucher_bp
+    app.register_blueprint(journal_voucher_bp, url_prefix="/finance/journal-entry/journal-voucher")
+
+    from .models import journalVoucher  # noqa — registers PettyCashJournalVoucher, PettyCashJournalLine
+
     from .modules.finance.vendor_ledger.routes import vendor_ledger_bp
     app.register_blueprint(vendor_ledger_bp, url_prefix="/finance/vendor-ledger")
 

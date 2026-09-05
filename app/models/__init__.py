@@ -71,3 +71,4 @@ from .debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst
 from .creditNote import CreditNoteMaster, CreditNoteItem
 from .pettyCashBudget import PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
 from .pettyCashDocketVoucher import PettyCashDocketVoucher, PettyCashDocketVoucherDetail
+from .journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
