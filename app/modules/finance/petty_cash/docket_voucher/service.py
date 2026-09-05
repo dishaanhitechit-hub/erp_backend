@@ -135,28 +135,27 @@ def get_budget_rows_for_voucher(budget_id):
         if budget.workflow_status != "Approved":
             return res("Only Approved budgets can be referenced in a Docket Voucher", [], 400)
 
-        # Sum used amounts per budget_detail_id from active vouchers (exclude only Rejected)
+        # Sum used amounts per cc_code from active vouchers (exclude only Rejected)
         _EXCLUDED = ("Rejected",)
         used_map = dict(
             db.session.query(
-                PettyCashDocketVoucherDetail.budget_detail_id,
+                PettyCashDocketVoucherDetail.cc_code,
                 func.coalesce(func.sum(PettyCashDocketVoucherDetail.amount), 0),
             )
             .join(PettyCashDocketVoucher,
                   PettyCashDocketVoucher.id == PettyCashDocketVoucherDetail.voucher_id)
             .filter(
                 PettyCashDocketVoucher.budget_id == budget_id,
-                PettyCashDocketVoucherDetail.budget_detail_id.isnot(None),
                 PettyCashDocketVoucher.workflow_status.notin_(_EXCLUDED),
             )
-            .group_by(PettyCashDocketVoucherDetail.budget_detail_id)
+            .group_by(PettyCashDocketVoucherDetail.cc_code)
             .all()
         )
 
         rows = []
         for r in budget.details:
             budget_amt = float(r.budget_amount or 0)
-            used_amt   = float(used_map.get(r.id, 0))
+            used_amt   = float(used_map.get(r.cc_code, 0))
             rows.append({
                 "budgetDetailId":   r.id,
                 "slNo":             r.sl_no,
