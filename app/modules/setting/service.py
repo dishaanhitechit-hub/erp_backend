@@ -1191,7 +1191,6 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
         "contra":                [(ContraEntryMaster,      None, None)],
         "purchases":             [(PurchaseBillMaster, None, None), (PurchaseVoucherMaster, None, None)],
         "sale":                  [(SaleBillMaster,         None, None)],
-        "receipt":               [(SaleReceiptMaster,      None, None)],
         "sale_order":            [(OgSaleOrderMaster,      None, None)],
         "bbs_register":          [(BbsRegister,            None, None)],
         "hindrance_register":    [(HindranceRegister,      None, None)],
