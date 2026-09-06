@@ -60,6 +60,7 @@ def api_submit(journal_id):
 
 
 @journal_voucher_bp.route("/<int:journal_id>/approve", methods=["POST"])
+@journal_voucher_bp.route("/approve/<int:journal_id>", methods=["POST"])
 @login_required
 def api_approve(journal_id):
     body = request.get_json() or {}
@@ -67,6 +68,7 @@ def api_approve(journal_id):
 
 
 @journal_voucher_bp.route("/<int:journal_id>/reback", methods=["POST"])
+@journal_voucher_bp.route("/reback/<int:journal_id>", methods=["POST"])
 @login_required
 def api_reback(journal_id):
     body = request.get_json() or {}
@@ -74,6 +76,7 @@ def api_reback(journal_id):
 
 
 @journal_voucher_bp.route("/<int:journal_id>/reject", methods=["POST"])
+@journal_voucher_bp.route("/reject/<int:journal_id>", methods=["POST"])
 @login_required
 def api_reject(journal_id):
     body = request.get_json() or {}
