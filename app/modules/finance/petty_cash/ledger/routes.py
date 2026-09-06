@@ -1,22 +1,22 @@
 from flask import Blueprint, request
 from app.middleware.auth_middleware import login_required
 from app.modules.finance.petty_cash.ledger.service import (
-    get_petty_cash_ledger_list,
-    get_petty_cash_ledger_detail,
+    get_project_linked_accounts,
+    get_petty_cash_account_ledger,
 )
 
 petty_cash_ledger_bp = Blueprint("petty_cash_ledger", __name__)
 
 
-# ── 1. LIST — budget summary cards ───────────────────────────────
-@petty_cash_ledger_bp.route("/list", methods=["GET"])
+# ── 1. PROJECT LINKED ACCOUNTS ────────────────────────────────────
+@petty_cash_ledger_bp.route("/project-accounts", methods=["GET"])
 @login_required
-def api_petty_cash_ledger_list():
-    return get_petty_cash_ledger_list(request.args.to_dict())
+def api_project_linked_accounts():
+    return get_project_linked_accounts(request.args.to_dict())
 
 
-# ── 2. DETAIL — full ledger for one budget ────────────────────────
-@petty_cash_ledger_bp.route("/budget/<int:budget_id>", methods=["GET"])
+# ── 2. ACCOUNT LEDGER ─────────────────────────────────────────────
+@petty_cash_ledger_bp.route("/account-ledger", methods=["GET"])
 @login_required
-def api_petty_cash_ledger_detail(budget_id):
-    return get_petty_cash_ledger_detail(budget_id, request.args.to_dict())
+def api_petty_cash_account_ledger():
+    return get_petty_cash_account_ledger(request.args.to_dict())
