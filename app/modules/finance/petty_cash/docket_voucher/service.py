@@ -11,6 +11,7 @@ from app.models.pettyCashDocketVoucher import (
     PettyCashDocketVoucherDetail,
 )
 from app.models.pettyCashBudget import PettyCashBudget, PettyCashBudgetDetail
+from app.models.bankCash import BankCash, BankCashProject
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -93,7 +94,20 @@ def _build_detail_row(row):
     }
 
 
+def _account_info(voucher):
+    bc = voucher.bank_cash
+    if not bc:
+        return {"bankCashId": None, "bankCode": None, "bankName": None, "accountType": None}
+    return {
+        "bankCashId":   bc.id,
+        "bankCode":     bc.bank_code,
+        "bankName":     bc.bank_holder_name or bc.bank_name,
+        "accountType":  bc.type,  # Cash / Bank
+    }
+
+
 def _build_payload(voucher):
+    info = _account_info(voucher)
     return {
         "id":              voucher.id,
         "voucherNo":       voucher.voucher_no,
@@ -103,7 +117,10 @@ def _build_payload(voucher):
         "budgetNo":        voucher.budget.budget_no if voucher.budget else None,
         "expensesBy":      voucher.expenses_by,
         "modeOfPayment":   voucher.mode_of_payment,
-        "fundSource":      voucher.fund_source,
+        "bankCashId":      info["bankCashId"],
+        "bankCode":        info["bankCode"],
+        "bankName":        info["bankName"],
+        "accountType":     info["accountType"],
         "paymentRefId":    voucher.payment_ref_id,
         "attachment":      voucher.attachment,
         "projectCode":     voucher.project_code,
@@ -194,14 +211,25 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
 
         expenses_by     = data.get("expensesBy")
         mode_of_payment = data.get("modeOfPayment")
-        fund_source     = data.get("fundSource")
+        bank_cash_id    = _parse_int(data.get("bankCashId"))
 
         if not expenses_by:
             return res("expensesBy required", [], 400)
         if not mode_of_payment:
             return res("modeOfPayment required", [], 400)
-        if not fund_source:
-            return res("fundSource required", [], 400)
+        if not bank_cash_id:
+            return res("bankCashId required", [], 400)
+
+        bank_cash = BankCash.query.get(bank_cash_id)
+        if not bank_cash:
+            return res("Bank/Cash account not found", [], 404)
+
+        from app.models.project import Project
+        project_obj = Project.query.filter_by(project_code=project_code).first()
+        if not project_obj:
+            return res("Project not found", [], 404)
+        if not BankCashProject.query.filter_by(bank_cash_id=bank_cash_id, project_id=project_obj.id).first():
+            return res("This account is not linked to the project", [], 400)
 
         details_data = _parse_details(data)
         if not details_data:
@@ -235,7 +263,7 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
             budget_id       = budget_id,
             expenses_by     = expenses_by,
             mode_of_payment = mode_of_payment,
-            fund_source     = fund_source,
+            bank_cash_id    = bank_cash_id,
             payment_ref_id  = data.get("paymentRefId"),
             attachment      = attachment_url,
             project_code    = project_code,
@@ -309,7 +337,9 @@ def get_petty_cash_docket_voucher_list(data):
                 "budgetNo":       r.budget.budget_no if r.budget else None,
                 "expensesBy":     r.expenses_by,
                 "modeOfPayment":  r.mode_of_payment,
-                "fundSource":     r.fund_source,
+                "bankCashId":     r.bank_cash_id,
+                "bankCode":       r.bank_cash.bank_code if r.bank_cash else None,
+                "accountType":    r.bank_cash.type if r.bank_cash else None,
                 "totalAmount":    float(r.total_amount or 0),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
@@ -377,8 +407,16 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
             voucher.expenses_by = data["expensesBy"]
         if data.get("modeOfPayment"):
             voucher.mode_of_payment = data["modeOfPayment"]
-        if data.get("fundSource"):
-            voucher.fund_source = data["fundSource"]
+        if data.get("bankCashId"):
+            new_bc_id = _parse_int(data["bankCashId"])
+            new_bc = BankCash.query.get(new_bc_id)
+            if not new_bc:
+                return res("Bank/Cash account not found", [], 404)
+            from app.models.project import Project
+            project_obj = Project.query.filter_by(project_code=voucher.project_code).first()
+            if not BankCashProject.query.filter_by(bank_cash_id=new_bc_id, project_id=project_obj.id).first():
+                return res("This account is not linked to the project", [], 400)
+            voucher.bank_cash_id = new_bc_id
         if data.get("paymentRefId") is not None:
             voucher.payment_ref_id = data["paymentRefId"]
 

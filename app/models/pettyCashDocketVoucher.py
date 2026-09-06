@@ -14,7 +14,7 @@ class PettyCashDocketVoucher(db.Model):
     budget_id       = db.Column(db.Integer,  db.ForeignKey("petty_cash_budget.id"), nullable=True)
     expenses_by     = db.Column(db.String(100), nullable=False)
     mode_of_payment = db.Column(db.String(30),  nullable=False)  # Cash / Cheque / Online / NEFT / RTGS
-    fund_source     = db.Column(db.String(50),  nullable=False)
+    bank_cash_id    = db.Column(db.Integer,  db.ForeignKey("bank_cash.id"), nullable=True)
     payment_ref_id  = db.Column(db.String(100), nullable=True)
     attachment      = db.Column(db.String(255), nullable=True)
 
@@ -46,8 +46,9 @@ class PettyCashDocketVoucher(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project = db.relationship("Project", backref="petty_cash_docket_vouchers")
-    budget  = db.relationship("PettyCashBudget", backref="docket_vouchers", foreign_keys=[budget_id])
+    project    = db.relationship("Project", backref="petty_cash_docket_vouchers")
+    budget     = db.relationship("PettyCashBudget", backref="docket_vouchers", foreign_keys=[budget_id])
+    bank_cash  = db.relationship("BankCash", foreign_keys=[bank_cash_id])
     details = db.relationship("PettyCashDocketVoucherDetail", backref="voucher", cascade="all,delete-orphan")
 
     creator   = db.relationship("User", foreign_keys=[created_by])

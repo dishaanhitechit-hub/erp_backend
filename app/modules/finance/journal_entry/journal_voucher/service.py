@@ -8,6 +8,7 @@ import uuid as _uuid
 
 from app.models.journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher, PettyCashDocketVoucherDetail
+from app.models.bankCash import BankCash
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -95,7 +96,7 @@ def _build_payload(jv):
         "voucherNo":        jv.voucher_no,
         "voucherUuid":      jv.voucher_uuid,
         "voucherDate":      _fmt(jv.voucher_date),
-        "fundSource":       jv.fund_source,
+        "fundSource":       jv.fund_source,  # stored on journal voucher, not docket
         "projectCode":      jv.project_code,
         "totalAmount":      float(jv.total_amount or 0),
         "workflowStatus":   jv.workflow_status,
@@ -161,20 +162,24 @@ def get_available_dockets(params):
 
         dockets = (
             PettyCashDocketVoucher.query
-            .filter_by(project_code=project_code, fund_source=fund_source, workflow_status="Approved")
+            .join(BankCash, BankCash.id == PettyCashDocketVoucher.bank_cash_id)
+            .filter(
+                PettyCashDocketVoucher.project_code == project_code,
+                PettyCashDocketVoucher.workflow_status == "Approved",
+                BankCash.type == fund_source,
+            )
             .order_by(PettyCashDocketVoucher.id.asc())
             .all()
         )
 
         result = []
         for docket in dockets:
-            if fund_source == "Bank":
-                # All rows must be un-journalized — no partial for bank
+            account_type = docket.bank_cash.type if docket.bank_cash else fund_source
+            if account_type == "Bank":
                 if any(d.id in used_ids for d in docket.details):
                     continue
                 available_rows = docket.details
             else:
-                # Cash — show only un-journalized rows (partial OK)
                 available_rows = [d for d in docket.details if d.id not in used_ids]
 
             if not available_rows:
@@ -184,7 +189,9 @@ def get_available_dockets(params):
                 "docketVoucherId": docket.id,
                 "voucherNo":       docket.voucher_no,
                 "voucherDate":     _fmt(docket.voucher_date),
-                "fundSource":      docket.fund_source,
+                "fundSource":      account_type,
+                "bankCashId":      docket.bank_cash_id,
+                "bankCode":        docket.bank_cash.bank_code if docket.bank_cash else None,
                 "totalAmount":     float(docket.total_amount or 0),
                 "rows": [
                     {
