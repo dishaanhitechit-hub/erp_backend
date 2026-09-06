@@ -340,6 +340,7 @@ def get_petty_cash_docket_voucher_list(data):
                 "bankCashId":     r.bank_cash_id,
                 "bankCode":       r.bank_cash.bank_code if r.bank_cash else None,
                 "accountType":    r.bank_cash.type if r.bank_cash else None,
+                "paymentRefId":   r.payment_ref_id,
                 "totalAmount":    float(r.total_amount or 0),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
