@@ -5,6 +5,7 @@ from app.modules.finance.journal_entry.journal_voucher.service import (
     create_journal_voucher,
     get_journal_voucher_list,
     get_journal_voucher_detail,
+    get_journal_voucher_by_uuid,
     edit_journal_voucher,
     submit_journal_voucher,
     approve_journal_voucher,
@@ -33,6 +34,11 @@ def api_create():
 @login_required
 def api_list():
     return get_journal_voucher_list(request.args.to_dict())
+
+
+@journal_voucher_bp.route("/uuid/<string:voucher_uuid>", methods=["GET"])
+def api_detail_by_uuid(voucher_uuid):
+    return get_journal_voucher_by_uuid(voucher_uuid)
 
 
 @journal_voucher_bp.route("/<int:journal_id>", methods=["GET"])

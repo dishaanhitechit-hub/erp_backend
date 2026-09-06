@@ -348,6 +348,20 @@ def get_journal_voucher_detail(journal_id):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 3b. GET BY UUID (no auth)
+# ══════════════════════════════════════════════════════════════════
+
+def get_journal_voucher_by_uuid(voucher_uuid):
+    try:
+        jv = PettyCashJournalVoucher.query.filter_by(voucher_uuid=voucher_uuid).first()
+        if not jv:
+            return res("Journal voucher not found", [], 404)
+        return res("Journal voucher fetched", _build_payload(jv), 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 4. EDIT (Draft / Reback only)
 # ══════════════════════════════════════════════════════════════════
 
