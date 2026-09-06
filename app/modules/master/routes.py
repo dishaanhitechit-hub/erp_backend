@@ -398,7 +398,9 @@ def bank_cash_create():
 def bank_cash_list():
     # if not _can_view_bank():
     #     return _no_access()
-    return get_all_bank_cash()
+    type_filter = request.args.get("type")
+    project_id  = request.args.get("projectId", type=int)
+    return get_all_bank_cash(type_filter=type_filter, project_id=project_id)
 
 
 @master_bp.route("/bank-cash/<int:recordId>", methods=["GET"])
@@ -423,6 +425,36 @@ def bank_cash_delete(recordId):
     if not _can_edit_bank():
         return _no_access()
     return delete_bank_cash(recordId)
+
+
+@master_bp.route("/bank-cash/migrate", methods=["POST"])
+@login_required
+def bank_cash_migrate():
+    if not _can_edit_bank():
+        return _no_access()
+    data = request.json or {}
+    return migrate_bank_cash_to_projects(
+        data.get("bankCashIds", []),
+        data.get("projectIds", [])
+    )
+
+
+@master_bp.route("/bank-cash/<int:recordId>/link-project", methods=["POST"])
+@login_required
+def bank_cash_link_project(recordId):
+    if not _can_edit_bank():
+        return _no_access()
+    data = request.json or {}
+    return link_bank_cash_project(recordId, data.get("projectId"))
+
+
+@master_bp.route("/bank-cash/<int:recordId>/unlink-project", methods=["POST"])
+@login_required
+def bank_cash_unlink_project(recordId):
+    if not _can_edit_bank():
+        return _no_access()
+    data = request.json or {}
+    return unlink_bank_cash_project(recordId, data.get("projectId"))
 
 
 # ==========================================

@@ -2,6 +2,20 @@ from app.extensions import db
 from datetime import datetime
 
 
+class BankCashProject(db.Model):
+    __tablename__ = "bank_cash_project"
+    __table_args__ = (
+        db.UniqueConstraint("bank_cash_id", "project_id", name="uq_bank_cash_project"),
+    )
+
+    id           = db.Column(db.Integer, primary_key=True)
+    bank_cash_id = db.Column(db.Integer, db.ForeignKey("bank_cash.id"), nullable=False)
+    project_id   = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship("Project", foreign_keys=[project_id])
+
+
 class BankCash(db.Model):
     __tablename__ = "bank_cash"
 
@@ -24,7 +38,6 @@ class BankCash(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    creator = db.relationship(
-        "User",
-        foreign_keys=[created_by]
-    )
+    creator  = db.relationship("User", foreign_keys=[created_by])
+    projects = db.relationship("BankCashProject", backref="bank_cash",
+                               cascade="all, delete-orphan", lazy="joined")

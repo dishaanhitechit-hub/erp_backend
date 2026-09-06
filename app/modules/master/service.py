@@ -1533,7 +1533,22 @@ def delete_term(termId):
 # BANK & CASH
 # ==========================================
 
-from app.models.bankCash import BankCash
+from app.models.bankCash import BankCash, BankCashProject
+from app.models.project import Project
+
+
+def _bank_cash_projects(r):
+    return [
+        {"id": lnk.project.id, "projectCode": lnk.project.project_code,
+         "projectName": lnk.project.project_name}
+        for lnk in r.projects
+    ]
+
+
+def _set_project_links(record, project_ids):
+    BankCashProject.query.filter_by(bank_cash_id=record.id).delete()
+    for pid in (project_ids or []):
+        db.session.add(BankCashProject(bank_cash_id=record.id, project_id=pid))
 
 
 def create_bank_cash(data):
@@ -1563,6 +1578,11 @@ def create_bank_cash(data):
         record.created_by = g.current_user.get("id")
 
     db.session.add(record)
+    db.session.flush()
+
+    for pid in (data.get("projectIds") or []):
+        db.session.add(BankCashProject(bank_cash_id=record.id, project_id=pid))
+
     db.session.commit()
 
     return res(
@@ -1572,8 +1592,17 @@ def create_bank_cash(data):
     )
 
 
-def get_all_bank_cash():
-    records = BankCash.query.order_by(BankCash.id.desc()).all()
+def get_all_bank_cash(type_filter=None, project_id=None):
+    q = BankCash.query
+
+    if type_filter:
+        q = q.filter(BankCash.type == type_filter.upper())
+
+    if project_id:
+        q = q.join(BankCashProject, BankCashProject.bank_cash_id == BankCash.id)\
+             .filter(BankCashProject.project_id == project_id)
+
+    records = q.order_by(BankCash.id.desc()).all()
 
     data = [{
         "id": r.id,
@@ -1590,7 +1619,8 @@ def get_all_bank_cash():
         "branchManagerContact": r.branch_manager_contact,
         "branchManagerMailId": r.branch_manager_email,
         "status": r.status,
-        "createdAt": r.created_at
+        "createdAt": r.created_at,
+        "projects": _bank_cash_projects(r),
     } for r in records]
 
     return res("Bank/Cash list fetched successfully", data, 200)
@@ -1618,7 +1648,8 @@ def get_bank_cash_by_id(record_id):
             "branchManagerName": r.branch_manager_name,
             "branchManagerContact": r.branch_manager_contact,
             "branchManagerMailId": r.branch_manager_email,
-            "status": r.status
+            "status": r.status,
+            "projects": _bank_cash_projects(r),
         }],
         200
     )
@@ -1642,6 +1673,9 @@ def update_bank_cash(record_id, data):
     r.branch_manager_contact = data.get("branchManagerContact", r.branch_manager_contact)
     r.branch_manager_email   = data.get("branchManagerMailId", r.branch_manager_email)
 
+    if "projectIds" in data:
+        _set_project_links(r, data["projectIds"])
+
     db.session.commit()
 
     return res(
@@ -1659,6 +1693,63 @@ def delete_bank_cash(record_id):
 
     db.session.delete(r)
     db.session.commit()
+
+
+def link_bank_cash_project(bank_cash_id, project_id):
+    r = BankCash.query.get(bank_cash_id)
+    if not r:
+        return res("Bank/Cash not found", [], 404)
+
+    if not Project.query.get(project_id):
+        return res("Project not found", [], 404)
+
+    existing = BankCashProject.query.filter_by(
+        bank_cash_id=bank_cash_id, project_id=project_id
+    ).first()
+    if existing:
+        return res("Already linked", [], 400)
+
+    db.session.add(BankCashProject(bank_cash_id=bank_cash_id, project_id=project_id))
+    db.session.commit()
+    return res("Project linked successfully", [], 200)
+
+
+def unlink_bank_cash_project(bank_cash_id, project_id):
+    lnk = BankCashProject.query.filter_by(
+        bank_cash_id=bank_cash_id, project_id=project_id
+    ).first()
+    if not lnk:
+        return res("Link not found", [], 404)
+
+    db.session.delete(lnk)
+    db.session.commit()
+    return res("Project unlinked successfully", [], 200)
+
+
+def migrate_bank_cash_to_projects(bank_cash_ids, project_ids):
+    if not bank_cash_ids or not project_ids:
+        return res("bankCashIds and projectIds are required", [], 400)
+
+    existing = {
+        (lnk.bank_cash_id, lnk.project_id)
+        for lnk in BankCashProject.query.filter(
+            BankCashProject.bank_cash_id.in_(bank_cash_ids),
+            BankCashProject.project_id.in_(project_ids)
+        ).all()
+    }
+
+    linked  = 0
+    skipped = 0
+    for bc_id in bank_cash_ids:
+        for p_id in project_ids:
+            if (bc_id, p_id) in existing:
+                skipped += 1
+            else:
+                db.session.add(BankCashProject(bank_cash_id=bc_id, project_id=p_id))
+                linked += 1
+
+    db.session.commit()
+    return res("Migration completed", [{"linked": linked, "skipped": skipped}], 200)
 
 
 # ── Vendor Dropdown ───────────────────────────────────────────────────────────
