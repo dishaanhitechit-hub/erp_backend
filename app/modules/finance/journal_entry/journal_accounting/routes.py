@@ -18,49 +18,55 @@ from app.modules.finance.journal_entry.journal_accounting.service import (
 journal_accounting_bp = Blueprint("journal_accounting", __name__)
 
 
+# ── 0. APPROVED VOUCHERS ──────────────────────────────────────────
 @journal_accounting_bp.route("/approved-vouchers", methods=["GET"])
 @login_required
 def api_approved_vouchers():
     return get_approved_vouchers(request.args.to_dict())
 
 
+# ── 1. CREATE ─────────────────────────────────────────────────────
 @journal_accounting_bp.route("/create", methods=["POST"])
 @login_required
 def api_create():
     return create_journal_accounting(dict(request.form), g.current_user["id"])
 
 
+# ── 2. LIST ───────────────────────────────────────────────────────
 @journal_accounting_bp.route("/list", methods=["GET"])
 @login_required
 def api_list():
     return get_journal_accounting_list(request.args.to_dict())
 
 
+# ── 3. GET BY UUID (no-auth) ──────────────────────────────────────
 @journal_accounting_bp.route("/uuid/<string:voucher_uuid>", methods=["GET"])
 def api_detail_by_uuid(voucher_uuid):
     return get_journal_accounting_by_uuid(voucher_uuid)
 
 
+# ── 4. GET BY ID ──────────────────────────────────────────────────
 @journal_accounting_bp.route("/<int:accounting_id>", methods=["GET"])
 @login_required
 def api_detail(accounting_id):
     return get_journal_accounting_detail(accounting_id)
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/edit", methods=["PUT"])
+# ── 5. EDIT ───────────────────────────────────────────────────────
+@journal_accounting_bp.route("/edit/<int:accounting_id>", methods=["PUT"])
 @login_required
 def api_edit(accounting_id):
     return edit_journal_accounting(accounting_id, dict(request.form), g.current_user["id"])
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/submit", methods=["POST"])
+# ── 6. SUBMIT ─────────────────────────────────────────────────────
 @journal_accounting_bp.route("/submit/<int:accounting_id>", methods=["POST"])
 @login_required
 def api_submit(accounting_id):
     return submit_journal_accounting(accounting_id, g.current_user["id"])
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/approve", methods=["POST"])
+# ── 7. APPROVE ────────────────────────────────────────────────────
 @journal_accounting_bp.route("/approve/<int:accounting_id>", methods=["POST"])
 @login_required
 def api_approve(accounting_id):
@@ -68,7 +74,7 @@ def api_approve(accounting_id):
     return approve_journal_accounting(accounting_id, g.current_user["id"], body.get("comments"))
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/reback", methods=["POST"])
+# ── 8. REBACK ─────────────────────────────────────────────────────
 @journal_accounting_bp.route("/reback/<int:accounting_id>", methods=["POST"])
 @login_required
 def api_reback(accounting_id):
@@ -76,7 +82,7 @@ def api_reback(accounting_id):
     return reback_journal_accounting(accounting_id, g.current_user["id"], body.get("comments"))
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/reject", methods=["POST"])
+# ── 9. REJECT ─────────────────────────────────────────────────────
 @journal_accounting_bp.route("/reject/<int:accounting_id>", methods=["POST"])
 @login_required
 def api_reject(accounting_id):
@@ -84,13 +90,15 @@ def api_reject(accounting_id):
     return reject_journal_accounting(accounting_id, g.current_user["id"], body.get("comments"))
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/history", methods=["GET"])
+# ── 10. HISTORY ───────────────────────────────────────────────────
+@journal_accounting_bp.route("/history/<int:accounting_id>", methods=["GET"])
 @login_required
 def api_history(accounting_id):
     return get_journal_accounting_history(accounting_id)
 
 
-@journal_accounting_bp.route("/<int:accounting_id>/my-status", methods=["GET"])
+# ── 11. MY APPROVAL STATUS ────────────────────────────────────────
+@journal_accounting_bp.route("/my-approval-status/<int:accounting_id>", methods=["GET"])
 @login_required
 def api_my_status(accounting_id):
     return get_journal_accounting_my_status(accounting_id, g.current_user["id"])
