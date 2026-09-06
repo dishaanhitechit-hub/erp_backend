@@ -166,32 +166,48 @@ def get_petty_cash_account_ledger(params):
         total_credit = sum(e["credit"] for e in all_entries)
         total_debit  = sum(e["debit"]  for e in all_entries)
 
-        # Pending debit: non-approved, non-rejected dockets
+        # ── Pending dockets (not affecting balance) ───────────────────
         _PENDING_EXCLUDE = ("Approved", "Rejected")
-        pending_debit = db.session.query(
-            func.coalesce(func.sum(PettyCashDocketVoucher.total_amount), 0)
-        ).filter(
+        pending_vouchers = PettyCashDocketVoucher.query.filter(
             PettyCashDocketVoucher.project_code == project_code,
             PettyCashDocketVoucher.bank_cash_id.in_(account_ids),
             PettyCashDocketVoucher.workflow_status.notin_(_PENDING_EXCLUDE),
-        ).scalar()
+        ).order_by(PettyCashDocketVoucher.voucher_date.asc()).all()
+
+        pending_entries = []
+        for v in pending_vouchers:
+            bc = v.bank_cash
+            pending_entries.append({
+                "date":           _fmt(v.voucher_date),
+                "type":           "Docket",
+                "referenceNo":    v.voucher_no,
+                "description":    v.expenses_by,
+                "bankCode":       bc.bank_code if bc else None,
+                "accountType":    bc.type if bc else None,
+                "debit":          float(v.total_amount or 0),
+                "credit":         0.0,
+                "workflowStatus": v.workflow_status,
+            })
+
+        pending_debit = sum(e["debit"] for e in pending_entries)
 
         summary = {
             "totalCredit":  round(total_credit, 2),
             "totalDebit":   round(total_debit, 2),
             "balance":      round(total_credit - total_debit, 2),
-            "pendingDebit": float(pending_debit or 0),
+            "pendingDebit": round(pending_debit, 2),
         }
 
         # ── Pagination ────────────────────────────────────────────────
-        total       = len(all_entries)
-        start       = (page - 1) * page_size
+        total        = len(all_entries)
+        start        = (page - 1) * page_size
         page_entries = all_entries[start: start + page_size]
 
         return res("Petty cash account ledger fetched", {
-            "account":    account_info,
-            "entries":    page_entries,
-            "summary":    summary,
+            "account":        account_info,
+            "entries":        page_entries,
+            "pendingEntries": pending_entries,
+            "summary":        summary,
             "pagination": {
                 "page":       page,
                 "pageSize":   page_size,
