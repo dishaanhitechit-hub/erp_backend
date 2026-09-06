@@ -80,6 +80,7 @@ def _build_line(line):
         "id":               line.id,
         "slNo":             line.sl_no,
         "docketVoucherId":  line.docket_voucher_id,
+        "docketVoucherNo":  line.docket_voucher.voucher_no if line.docket_voucher else None,
         "docketDetailId":   line.docket_detail_id,
         "ccCode":           line.cc_code,
         "ccName":           line.cc_name,
