@@ -411,7 +411,7 @@ def approve_journal_accounting(accounting_id, user_id, comments=None):
             return res("Journal accounting not found", [], 404)
         if not ja.workflow_status.startswith("Pending"):
             return res("Not pending approval", [], 400)
-        if not is_current_approver(ja, user_id, _MODULE):
+        if not is_current_approver(ja.project_code, _MODULE, ja.current_level, user_id):
             return res("Not authorized to approve at this level", [], 403)
 
         nxt = get_next_approver(ja.project_code, _MODULE, ja.current_level)
@@ -445,7 +445,7 @@ def reback_journal_accounting(accounting_id, user_id, comments=None):
             return res("Journal accounting not found", [], 404)
         if not ja.workflow_status.startswith("Pending"):
             return res("Not pending approval", [], 400)
-        if not is_current_approver(ja, user_id, _MODULE):
+        if not is_current_approver(ja.project_code, _MODULE, ja.current_level, user_id):
             return res("Not authorized", [], 403)
         if not comments:
             return res("Comments required for reback", [], 400)
@@ -472,7 +472,7 @@ def reject_journal_accounting(accounting_id, user_id, comments=None):
             return res("Journal accounting not found", [], 404)
         if not ja.workflow_status.startswith("Pending"):
             return res("Not pending approval", [], 400)
-        if not is_current_approver(ja, user_id, _MODULE):
+        if not is_current_approver(ja.project_code, _MODULE, ja.current_level, user_id):
             return res("Not authorized", [], 403)
         if not comments:
             return res("Comments required for rejection", [], 400)

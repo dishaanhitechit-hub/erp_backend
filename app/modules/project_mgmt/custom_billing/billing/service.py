@@ -169,6 +169,13 @@ def _build_rows(raw_rows, billing_id, model_class):
     total_gst   = Decimal('0')
     objects     = []
     for idx, row in enumerate(raw_rows, start=1):
+        if not (row.get("itemName") or "").strip():
+            raise ValueError(f"Item {idx}: itemName is required")
+        if not (row.get("unit") or "").strip():
+            raise ValueError(f"Item {idx}: unit is required")
+        if row.get("rate") is None:
+            raise ValueError(f"Item {idx}: rate is required")
+
         claim_qty   = Decimal(str(row.get("claimQty")  or 0))
         rate        = Decimal(str(row.get("rate")       or 0))
         amount      = claim_qty * rate
