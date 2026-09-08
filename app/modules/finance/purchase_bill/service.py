@@ -62,13 +62,14 @@ def _generate_purchase_bill_no():
 
 
 def _cc_summary_from_brb(brb_id, billing_type):
-    """CC-grouped basic amounts from a single BRB record."""
+    """CC-grouped basic amounts and GST from a single BRB record."""
     if billing_type == "GRN":
         rows = (
             db.session.query(
                 CCCode.cc_code,
                 CCCode.cc_name,
                 func.sum(BrbItem.amount).label("basic_amount"),
+                func.sum(BrbItem.gst_amount).label("gst_amount"),
             )
             .join(GrnItem,   GrnItem.id   == BrbItem.grn_item_id)
             .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
@@ -84,6 +85,7 @@ def _cc_summary_from_brb(brb_id, billing_type):
                 CCCode.cc_code,
                 CCCode.cc_name,
                 func.sum(BrbItem.amount).label("basic_amount"),
+                func.sum(BrbItem.gst_amount).label("gst_amount"),
             )
             .join(SrnItem,              SrnItem.id              == BrbItem.srn_item_id)
             .join(ProjectWorkOrderItem, ProjectWorkOrderItem.id == SrnItem.pw_order_item_id)
@@ -98,6 +100,7 @@ def _cc_summary_from_brb(brb_id, billing_type):
             "ccCode":      r.cc_code,
             "ccName":      r.cc_name,
             "basicAmount": float(r.basic_amount or 0),
+            "gstAmount":   float(r.gst_amount   or 0),
         }
         for r in rows
     ]
@@ -377,9 +380,11 @@ def get_brr_items_grouped(data):
                         "ccCode":      row["ccCode"],
                         "ccName":      row["ccName"],
                         "basicAmount": Decimal('0'),
+                        "gstAmount":   Decimal('0'),
                     }
                     cc_order.append(key)
                 cc_totals[key]["basicAmount"] += Decimal(str(row["basicAmount"]))
+                cc_totals[key]["gstAmount"]   += Decimal(str(row["gstAmount"]))
 
         items = [
             {
@@ -393,6 +398,25 @@ def get_brr_items_grouped(data):
             for idx, k in enumerate(cc_order)
         ]
 
+        # Build gstLines: SGST + CGST (each half) and IGST (full), per CC code
+        gst_lines = []
+        for k in cc_order:
+            entry     = cc_totals[k]
+            basic_amt = entry["basicAmount"]
+            gst_amt   = entry["gstAmount"]
+            if gst_amt <= 0:
+                continue
+            eff_pct  = (gst_amt / basic_amt * 100).quantize(Decimal("0.01")) if basic_amt else Decimal("0")
+            half_pct = (eff_pct  / 2).quantize(Decimal("0.01"))
+            half_amt = (gst_amt  / 2).quantize(Decimal("0.01"))
+            cc_code  = entry["ccCode"]
+            cc_name  = entry["ccName"]
+            gst_lines.extend([
+                {"gstType": "SGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+                {"gstType": "CGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+                {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(gst_amt),  "isSelected": False},
+            ])
+
         return res("BRR items grouped by CC Code", {
             "brrId":          brr.id,
             "brrNo":          brr.brr_no,
@@ -401,6 +425,7 @@ def get_brr_items_grouped(data):
             "vendorBillNo":   brr.party_bill_no,
             "vendorBillDate": _fmt_date(brr.party_date),
             "items":          items,
+            "gstLines":       gst_lines,
         }, 200)
 
     except Exception as e:
