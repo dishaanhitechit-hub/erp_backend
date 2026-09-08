@@ -391,7 +391,7 @@ def submit_journal_accounting(accounting_id, user_id):
         ja.current_level   = 1
         ja.submitted_by    = user_id
         ja.submitted_at    = datetime.utcnow()
-        create_history(ja.id, "PettyCashJournalAccounting", user_id, "SUBMIT", 0)
+        create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=0, action="SUBMIT", action_by=user_id)
         db.session.commit()
 
         return res("Submitted", {}, 200)
@@ -419,13 +419,13 @@ def approve_journal_accounting(accounting_id, user_id, comments=None):
             gap = get_gap_level(ja.project_code, _MODULE, ja.current_level)
             ja.workflow_status = f"Pending_L{ja.current_level + gap}"
             ja.current_level   = ja.current_level + gap
-            create_history(ja.id, "PettyCashJournalAccounting", user_id, "APPROVE", ja.current_level - gap, comments)
+            create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=ja.current_level - gap, action="APPROVE", action_by=user_id, comments=comments)
         else:
             ja.workflow_status   = "Approved"
             ja.approved_by       = user_id
             ja.final_approved_at = datetime.utcnow()
             ja.locked            = True
-            create_history(ja.id, "PettyCashJournalAccounting", user_id, "FINAL_APPROVE", ja.current_level, comments)
+            create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=ja.current_level, action="FINAL_APPROVE", action_by=user_id, comments=comments)
 
         db.session.commit()
         return res("Approved", {}, 200)
@@ -453,7 +453,7 @@ def reback_journal_accounting(accounting_id, user_id, comments=None):
         level = ja.current_level
         ja.workflow_status = "Reback"
         ja.current_level   = 0
-        create_history(ja.id, "PettyCashJournalAccounting", user_id, "REBACK", level, comments)
+        create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=level, action="REBACK", action_by=user_id, comments=comments)
         db.session.commit()
         return res("Sent back for correction", {}, 200)
     except Exception as e:
@@ -481,7 +481,7 @@ def reject_journal_accounting(accounting_id, user_id, comments=None):
         ja.workflow_status = "Rejected"
         ja.rejected_by     = user_id
         ja.rejected_at     = datetime.utcnow()
-        create_history(ja.id, "PettyCashJournalAccounting", user_id, "REJECT", level, comments)
+        create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=level, action="REJECT", action_by=user_id, comments=comments)
         db.session.commit()
         return res("Rejected", {}, 200)
     except Exception as e:
