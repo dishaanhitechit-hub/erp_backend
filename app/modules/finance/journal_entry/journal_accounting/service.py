@@ -500,7 +500,7 @@ def get_journal_accounting_history(accounting_id):
             return res("Journal accounting not found", [], 404)
 
         history = get_history("PettyCashJournalAccounting", accounting_id)
-        steps   = get_approval_steps(ja.project_code, _MODULE)
+        steps   = get_approval_steps(ja.project_code, _MODULE, ja, history)
 
         return res("History fetched", {
             "workflowStatus": ja.workflow_status,
