@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid as _uuid
 
 from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
-from app.models.billingMaster import BillingMaster
+from app.models.billingMaster import BillingMaster, BillingBoqItem
 from app.models.cc_code import CCCode
 from app.models.bankCash import BankCash
 from app.response import res
@@ -222,7 +222,8 @@ def get_certified_bill_items_grouped(data):
         if bill.project_code != project_code:
             return res("Certified bill does not belong to this project", [], 403)
 
-        items, gst_lines = _group_by_cc(bill.items)
+        boq_items = BillingBoqItem.query.filter_by(billing_id=bill.id).all()
+        items, gst_lines = _group_by_cc(bill.items + boq_items)
 
         return res("Items grouped by CC Code", {
             "certifiedBillId": bill.id,
