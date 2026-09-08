@@ -315,7 +315,7 @@ def get_receipt_items(data):
                     "receivedAmount": float(received_gst),
                     "balanceAmount":  float(balance_gst),
                     "currentAmount":  0,
-                    "isSelected":     True,
+                    "isSelected":     row.gst_type == "IGST",
                 })
         else:
             for gst_type, cc_code, cc_name, pct in [
@@ -505,7 +505,7 @@ def get_details_by_invoice_no(data):
                     "receivedAmount": float(received_gst),
                     "balanceAmount":  float(balance_gst),
                     "currentAmount":  0,
-                    "isSelected":     True,
+                    "isSelected":     row.gst_type == "IGST",
                 })
         else:
             for gst_type, cc_code, cc_name, pct in [
