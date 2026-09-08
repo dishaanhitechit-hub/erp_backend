@@ -6,7 +6,6 @@ import uuid as _uuid
 
 from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
 from app.models.billingMaster import BillingMaster
-from app.models.item import Item
 from app.models.cc_code import CCCode
 from app.models.bankCash import BankCash
 from app.response import res
@@ -55,69 +54,38 @@ def generate_sale_bill_no():
 
 
 def _group_by_cc(billing_items):
-    """Group BillingItem rows by CC Code, summing basic amounts and GST."""
-    item_codes = [i.item_code for i in billing_items if i.item_code]
-    item_map   = {}
-    cc_map     = {}
+    """Consolidate all certified bill items under the CRIN CC code."""
+    crin = CCCode.query.filter_by(cc_code="CRIN").first()
+    cc_code = crin.cc_code if crin else "CRIN"
+    cc_name = crin.cc_name if crin else "CRIN"
 
-    if item_codes:
-        item_objs = Item.query.filter(Item.item_code.in_(item_codes)).all()
-        item_map  = {i.item_code: i for i in item_objs}
-        cc_ids    = list({i.cc_code_id for i in item_objs if i.cc_code_id})
-        if cc_ids:
-            cc_objs = CCCode.query.filter(CCCode.id.in_(cc_ids)).all()
-            cc_map  = {c.id: c for c in cc_objs}
-
-    groups = {}  # cc_code_id (or "none") → aggregated data
-    order  = []  # preserve insertion order
-
+    total_basic = Decimal('0')
+    total_gst   = Decimal('0')
     for bi in billing_items:
-        item  = item_map.get(bi.item_code)
-        cc_id = item.cc_code_id if item else None
-        cc    = cc_map.get(cc_id) if cc_id else None
-        key   = cc_id or "none"
-
-        if key not in groups:
-            groups[key] = {
-                "ccCode":      cc.cc_code if cc else None,
-                "ccName":      cc.cc_name if cc else "Uncategorized",
-                "basicAmount": Decimal('0'),
-                "gstAmount":   Decimal('0'),
-            }
-            order.append(key)
-
-        groups[key]["basicAmount"] += Decimal(str(bi.amount     or 0))
-        groups[key]["gstAmount"]   += Decimal(str(bi.gst_amount or 0))
+        total_basic += Decimal(str(bi.amount     or 0))
+        total_gst   += Decimal(str(bi.gst_amount or 0))
 
     items = [
         {
-            "slNo":        idx + 1,
-            "ccCode":      groups[k]["ccCode"],
-            "ccName":      groups[k]["ccName"],
+            "slNo":        1,
+            "ccCode":      cc_code,
+            "ccName":      cc_name,
             "description": "",
             "hsnSac":      "",
-            "basicAmount": float(groups[k]["basicAmount"]),
+            "basicAmount": float(total_basic),
         }
-        for idx, k in enumerate(order)
     ]
 
     gst_lines = []
-    for k in order:
-        entry     = groups[k]
-        basic_amt = entry["basicAmount"]
-        gst_amt   = entry["gstAmount"]
-        if gst_amt <= 0:
-            continue
-        eff_pct  = (gst_amt / basic_amt * 100).quantize(Decimal("0.01")) if basic_amt else Decimal("0")
+    if total_gst > 0 and total_basic > 0:
+        eff_pct  = (total_gst / total_basic * 100).quantize(Decimal("0.01"))
         half_pct = (eff_pct / 2).quantize(Decimal("0.01"))
-        half_amt = (gst_amt / 2).quantize(Decimal("0.01"))
-        cc_code  = entry["ccCode"]
-        cc_name  = entry["ccName"]
-        gst_lines.extend([
+        half_amt = (total_gst / 2).quantize(Decimal("0.01"))
+        gst_lines = [
             {"gstType": "SGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
             {"gstType": "CGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-            {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(gst_amt),  "isSelected": True},
-        ])
+            {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(total_gst),  "isSelected": True},
+        ]
 
     return items, gst_lines
 
