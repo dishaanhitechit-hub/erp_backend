@@ -55,7 +55,7 @@ def generate_sale_bill_no():
 
 
 def _group_by_cc(billing_items):
-    """Group BillingItem rows by CC Code, summing basic amounts."""
+    """Group BillingItem rows by CC Code, summing basic amounts and GST."""
     item_codes = [i.item_code for i in billing_items if i.item_code]
     item_map   = {}
     cc_map     = {}
@@ -82,12 +82,14 @@ def _group_by_cc(billing_items):
                 "ccCode":      cc.cc_code if cc else None,
                 "ccName":      cc.cc_name if cc else "Uncategorized",
                 "basicAmount": Decimal('0'),
+                "gstAmount":   Decimal('0'),
             }
             order.append(key)
 
-        groups[key]["basicAmount"] += Decimal(str(bi.amount or 0))
+        groups[key]["basicAmount"] += Decimal(str(bi.amount     or 0))
+        groups[key]["gstAmount"]   += Decimal(str(bi.gst_amount or 0))
 
-    return [
+    items = [
         {
             "slNo":        idx + 1,
             "ccCode":      groups[k]["ccCode"],
@@ -98,6 +100,26 @@ def _group_by_cc(billing_items):
         }
         for idx, k in enumerate(order)
     ]
+
+    gst_lines = []
+    for k in order:
+        entry     = groups[k]
+        basic_amt = entry["basicAmount"]
+        gst_amt   = entry["gstAmount"]
+        if gst_amt <= 0:
+            continue
+        eff_pct  = (gst_amt / basic_amt * 100).quantize(Decimal("0.01")) if basic_amt else Decimal("0")
+        half_pct = (eff_pct / 2).quantize(Decimal("0.01"))
+        half_amt = (gst_amt / 2).quantize(Decimal("0.01"))
+        cc_code  = entry["ccCode"]
+        cc_name  = entry["ccName"]
+        gst_lines.extend([
+            {"gstType": "SGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+            {"gstType": "CGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+            {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(gst_amt),  "isSelected": True},
+        ])
+
+    return items, gst_lines
 
 
 def _build_detail_payload(bill):
@@ -232,13 +254,14 @@ def get_certified_bill_items_grouped(data):
         if bill.project_code != project_code:
             return res("Certified bill does not belong to this project", [], 403)
 
-        grouped = _group_by_cc(bill.items)
+        items, gst_lines = _group_by_cc(bill.items)
 
         return res("Items grouped by CC Code", {
             "certifiedBillId": bill.id,
             "certifiedBillNo": bill.billing_no,
             "ogSaleOrderNo":   bill.og_sale_order_no,
-            "items":           grouped,
+            "items":           items,
+            "gstLines":        gst_lines,
         }, 200)
 
     except Exception as e:
