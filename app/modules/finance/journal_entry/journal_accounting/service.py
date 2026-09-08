@@ -326,7 +326,7 @@ def edit_journal_accounting(accounting_id, data, user_id):
             return res("Journal accounting not found", [], 404)
         if ja.workflow_status not in ("Draft", "Reback"):
             return res("Can only edit Draft or Reback vouchers", [], 400)
-        if not is_creator(ja, user_id):
+        if not is_creator(ja.project_code, _MODULE, user_id):
             return res("Not authorized", [], 403)
 
         lines_data   = _parse_lines(data)
@@ -380,7 +380,7 @@ def submit_journal_accounting(accounting_id, user_id):
             return res("Journal accounting not found", [], 404)
         if ja.workflow_status not in ("Draft", "Reback"):
             return res("Only Draft or Reback vouchers can be submitted", [], 400)
-        if not is_creator(ja, user_id):
+        if not is_creator(ja.project_code, _MODULE, user_id):
             return res("Not authorized", [], 403)
 
         first = get_first_approver(ja.project_code, _MODULE, user_id)
@@ -522,7 +522,7 @@ def get_journal_accounting_my_status(accounting_id, user_id):
         if not ja:
             return res("Journal accounting not found", [], 404)
 
-        status = get_my_approval_status("PettyCashJournalAccounting", accounting_id, user_id, ja.project_code, _MODULE)
+        status = get_my_approval_status(ja.project_code, _MODULE, ja, user_id)
         return res("My status fetched", status, 200)
     except Exception as e:
         return res(str(e), [], 500)
