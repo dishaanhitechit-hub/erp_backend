@@ -20,7 +20,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE = "budget"
+_MODULE = "budget_master"
 
 
 # ══════════════════════════════════════════════════════════════════
