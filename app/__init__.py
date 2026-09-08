@@ -195,6 +195,9 @@ def create_app():
     from .modules.finance.journal_entry.routes import journal_entry_bp
     app.register_blueprint(journal_entry_bp, url_prefix="/finance/journal-entry")
 
+    from .modules.finance.profit_loss.routes import profit_loss_bp
+    app.register_blueprint(profit_loss_bp, url_prefix="/finance/profit-loss")
+
     from .models import journalEntry  # noqa — registers JournalEntryMaster, JournalEntryLine with Alembic
 
     from .modules.finance.petty_cash.budget.routes import petty_cash_budget_bp
