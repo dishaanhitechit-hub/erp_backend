@@ -7,7 +7,7 @@ import uuid as _uuid
 import json
 
 from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
-from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
+from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -163,10 +163,25 @@ def _serialize_rows(rows):
     return result
 
 
-def _build_rows(raw_rows, billing_id, model_class, source_model=None):
+def _items_to_lookup(items, desc_attr="item_description"):
+    """Build {slNo: field_dict} from a list of OgSaleOrderItem or BillingItem objects."""
+    return {
+        item.sl_no: {
+            "itemName":        item.item_name,
+            "itemCode":        item.item_code,
+            "itemDescription": getattr(item, desc_attr, None),
+            "unit":            item.unit,
+            "rate":            float(item.rate        or 0),
+            "gstPercent":      float(item.gst_percent or 0),
+        }
+        for item in items
+    }
+
+
+def _build_rows(raw_rows, billing_id, model_class, source_lookup=None):
     """Build BillingItem or BillingBoqItem rows; returns (objects, total_basic, total_gst).
-    If source_model is provided, missing item fields are auto-filled from the OG Sale Order item
-    using ogSaleOrderItemId sent by the frontend.
+    source_lookup: {slNo: {itemName, itemCode, itemDescription, unit, rate, gstPercent}}
+    Missing fields are auto-filled from source_lookup by matching slNo.
     """
     total_basic = Decimal('0')
     total_gst   = Decimal('0')
@@ -179,19 +194,19 @@ def _build_rows(raw_rows, billing_id, model_class, source_model=None):
         rate      = row.get("rate")
         gst_pct   = row.get("gstPercent")
 
-        # Auto-fill missing fields from the source OG Sale Order item
-        og_item_id = row.get("ogSaleOrderItemId")
-        if og_item_id and source_model and (not item_name or not unit):
-            src = source_model.query.get(int(og_item_id))
+        # Auto-fill missing fields from source lookup using slNo
+        if source_lookup and (not item_name or not unit):
+            sl_no = row.get("slNo") or idx
+            src = source_lookup.get(sl_no)
             if src:
-                item_name = item_name or (src.item_name or "").strip() or None
-                item_code = item_code or src.item_code
-                item_desc = item_desc or src.item_description
-                unit      = unit      or (src.unit or "").strip() or None
+                item_name = item_name or (src["itemName"] or "").strip() or None
+                item_code = item_code or src["itemCode"]
+                item_desc = item_desc or src["itemDescription"]
+                unit      = unit      or (src["unit"] or "").strip() or None
                 if rate is None:
-                    rate = float(src.rate or 0)
+                    rate = src["rate"]
                 if gst_pct is None:
-                    gst_pct = float(src.gst_percent or 0)
+                    gst_pct = src["gstPercent"]
 
         if not item_name:
             raise ValueError(f"Item {idx}: itemName is required")
@@ -508,8 +523,15 @@ def create_billing(req, user_id):
             db.session.add(bill)
             db.session.flush()
 
-            built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
-            built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+            claim_boq_items = BillingBoqItem.query.filter_by(billing_id=claim_bill.id).all()
+            built_items, basic_items, gst_items = _build_rows(
+                items_raw, bill.id, BillingItem,
+                _items_to_lookup(claim_bill.items, desc_attr="item_name_desc"),
+            )
+            built_boq, basic_boq, gst_boq = _build_rows(
+                boq_raw, bill.id, BillingBoqItem,
+                _items_to_lookup(claim_boq_items, desc_attr="item_name_desc"),
+            )
             for obj in built_items + built_boq:
                 db.session.add(obj)
 
@@ -567,8 +589,14 @@ def create_billing(req, user_id):
         db.session.add(bill)
         db.session.flush()
 
-        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem,    OgSaleOrderItem)
-        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem, OgSaleOrderBoqItem)
+        built_items, basic_items, gst_items = _build_rows(
+            items_raw, bill.id, BillingItem,
+            _items_to_lookup(og_so.items),
+        )
+        built_boq, basic_boq, gst_boq = _build_rows(
+            boq_raw, bill.id, BillingBoqItem,
+            _items_to_lookup(og_so.boq_items),
+        )
         for obj in built_items + built_boq:
             db.session.add(obj)
 
@@ -717,10 +745,20 @@ def edit_billing(bill_id, req, user_id):
         BillingBoqItem.query.filter_by(billing_id=bill.id).delete()
         db.session.flush()
 
-        src_item = OgSaleOrderItem    if bill.mode == "sale_claim_bill" else None
-        src_boq  = OgSaleOrderBoqItem if bill.mode == "sale_claim_bill" else None
-        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem,    src_item)
-        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem, src_boq)
+        if bill.mode == "sale_claim_bill":
+            og_so = OgSaleOrderMaster.query.filter_by(
+                og_sale_order_no=bill.og_sale_order_no,
+                project_code=bill.project_code,
+            ).first()
+            items_lookup = _items_to_lookup(og_so.items)    if og_so else {}
+            boq_lookup   = _items_to_lookup(og_so.boq_items) if og_so else {}
+        else:
+            cb = BillingMaster.query.get(bill.claim_bill_id) if bill.claim_bill_id else None
+            cb_boq = BillingBoqItem.query.filter_by(billing_id=cb.id).all() if cb else []
+            items_lookup = _items_to_lookup(cb.items, desc_attr="item_name_desc") if cb else {}
+            boq_lookup   = _items_to_lookup(cb_boq,   desc_attr="item_name_desc")
+        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem,    items_lookup)
+        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem, boq_lookup)
         for obj in built_items + built_boq:
             db.session.add(obj)
 
