@@ -383,7 +383,7 @@ def submit_journal_accounting(accounting_id, user_id):
         if not is_creator(ja.project_code, _MODULE, user_id):
             return res("Not authorized", [], 403)
 
-        first = get_first_approver(ja.project_code, _MODULE, user_id)
+        first = get_first_approver(ja.project_code, _MODULE)
         if not first:
             return res("No approver configured", [], 400)
 
@@ -414,7 +414,7 @@ def approve_journal_accounting(accounting_id, user_id, comments=None):
         if not is_current_approver(ja, user_id, _MODULE):
             return res("Not authorized to approve at this level", [], 403)
 
-        nxt = get_next_approver(ja.project_code, _MODULE, ja.current_level, user_id)
+        nxt = get_next_approver(ja.project_code, _MODULE, ja.current_level)
         if nxt:
             gap = get_gap_level(ja.project_code, _MODULE, ja.current_level)
             ja.workflow_status = f"Pending_L{ja.current_level + gap}"
