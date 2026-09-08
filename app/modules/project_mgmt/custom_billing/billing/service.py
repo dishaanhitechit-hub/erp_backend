@@ -7,7 +7,7 @@ import uuid as _uuid
 import json
 
 from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
-from app.models.ogSaleOrder import OgSaleOrderMaster
+from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
 from app.modules.work_flow import (
@@ -163,36 +163,60 @@ def _serialize_rows(rows):
     return result
 
 
-def _build_rows(raw_rows, billing_id, model_class):
-    """Build BillingItem or BillingBoqItem rows; returns (objects, total_basic, total_gst)."""
+def _build_rows(raw_rows, billing_id, model_class, source_model=None):
+    """Build BillingItem or BillingBoqItem rows; returns (objects, total_basic, total_gst).
+    If source_model is provided, missing item fields are auto-filled from the OG Sale Order item
+    using ogSaleOrderItemId sent by the frontend.
+    """
     total_basic = Decimal('0')
     total_gst   = Decimal('0')
     objects     = []
     for idx, row in enumerate(raw_rows, start=1):
-        if not (row.get("itemName") or "").strip():
+        item_name = (row.get("itemName") or "").strip() or None
+        item_code = row.get("itemCode")
+        item_desc = row.get("itemDescription")
+        unit      = (row.get("unit") or "").strip() or None
+        rate      = row.get("rate")
+        gst_pct   = row.get("gstPercent")
+
+        # Auto-fill missing fields from the source OG Sale Order item
+        og_item_id = row.get("ogSaleOrderItemId")
+        if og_item_id and source_model and (not item_name or not unit):
+            src = source_model.query.get(int(og_item_id))
+            if src:
+                item_name = item_name or (src.item_name or "").strip() or None
+                item_code = item_code or src.item_code
+                item_desc = item_desc or src.item_description
+                unit      = unit      or (src.unit or "").strip() or None
+                if rate is None:
+                    rate = float(src.rate or 0)
+                if gst_pct is None:
+                    gst_pct = float(src.gst_percent or 0)
+
+        if not item_name:
             raise ValueError(f"Item {idx}: itemName is required")
-        if not (row.get("unit") or "").strip():
+        if not unit:
             raise ValueError(f"Item {idx}: unit is required")
-        if row.get("rate") is None:
+        if rate is None:
             raise ValueError(f"Item {idx}: rate is required")
 
-        claim_qty   = Decimal(str(row.get("claimQty")  or 0))
-        rate        = Decimal(str(row.get("rate")       or 0))
+        claim_qty   = Decimal(str(row.get("claimQty") or 0))
+        rate        = Decimal(str(rate    or 0))
+        gst_pct     = Decimal(str(gst_pct or 0))
         amount      = claim_qty * rate
-        gst_percent = Decimal(str(row.get("gstPercent") or 0))
-        gst_amount  = (amount * gst_percent) / 100
+        gst_amount  = (amount * gst_pct) / 100
 
         obj = model_class(
             billing_id     = billing_id,
             sl_no          = row.get("slNo") or idx,
-            item_code      = row.get("itemCode"),
-            item_name      = row.get("itemName"),
-            item_name_desc = row.get("itemDescription"),
-            unit           = row.get("unit"),
+            item_code      = item_code,
+            item_name      = item_name,
+            item_name_desc = item_desc,
+            unit           = unit,
             claim_qty      = claim_qty,
             rate           = rate,
             amount         = amount,
-            gst_percent    = gst_percent,
+            gst_percent    = gst_pct,
             gst_amount     = gst_amount,
         )
         objects.append(obj)
@@ -543,8 +567,8 @@ def create_billing(req, user_id):
         db.session.add(bill)
         db.session.flush()
 
-        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
-        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem,    OgSaleOrderItem)
+        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem, OgSaleOrderBoqItem)
         for obj in built_items + built_boq:
             db.session.add(obj)
 
@@ -693,8 +717,10 @@ def edit_billing(bill_id, req, user_id):
         BillingBoqItem.query.filter_by(billing_id=bill.id).delete()
         db.session.flush()
 
-        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem)
-        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem)
+        src_item = OgSaleOrderItem    if bill.mode == "sale_claim_bill" else None
+        src_boq  = OgSaleOrderBoqItem if bill.mode == "sale_claim_bill" else None
+        built_items, basic_items, gst_items = _build_rows(items_raw, bill.id, BillingItem,    src_item)
+        built_boq,   basic_boq,   gst_boq   = _build_rows(boq_raw,   bill.id, BillingBoqItem, src_boq)
         for obj in built_items + built_boq:
             db.session.add(obj)
 
