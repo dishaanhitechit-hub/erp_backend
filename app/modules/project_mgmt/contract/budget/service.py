@@ -171,9 +171,10 @@ def get_sale_order_items(so_id):
         if not og_so:
             return res("Sale order not found", [], 404)
 
-        items = [
-            {
+        def _serialize(item, item_type):
+            return {
                 "id":              item.id,
+                "type":            item_type,
                 "slNo":            item.sl_no,
                 "itemCode":        item.item_code,
                 "itemName":        item.item_name,
@@ -183,8 +184,9 @@ def get_sale_order_items(so_id):
                 "rate":            float(item.rate        or 0),
                 "amount":          float(item.amount      or 0),
             }
-            for item in og_so.items
-        ]
+
+        items = [_serialize(item, "non_boq") for item in og_so.items] + \
+                [_serialize(item, "boq")     for item in og_so.boq_items]
 
         return res("Sale order items fetched", {
             "saleOrderId":    og_so.id,
