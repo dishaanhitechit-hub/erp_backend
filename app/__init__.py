@@ -23,6 +23,7 @@ def create_app():
     from .models import manpower  # noqa — registers ManpowerWorker with Alembic
     from .models import dlrMaster  # noqa — registers DlrMaster, DlrItem with Alembic
     from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
+    from .models import whatsapp_log  # noqa — registers WhatsappLog with Alembic
 
     # maintenance middleware
     register_maintenance_middleware(app)
@@ -226,6 +227,9 @@ def create_app():
 
     from .modules.finance.my_ledger.routes import my_ledger_bp
     app.register_blueprint(my_ledger_bp, url_prefix="/finance/my-ledger")
+
+    from .modules.communication.routes import wa_bp
+    app.register_blueprint(wa_bp)
 
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")

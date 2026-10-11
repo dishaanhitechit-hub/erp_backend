@@ -26,6 +26,8 @@ import json
 from app.models.vendor import *
 from app.models.project import Project
 from app.models.companies import Company
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 CUSTOMER_SUPPLY_CATEGORY = "Customer_Supply_Order"
 SITE_TRANSFER_CATEGORY   = "Site_Transfer_Order"
@@ -1130,6 +1132,23 @@ def submit_order(
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="order",
+                    doc_no=order.order_no,
+                    uuid=str(order.order_uuid),
+                    project_code=order.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=order.id,
+                )
+        except Exception:
+            pass
+
         return res(
 
             "Order submitted successfully",
@@ -1217,6 +1236,8 @@ def approve_order(
         if gap:
             return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
+        prev_level = order.current_level  # capture before mutation
+
         # ==========================================
         # FIND NEXT LEVEL
         # ==========================================
@@ -1295,6 +1316,37 @@ def approve_order(
         order.updated_at = datetime.utcnow()
 
         db.session.commit()
+
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="order",
+                    doc_no=order.order_no,
+                    uuid=str(order.order_uuid),
+                    project_code=order.project_code,
+                    approver_name=approver_name,
+                    prev_level=prev_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=order.id,
+                )
+            else:
+                creator_user = User.query.get(order.created_by)
+                external_phone = order.vendor.whatsapp_number if order.vendor else None
+                wa.on_final_approve(
+                    module_code="order",
+                    doc_no=order.order_no,
+                    uuid=str(order.order_uuid),
+                    project_code=order.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=order.id,
+                    external_phone=external_phone,
+                )
+        except Exception:
+            pass
 
         return res(
 
@@ -1419,6 +1471,23 @@ def reback_order(
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(order.created_by)
+            wa.on_reback(
+                module_code="order",
+                doc_no=order.order_no,
+                uuid=str(order.order_uuid),
+                project_code=order.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=order.id,
+            )
+        except Exception:
+            pass
 
         return res(
 
@@ -1546,6 +1615,23 @@ def reject_order(
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(order.created_by)
+            wa.on_reject(
+                module_code="order",
+                doc_no=order.order_no,
+                uuid=str(order.order_uuid),
+                project_code=order.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=order.id,
+            )
+        except Exception:
+            pass
 
         return res(
 
