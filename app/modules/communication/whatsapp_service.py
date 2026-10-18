@@ -35,18 +35,6 @@ def _build_template_payload(to: str, template_name: str, body_params: dict,
     components = []
 
     # Header: document attachment (PDF)
-    if pdf_url:
-        components.append({
-            "type": "header",
-            "parameters": [{
-                "type": "document",
-                "document": {
-                    "link": pdf_url,
-                    "filename": f"{doc_no}.pdf"
-                }
-            }]
-        })
-
     # Body: named parameters
     if body_params:
         components.append({
@@ -84,7 +72,7 @@ def _do_send(phone: str, template_name: str, body_params: dict, pdf_url: str,
              project_code: str, event: str):
     token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
     phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-    version = os.getenv("WHATSAPP_API_VERSION", "v19.0")
+    version = os.getenv("WHATSAPP_API_VERSION", "v21.0")
 
     log = WhatsappLog(
         phone=phone,
@@ -158,7 +146,7 @@ def send_text_reply(phone: str, message: str):
             return
         token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
         phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-        version = os.getenv("WHATSAPP_API_VERSION", "v19.0")
+        version = os.getenv("WHATSAPP_API_VERSION", "v21.0")
         url = f"{_GRAPH_BASE}/{version}/{phone_number_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
