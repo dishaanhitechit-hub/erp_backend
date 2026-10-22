@@ -4,7 +4,7 @@ from app.extensions import db
 from datetime import datetime
 import uuid as _uuid
 
-from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode
+from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode, BudgetItemCCCodeEntry
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
 from app.models.cc_code import CCCode
 from app.response import res
@@ -70,6 +70,15 @@ def _serialize_cc_codes(cc_lines):
             "ccName":    line.cc_name,
             "ccValue":   float(line.cc_value or 0),
             "ccTotal":   float(line.cc_total  or 0),
+            "entries": [
+                {
+                    "id":          e.id,
+                    "slNo":        e.sl_no,
+                    "description": e.description,
+                    "amount":      float(e.amount) if e.amount is not None else None,
+                }
+                for e in line.entries
+            ],
         }
         for line in cc_lines
     ]
@@ -316,6 +325,16 @@ def create_budget(data, user_id):
                     cc_total       = cc_total,
                 )
                 db.session.add(cc_line)
+                db.session.flush()
+
+                for entry_idx, entry_data in enumerate(cc_data.get("entries", []), start=1):
+                    db.session.add(BudgetItemCCCodeEntry(
+                        cc_code_line_id = cc_line.id,
+                        sl_no           = entry_data.get("slNo") or entry_idx,
+                        description     = entry_data.get("description") or None,
+                        amount          = entry_data.get("amount") or None,
+                    ))
+
                 item_cc_total += cc_total
 
             budget_item.total_cc_cost = item_cc_total
@@ -489,6 +508,16 @@ def edit_budget(budget_id, data, user_id):
                     cc_total       = cc_total,
                 )
                 db.session.add(cc_line)
+                db.session.flush()
+
+                for entry_idx, entry_data in enumerate(cc_data.get("entries", []), start=1):
+                    db.session.add(BudgetItemCCCodeEntry(
+                        cc_code_line_id = cc_line.id,
+                        sl_no           = entry_data.get("slNo") or entry_idx,
+                        description     = entry_data.get("description") or None,
+                        amount          = entry_data.get("amount") or None,
+                    ))
+
                 item_cc_total += cc_total
 
             budget_item.total_cc_cost = item_cc_total

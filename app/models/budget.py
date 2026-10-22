@@ -124,3 +124,24 @@ class BudgetItemCCCode(db.Model):
 
     # Relationships
     cc_code_ref = db.relationship("CCCode", foreign_keys=[cc_code_id])
+    entries     = db.relationship(
+        "BudgetItemCCCodeEntry",
+        backref="cc_code_line",
+        cascade="all,delete-orphan",
+        order_by="BudgetItemCCCodeEntry.sl_no",
+    )
+
+
+class BudgetItemCCCodeEntry(db.Model):
+    """Manual entry rows linked to a CC code line — two-column reference table."""
+
+    __tablename__ = "budget_item_cc_code_entries"
+
+    id              = db.Column(db.Integer, primary_key=True)
+    cc_code_line_id = db.Column(db.Integer, db.ForeignKey("budget_item_cc_codes.id"), nullable=False)
+
+    sl_no       = db.Column(db.Integer,      nullable=False, default=1)
+    description = db.Column(db.String(500),  nullable=True)
+    amount      = db.Column(db.Numeric(17, 4), nullable=True)
+
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
