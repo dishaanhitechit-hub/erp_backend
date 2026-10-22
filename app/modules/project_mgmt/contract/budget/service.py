@@ -290,17 +290,19 @@ def create_budget(data, user_id):
             rate           = Decimal(str(item_data.get("rate")     or 0))
             initial_amount = order_qty * rate
 
+            is_boq = str(item_data.get("type", "")).lower() == "boq"
             budget_item = BudgetItem(
-                budget_id             = budget.id,
-                og_sale_order_item_id = item_data.get("ogSaleOrderItemId") or None,
-                sl_no                 = item_data.get("slNo") or idx,
-                item_code             = item_data.get("itemCode") or None,
-                item_name             = item_data.get("itemName"),
-                item_description      = item_data.get("itemDescription"),
-                unit                  = item_data.get("unitItem"),
-                order_qty             = order_qty,
-                rate                  = rate,
-                initial_amount        = initial_amount,
+                budget_id                  = budget.id,
+                og_sale_order_item_id      = None if is_boq  else (item_data.get("ogSaleOrderItemId") or None),
+                og_sale_order_boq_item_id  = (item_data.get("ogSaleOrderItemId") or None) if is_boq else None,
+                sl_no                      = item_data.get("slNo") or idx,
+                item_code                  = item_data.get("itemCode") or None,
+                item_name                  = item_data.get("itemName"),
+                item_description           = item_data.get("itemDescription"),
+                unit                       = item_data.get("unitItem"),
+                order_qty                  = order_qty,
+                rate                       = rate,
+                initial_amount             = initial_amount,
             )
 
             db.session.add(budget_item)
@@ -473,17 +475,19 @@ def edit_budget(budget_id, data, user_id):
             rate           = Decimal(str(item_data.get("rate")     or 0))
             initial_amount = order_qty * rate
 
+            is_boq = str(item_data.get("type", "")).lower() == "boq"
             budget_item = BudgetItem(
-                budget_id             = budget.id,
-                og_sale_order_item_id = item_data.get("ogSaleOrderItemId") or None,
-                sl_no                 = item_data.get("slNo") or idx,
-                item_code             = item_data.get("itemCode") or None,
-                item_name             = item_data.get("itemName"),
-                item_description      = item_data.get("itemDescription"),
-                unit                  = item_data.get("unit"),
-                order_qty             = order_qty,
-                rate                  = rate,
-                initial_amount        = initial_amount,
+                budget_id                  = budget.id,
+                og_sale_order_item_id      = None if is_boq  else (item_data.get("ogSaleOrderItemId") or None),
+                og_sale_order_boq_item_id  = (item_data.get("ogSaleOrderItemId") or None) if is_boq else None,
+                sl_no                      = item_data.get("slNo") or idx,
+                item_code                  = item_data.get("itemCode") or None,
+                item_name                  = item_data.get("itemName"),
+                item_description           = item_data.get("itemDescription"),
+                unit                       = item_data.get("unit"),
+                order_qty                  = order_qty,
+                rate                       = rate,
+                initial_amount             = initial_amount,
             )
 
             db.session.add(budget_item)

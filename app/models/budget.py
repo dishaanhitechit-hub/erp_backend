@@ -72,9 +72,15 @@ class BudgetItem(db.Model):
     budget_id = db.Column(db.Integer, db.ForeignKey("budget_master.id"), nullable=False)
 
     # Reference to source sale order item (for traceability)
+    # Only one of these two is filled — depends on item type
     og_sale_order_item_id = db.Column(
         db.Integer,
         db.ForeignKey("og_sale_order_items.id"),
+        nullable=True,
+    )
+    og_sale_order_boq_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("og_sale_order_boq_items.id"),
         nullable=True,
     )
 
