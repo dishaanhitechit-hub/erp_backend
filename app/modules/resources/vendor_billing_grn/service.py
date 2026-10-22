@@ -9,6 +9,7 @@ from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.bvsMaster import BvsMaster, BvsItem
 from app.models.item import Item
+from app.models.asset import Asset
 from app.models.cc_code import CCCode
 from app.response import res
 from app.modules.work_flow import (
@@ -29,6 +30,25 @@ _MODULE = "billing_by_grn"
 # ══════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════
+
+def _item_display(oi):
+    """Return (item_code, item_name, item_unit, is_asset) from an OrderItem."""
+    if not oi:
+        return None, None, None, False
+    if oi.is_asset:
+        return (
+            oi.asset_code,
+            oi.asset.asset_name if oi.asset else None,
+            oi.asset.unit.unit_name if oi.asset and oi.asset.unit else None,
+            True,
+        )
+    return (
+        oi.item_code,
+        oi.item.item_name if oi.item else None,
+        oi.item.unit.unit_name if oi.item and oi.item.unit else None,
+        False,
+    )
+
 
 def _fmt_date(d):
     if d is None:
@@ -61,33 +81,50 @@ def _already_billed_qty(grn_item_id):
 def _get_bvs_cc_summary(bvs_id):
     """
     CC code summary for a BVS.
-    BvsItem → GrnItem → OrderItem → Item → CCCode
+    Runs two queries (normal items via Item, asset items via Asset) and merges.
     """
-    rows = (
-        db.session.query(
-            CCCode.cc_code,
-            CCCode.cc_name,
-            func.sum(BvsItem.amount).label("basic_amount"),
-            func.sum(BvsItem.gst_amount).label("gst_amount"),
-        )
+    from collections import defaultdict
+
+    base_cols = (
+        CCCode.cc_code,
+        CCCode.cc_name,
+        func.sum(BvsItem.amount).label("basic_amount"),
+        func.sum(BvsItem.gst_amount).label("gst_amount"),
+    )
+
+    normal_rows = (
+        db.session.query(*base_cols)
         .join(GrnItem,   GrnItem.id   == BvsItem.grn_item_id)
         .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
         .join(Item,      Item.item_code == OrderItem.item_code)
         .join(CCCode,    CCCode.id == Item.cc_code_id)
-        .filter(BvsItem.bvs_id == bvs_id)
+        .filter(BvsItem.bvs_id == bvs_id, OrderItem.is_asset == False)
         .group_by(CCCode.cc_code, CCCode.cc_name)
         .all()
     )
 
+    asset_rows = (
+        db.session.query(*base_cols)
+        .join(GrnItem,   GrnItem.id   == BvsItem.grn_item_id)
+        .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
+        .join(Asset,     Asset.asset_code == OrderItem.asset_code)
+        .join(CCCode,    CCCode.id == Asset.cc_code_id)
+        .filter(BvsItem.bvs_id == bvs_id, OrderItem.is_asset == True)
+        .group_by(CCCode.cc_code, CCCode.cc_name)
+        .all()
+    )
+
+    totals = defaultdict(lambda: {"ccCode": None, "ccName": None, "basicAmount": 0.0, "gstAmount": 0.0})
+    for row in normal_rows + asset_rows:
+        t = totals[row.cc_code]
+        t["ccCode"]       = row.cc_code
+        t["ccName"]       = row.cc_name
+        t["basicAmount"] += float(row.basic_amount or 0)
+        t["gstAmount"]   += float(row.gst_amount   or 0)
+
     return [
-        {
-            "ccCode":      row.cc_code,
-            "ccName":      row.cc_name,
-            "basicAmount": float(row.basic_amount or 0),
-            "gstAmount":   float(row.gst_amount   or 0),
-            "totalAmount": float((row.basic_amount or 0) + (row.gst_amount or 0)),
-        }
-        for row in rows
+        {**v, "totalAmount": v["basicAmount"] + v["gstAmount"]}
+        for v in totals.values()
     ]
 
 
@@ -226,15 +263,15 @@ def get_grns_by_order(order_id):
                 rate        = Decimal(str(oi.rate        or 0)) if oi else Decimal('0')
                 gst_percent = Decimal(str(oi.gst_percent or 0)) if oi else Decimal('0')
 
+                item_code, item_name, item_unit, is_asset = _item_display(oi)
+
                 items.append({
                     "grnItemId":     gi.id,
                     "grnl":          gi.grnl,
-                    "itemCode":      oi.item_code if oi else None,
-                    "itemName":      oi.item.item_name if oi and oi.item else None,
-                    "itemUnit":      (
-                        oi.item.unit.unit_name
-                        if oi and oi.item and oi.item.unit else None
-                    ),
+                    "itemCode":      item_code,
+                    "itemName":      item_name,
+                    "itemUnit":      item_unit,
+                    "isAsset":       is_asset,
                     "note":          oi.custom_note if oi else None,
                     "receivedQty":   float(received_qty),
                     "alreadyBilled": float(already_billed),
@@ -473,6 +510,8 @@ def get_bvs_details(bvs_id):
             received_qty   = Decimal(str(gi.current_received_qty or 0)) if gi else Decimal('0')
             available_qty  = max(received_qty - already_billed, 0)
 
+            item_code, item_name, item_unit, is_asset = _item_display(oi)
+
             items.append({
                 "id":            bi.id,
                 "grnItemId":     bi.grn_item_id,
@@ -480,13 +519,10 @@ def get_bvs_details(bvs_id):
                 "grnNo":         grn.grn_no   if grn else None,
                 "grnl":          gi.grnl      if gi  else None,
                 "grnDate": _fmt_date(grn.grn_date) if grn else None,
-                "itemCode":      oi.item_code if oi  else None,
-
-                "itemName":      oi.item.item_name if oi and oi.item else None,
-                "itemUnit":      (
-                    oi.item.unit.unit_name
-                    if oi and oi.item and oi.item.unit else None
-                ),
+                "itemCode":      item_code,
+                "itemName":      item_name,
+                "itemUnit":      item_unit,
+                "isAsset":       is_asset,
                 "note":          oi.custom_note if oi else None,
                 "receivedQty":   float(received_qty),
                 "alreadyBilled": float(already_billed),

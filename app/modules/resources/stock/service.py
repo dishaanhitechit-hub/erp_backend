@@ -7,6 +7,7 @@ from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.ginMaster import GinMaster, GinItem
 from app.models.orderMaster import OrderItem
 from app.models.item import Item
+from app.models.asset import Asset
 from app.models.cc_code import CCCode
 from app.response import res
 
@@ -27,6 +28,8 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
     grn_q = (
         db.session.query(
             OrderItem.item_code.label("item_code"),
+            OrderItem.asset_code.label("asset_code"),
+            OrderItem.is_asset.label("is_asset"),
             func.coalesce(func.sum(GrnItem.current_received_qty), 0).label("total_received_qty"),
             func.coalesce(
                 func.sum(GrnItem.current_received_qty * OrderItem.rate), 0
@@ -42,17 +45,27 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
     if item_category:
         grn_q = grn_q.filter(GrnMaster.item_category == item_category)
 
-    grn_rows = grn_q.group_by(OrderItem.item_code).all()
+    grn_rows = grn_q.group_by(
+        OrderItem.item_code, OrderItem.asset_code, OrderItem.is_asset
+    ).all()
 
     if not grn_rows:
         return res("Stock list fetched", [], 200)
 
-    item_codes = [r.item_code for r in grn_rows if r.item_code]
+    normal_codes = [r.item_code  for r in grn_rows if not r.is_asset and r.item_code]
+    asset_codes  = [r.asset_code for r in grn_rows if r.is_asset and r.asset_code]
 
     # ── issued from GIN ──────────────────────────────────────────
+    gin_filter = []
+    if normal_codes:
+        gin_filter.append(OrderItem.item_code.in_(normal_codes))
+    if asset_codes:
+        gin_filter.append(OrderItem.asset_code.in_(asset_codes))
+
     gin_q = (
         db.session.query(
             OrderItem.item_code.label("item_code"),
+            OrderItem.asset_code.label("asset_code"),
             func.coalesce(func.sum(GinItem.issue_qty), 0).label("total_issued_qty"),
             func.coalesce(
                 func.sum(GinItem.issue_qty * OrderItem.rate), 0
@@ -63,34 +76,51 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
         .filter(
             GinMaster.project_code == project_code,
             GinMaster.workflow_status == "Approved",
-            OrderItem.item_code.in_(item_codes),
+            db.or_(*gin_filter) if gin_filter else db.false(),
         )
     )
     if item_category:
         gin_q = gin_q.filter(GinMaster.item_category == item_category)
 
-    gin_map = {r.item_code: r for r in gin_q.group_by(OrderItem.item_code).all()}
-
-    # ── item master ──────────────────────────────────────────────
-    item_map = {
-        i.item_code: i
-        for i in db.session.query(Item).filter(Item.item_code.in_(item_codes)).all()
+    gin_map = {
+        (r.item_code, r.asset_code): r
+        for r in gin_q.group_by(OrderItem.item_code, OrderItem.asset_code).all()
     }
+
+    # ── item master (normal + asset) ─────────────────────────────
+    item_map = (
+        {i.item_code: i for i in db.session.query(Item).filter(Item.item_code.in_(normal_codes)).all()}
+        if normal_codes else {}
+    )
+    asset_map = (
+        {a.asset_code: a for a in db.session.query(Asset).filter(Asset.asset_code.in_(asset_codes)).all()}
+        if asset_codes else {}
+    )
 
     # ── CC code map ──────────────────────────────────────────────
-    cc_ids = [item_map[c].cc_code_id for c in item_codes if c in item_map]
-    cc_map = {
-        cc.id: cc
-        for cc in db.session.query(CCCode).filter(CCCode.id.in_(cc_ids)).all()
-    }
+    cc_ids = (
+        [item_map[c].cc_code_id  for c in normal_codes if c in item_map and item_map[c].cc_code_id] +
+        [asset_map[c].cc_code_id for c in asset_codes  if c in asset_map and asset_map[c].cc_code_id]
+    )
+    cc_map = (
+        {cc.id: cc for cc in db.session.query(CCCode).filter(CCCode.id.in_(cc_ids)).all()}
+        if cc_ids else {}
+    )
 
     # ── group by CC code ─────────────────────────────────────────
     groups = defaultdict(lambda: {"items": [], "totalStockAmount": Decimal('0')})
 
     for row in grn_rows:
-        code = row.item_code
-        item = item_map.get(code)
-        gin  = gin_map.get(code)
+        if row.is_asset:
+            code      = row.asset_code
+            master    = asset_map.get(code)
+            item_name = master.asset_name if master else None
+        else:
+            code      = row.item_code
+            master    = item_map.get(code)
+            item_name = master.item_name if master else None
+
+        gin = gin_map.get((row.item_code, row.asset_code))
 
         receivedQty = Decimal(str(row.total_received_qty or 0))
         receivedAmt = Decimal(str(row.total_received_amount or 0))
@@ -100,7 +130,7 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
         stockQty    = receivedQty - issuedQty
         stockAmount = receivedAmt - issuedAmt
 
-        cc_id     = item.cc_code_id if item else None
+        cc_id     = master.cc_code_id if master else None
         cc        = cc_map.get(cc_id) if cc_id else None
         group_key = cc_id or "__none__"
 
@@ -109,8 +139,9 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
         groups[group_key]["totalStockAmount"] = groups[group_key]["totalStockAmount"] + stockAmount
         groups[group_key]["items"].append({
             "itemCode":    code,
-            "itemName":    item.item_name if item else None,
-            "unit":        item.unit.unit_name if item and item.unit else None,
+            "itemName":    item_name,
+            "unit":        master.unit.unit_name if master and master.unit else None,
+            "isAsset":     bool(row.is_asset),
             "receivedQty": float(receivedQty),
             "issuedQty":   float(issuedQty),
             "stockQty":    float(stockQty),
@@ -175,8 +206,13 @@ def _paginate(entries, page, limit):
     }
 
 
-def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
+def _build_item_detail(project_code, item_code, is_asset=False, from_date=None, to_date=None,
                        grn_page=1, gin_page=1, entries_limit=10):
+
+    item_filter = (
+        (OrderItem.asset_code == item_code) if is_asset
+        else (OrderItem.item_code == item_code)
+    )
 
     # ── GRN entries ──────────────────────────────────────────────
     grn_q = (
@@ -192,7 +228,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
         .filter(
             GrnMaster.project_code == project_code,
             GrnMaster.workflow_status == "Approved",
-            OrderItem.item_code == item_code,
+            item_filter,
         )
     )
     if from_date:
@@ -232,7 +268,7 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
         .filter(
             GinMaster.project_code == project_code,
             GinMaster.workflow_status == "Approved",
-            OrderItem.item_code == item_code,
+            item_filter,
             GinItem.order_item_id.isnot(None),
         )
     )
@@ -260,13 +296,21 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
         })
 
     # ── item master ──────────────────────────────────────────────
-    item = db.session.query(Item).filter(Item.item_code == item_code).first()
+    if is_asset:
+        master     = db.session.query(Asset).filter(Asset.asset_code == item_code).first()
+        item_name  = master.asset_name if master else None
+        item_unit  = master.unit.unit_name if master and master.unit else None
+    else:
+        master     = db.session.query(Item).filter(Item.item_code == item_code).first()
+        item_name  = master.item_name if master else None
+        item_unit  = master.unit.unit_name if master and master.unit else None
 
     return {
         "summary": {
             "itemCode":            item_code,
-            "itemName":            item.item_name if item else None,
-            "unit":                item.unit.unit_name if item and item.unit else None,
+            "itemName":            item_name,
+            "unit":                item_unit,
+            "isAsset":             is_asset,
             "totalReceivedQty":    float(total_received_qty),
             "totalReceivedAmount": float(total_received_amt),
             "totalIssuedQty":      float(total_issued_qty),
@@ -279,34 +323,35 @@ def _build_item_detail(project_code, item_code, from_date=None, to_date=None,
     }
 
 
-def get_stock_item_detail(project_code, item_code=None, search=None,
+def get_stock_item_detail(project_code, item_code=None, is_asset=False, search=None,
                           from_date=None, to_date=None,
                           grn_page=1, gin_page=1, entries_limit=10):
 
     if search:
-        keyword       = f"%{search}%"
-        matched_items = (
+        keyword = f"%{search}%"
+        normal_items = (
             db.session.query(Item)
-            .filter(
-                db.or_(
-                    Item.item_code.ilike(keyword),
-                    Item.item_name.ilike(keyword),
-                )
-            )
+            .filter(db.or_(Item.item_code.ilike(keyword), Item.item_name.ilike(keyword)))
             .all()
         )
-        if not matched_items:
+        asset_items = (
+            db.session.query(Asset)
+            .filter(db.or_(Asset.asset_code.ilike(keyword), Asset.asset_name.ilike(keyword)))
+            .all()
+        )
+        if not normal_items and not asset_items:
             return res("No items found matching search", [], 200)
 
-        result = [
-            _build_item_detail(project_code, i.item_code, from_date, to_date,
-                               grn_page, gin_page, entries_limit)
-            for i in matched_items
-        ]
+        result = (
+            [_build_item_detail(project_code, i.item_code, False, from_date, to_date,
+                                grn_page, gin_page, entries_limit) for i in normal_items] +
+            [_build_item_detail(project_code, a.asset_code, True, from_date, to_date,
+                                grn_page, gin_page, entries_limit) for a in asset_items]
+        )
         return res("Stock item detail fetched", result, 200)
 
     if item_code:
-        detail = _build_item_detail(project_code, item_code, from_date, to_date,
+        detail = _build_item_detail(project_code, item_code, is_asset, from_date, to_date,
                                     grn_page, gin_page, entries_limit)
         return res("Stock item detail fetched", detail, 200)
 

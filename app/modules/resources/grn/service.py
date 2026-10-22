@@ -9,6 +9,7 @@ import uuid as _uuid
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.item import Item
+from app.models.asset import Asset
 from app.models.unit import Unit
 from app.models.companies import Company
 from app.response import res
@@ -208,15 +209,18 @@ def get_order_items_for_grn(order_id):
                     if oi.indent_item and oi.indent_item.indent else None
                 ),
 
-                "itemCode": oi.item_code,
+                "itemCode": oi.asset_code if oi.is_asset else oi.item_code,
                 "itemName": (
-                    oi.item.item_name
-                    if oi.item else None
+                    oi.asset.asset_name if oi.asset else None
+                ) if oi.is_asset else (
+                    oi.item.item_name if oi.item else None
                 ),
                 "itemUnit": (
-                    oi.item.unit.unit_name
-                    if oi.item and oi.item.unit else None
+                    oi.asset.unit.unit_name if oi.asset and oi.asset.unit else None
+                ) if oi.is_asset else (
+                    oi.item.unit.unit_name if oi.item and oi.item.unit else None
                 ),
+                "isAsset": oi.is_asset,
                 "note": oi.custom_note,
 
                 # qty columns
@@ -356,27 +360,37 @@ def create_grn(data, user_id, files=None):
             pre_qty = _pre_received_qty(order_item_id)
             balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
+            ref_code = order_item.asset_code if order_item.is_asset else order_item.item_code
+
             if current_received_qty > balance:
                 db.session.rollback()
                 return res(
-                    f"Only {balance} qty remaining for item {order_item.item_code}",
+                    f"Only {balance} qty remaining for item {ref_code}",
                     [], 400
                 )
 
-            grn_item = GrnItem(
-
-                grn_id=grn.id,
-                order_item_id=order_item_id,
-                item_code=order_item.item_code,
-                unit=(
+            if order_item.is_asset:
+                unit_name = (
+                    order_item.asset.unit.unit_name
+                    if order_item.asset and order_item.asset.unit else None
+                )
+            else:
+                unit_name = (
                     order_item.item.unit.unit_name
                     if order_item.item and order_item.item.unit else None
-                ),
+                )
+
+            grn_item = GrnItem(
+                grn_id=grn.id,
+                order_item_id=order_item_id,
+                is_asset=order_item.is_asset,
+                item_code=order_item.item_code,
+                asset_code=order_item.asset_code,
+                unit=unit_name,
                 grnl=generate_grnl_no(line_no),
                 current_received_qty=current_received_qty,
                 use_location=row.get("useLocation"),
                 store_location=row.get("storeLocation"),
-
             )
 
             db.session.add(grn_item)
@@ -485,15 +499,18 @@ def get_grn_details(grn_id):
                     if oi and oi.indent_item and oi.indent_item.indent else None
                 ),
 
-                "itemCode": oi.item_code if oi else None,
+                "itemCode": (gi.asset_code if gi.is_asset else gi.item_code),
                 "itemName": (
-                    oi.item.item_name
-                    if oi and oi.item else None
+                    (oi.asset.asset_name if oi.asset else None)
+                    if oi and oi.is_asset else
+                    (oi.item.item_name if oi and oi.item else None)
                 ),
                 "itemUnit": (
-                    oi.item.unit.unit_name
-                    if oi and oi.item and oi.item.unit else None
+                    (oi.asset.unit.unit_name if oi.asset and oi.asset.unit else None)
+                    if oi and oi.is_asset else
+                    (oi.item.unit.unit_name if oi and oi.item and oi.item.unit else None)
                 ),
+                "isAsset": gi.is_asset,
                 "note": oi.custom_note if oi else None,
 
                 "orderQty": float(oi.qty or 0) if oi else 0,
@@ -953,21 +970,33 @@ def edit_grn(grn_id, data, user_id, files=None):
             pre_qty = _pre_received_qty(order_item_id)
             balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
+            ref_code = order_item.asset_code if order_item.is_asset else order_item.item_code
+
             if current_received_qty > balance:
                 db.session.rollback()
                 return res(
-                    f"Only {balance} qty remaining for item {order_item.item_code}",
+                    f"Only {balance} qty remaining for item {ref_code}",
                     [], 400
+                )
+
+            if order_item.is_asset:
+                unit_name = (
+                    order_item.asset.unit.unit_name
+                    if order_item.asset and order_item.asset.unit else None
+                )
+            else:
+                unit_name = (
+                    order_item.item.unit.unit_name
+                    if order_item.item and order_item.item.unit else None
                 )
 
             db.session.add(GrnItem(
                 grn_id=grn.id,
                 order_item_id=order_item_id,
+                is_asset=order_item.is_asset,
                 item_code=order_item.item_code,
-                unit=(
-                    order_item.item.unit.unit_name
-                    if order_item.item and order_item.item.unit else None
-                ),
+                asset_code=order_item.asset_code,
+                unit=unit_name,
                 grnl=generate_grnl_no(line_no),
                 current_received_qty=current_received_qty,
                 use_location=row.get("useLocation"),
@@ -1123,7 +1152,11 @@ def get_grn_by_uuid(grn_uuid):
             rate = gst_pct = basic_amt = gst_amt = line_total = 0.0
 
             if oi:
-                if oi.item:
+                if oi.is_asset and oi.asset:
+                    item_name = oi.asset.asset_name
+                    hsn_sac   = oi.asset.hsn_sac if hasattr(oi.asset, "hsn_sac") else None
+                    unit      = oi.asset.unit.unit_name if oi.asset.unit else None
+                elif oi.item:
                     item_name = oi.item.item_name
                     hsn_sac   = oi.item.hsn_sac if hasattr(oi.item, "hsn_sac") else None
                     unit      = oi.item.unit.unit_name if oi.item.unit else None
@@ -1158,8 +1191,9 @@ def get_grn_by_uuid(grn_uuid):
                 "grnl":               gi.grnl,
                 "orderItemId":        gi.order_item_id,
                 "indentNo":           indent_no,
-                "itemCode":           gi.item_code,
+                "itemCode":           gi.asset_code if gi.is_asset else gi.item_code,
                 "itemName":           item_name,
+                "isAsset":            gi.is_asset,
                 "hsnSac":             hsn_sac,
                 "unit":               gi.unit or unit,
                 "orderQty":           float(order_qty),

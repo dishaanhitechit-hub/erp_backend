@@ -45,6 +45,7 @@ def stock_list():
 def stock_item_detail():
     project_code  = request.args.get("project_code", "").strip()
     item_code     = request.args.get("item_code", "").strip() or None
+    is_asset      = request.args.get("is_asset", "false").strip().lower() == "true"
     search        = request.args.get("search", "").strip() or None
     from_date     = request.args.get("from_date", "").strip() or None
     to_date       = request.args.get("to_date", "").strip() or None
@@ -61,6 +62,7 @@ def stock_item_detail():
     return get_stock_item_detail(
         project_code,
         item_code=item_code,
+        is_asset=is_asset,
         search=search,
         from_date=from_date,
         to_date=to_date,

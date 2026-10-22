@@ -13,6 +13,7 @@ from app.models.indent_item import IndentItem
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
 from app.models.item import Item
+from app.models.asset import Asset
 from app.models.cc_code import CCCode
 from app.response import res
 from app.cloudinary_uploader import *
@@ -58,63 +59,59 @@ def _resolve_party_name(order):
 
 
 def get_cc_code_summary(order_id):
+    from app.models.asset import Asset as AssetModel
 
-    rows = (
-
+    # normal items
+    normal_rows = (
         db.session.query(
-
             CCCode.cc_code,
-
             CCCode.cc_name,
-
-            func.sum(
-                OrderItem.amount
-            ).label("basic_amount"),
-
-            func.sum(
-                OrderItem.gst_amount
-            ).label("gst_amount")
-
+            func.sum(OrderItem.amount).label("basic_amount"),
+            func.sum(OrderItem.gst_amount).label("gst_amount")
         )
-
-        .join(
-            Item,
-            Item.item_code == OrderItem.item_code
-        )
-
-        .join(
-            CCCode,
-            CCCode.id == Item.cc_code_id
-        )
-
-        .filter(
-            OrderItem.order_id == order_id
-        )
-
-        .group_by(
-            CCCode.cc_code,
-            CCCode.cc_name
-        )
-
+        .join(Item, Item.item_code == OrderItem.item_code)
+        .join(CCCode, CCCode.id == Item.cc_code_id)
+        .filter(OrderItem.order_id == order_id, OrderItem.is_asset == False)
+        .group_by(CCCode.cc_code, CCCode.cc_name)
         .all()
-
     )
 
+    # asset items
+    asset_rows = (
+        db.session.query(
+            CCCode.cc_code,
+            CCCode.cc_name,
+            func.sum(OrderItem.amount).label("basic_amount"),
+            func.sum(OrderItem.gst_amount).label("gst_amount")
+        )
+        .join(AssetModel, AssetModel.asset_code == OrderItem.asset_code)
+        .join(CCCode, CCCode.id == AssetModel.cc_code_id)
+        .filter(OrderItem.order_id == order_id, OrderItem.is_asset == True)
+        .group_by(CCCode.cc_code, CCCode.cc_name)
+        .all()
+    )
+
+    # merge both
+    from collections import defaultdict
+    summary = defaultdict(lambda: {"ccCode": None, "ccName": None, "basicAmount": 0.0, "gstAmount": 0.0})
+    for row in list(normal_rows) + list(asset_rows):
+        key = row.cc_code
+        summary[key]["ccCode"]       = row.cc_code
+        summary[key]["ccName"]       = row.cc_name
+        summary[key]["basicAmount"] += float(row.basic_amount or 0)
+        summary[key]["gstAmount"]   += float(row.gst_amount or 0)
+
+    rows = list(summary.values())
+
     return [
-
         {
-            "ccCode": row.cc_code,
-            "ccName": row.cc_name,
-            "basicAmount": float(row.basic_amount or 0),
-            "gstAmount": float(row.gst_amount or 0),
-            "totalAmount": float(
-                (row.basic_amount or 0) +
-                (row.gst_amount or 0)
-            )
+            "ccCode":      r["ccCode"],
+            "ccName":      r["ccName"],
+            "basicAmount": r["basicAmount"],
+            "gstAmount":   r["gstAmount"],
+            "totalAmount": round(r["basicAmount"] + r["gstAmount"], 2)
         }
-
-        for row in rows
-
+        for r in rows
     ]
 
 
@@ -340,10 +337,12 @@ files=None,
 
                 remaining_qty=Decimal(str(indent_item.qty or 0))-Decimal(str(previous_qty or 0))
 
+                ref_code = indent_item.asset_code if indent_item.is_asset else indent_item.item_code
+
                 if requested_qty<=0:
                     db.session.rollback()
                     return res(
-                        f"Invalid qty for item {indent_item.item_code}",
+                        f"Invalid qty for item {ref_code}",
                         [],
                         400
                     )
@@ -351,31 +350,44 @@ files=None,
                 if requested_qty>remaining_qty:
                     db.session.rollback()
                     return res(
-                        f"Available qty only {remaining_qty} for item {indent_item.item_code}",
+                        f"Available qty only {remaining_qty} for item {ref_code}",
                         [],
                         400
                     )
 
-                item_code=indent_item.item_code
-                note=row.get("note") or indent_item.note
-                location=indent_item.location
-                balance_qty=round(float(remaining_qty or 0) - float(requested_qty or 0), 3)
+                is_asset      = indent_item.is_asset
+                item_code     = indent_item.item_code
+                asset_code    = indent_item.asset_code
+                note          = row.get("note") or indent_item.note
+                location      = indent_item.location
+                balance_qty   = round(float(remaining_qty or 0) - float(requested_qty or 0), 3)
 
             else:
                 # ── direct item (no indent) ───────────────────
-                item_code=row.get("itemCode")
-                if not item_code:
-                    db.session.rollback()
-                    return res("itemCode required when no indentItemId", [], 400)
+                is_asset   = bool(row.get("isAsset", False))
+                item_code  = None
+                asset_code = None
 
-                item_exists=Item.query.filter_by(item_code=item_code).first()
-                if not item_exists:
-                    db.session.rollback()
-                    return res(f"Item {item_code} not found", [], 404)
+                if is_asset:
+                    asset_code = row.get("itemCode")
+                    if not asset_code:
+                        db.session.rollback()
+                        return res("itemCode (asset_code) required", [], 400)
+                    if not Asset.query.filter_by(asset_code=asset_code).first():
+                        db.session.rollback()
+                        return res(f"Asset {asset_code} not found", [], 404)
+                else:
+                    item_code = row.get("itemCode")
+                    if not item_code:
+                        db.session.rollback()
+                        return res("itemCode required when no indentItemId", [], 400)
+                    if not Item.query.filter_by(item_code=item_code).first():
+                        db.session.rollback()
+                        return res(f"Item {item_code} not found", [], 404)
 
                 if requested_qty<=0:
                     db.session.rollback()
-                    return res(f"Invalid qty for item {item_code}", [], 400)
+                    return res(f"Invalid qty for item {item_code or asset_code}", [], 400)
 
                 note=row.get("note")
                 location=row.get("location")
@@ -389,7 +401,9 @@ files=None,
             order_item=OrderItem(
                 order_id=order.id,
                 indent_item_id=indent_item_id or None,
+                is_asset=is_asset,
                 item_code=item_code,
+                asset_code=asset_code,
                 custom_note=note,
                 qty=requested_qty,
                 balance_qty=balance_qty,
@@ -470,166 +484,119 @@ def get_indent_pending_qty_list(
 
         result=[]
 
-        query = (
+        from app.models.asset import Asset as AssetModel
 
-            db.session.query(
-
-                IndentMaster.indent_no,
-
-                IndentItem.id.label(
-                    "indent_item_id"
-                ),
-
-                IndentItem.item_code,
-
-                Item.item_name,
-
-                Unit.unit_name.label(
-                    "item_unit"
-                ),
-
-                IndentItem.qty.label(
-                    "indent_qty"
-                ),
-                IndentItem.note,
-                IndentItem.location,
-
-                func.coalesce(
-
-                    func.sum(
-                        case(
-                            (OrderMaster.workflow_status != "Rejected", OrderItem.qty),
-                            else_=0
-                        )
-                    ),
-
-                    0
-
-                ).label(
-                    "used_qty"
+        # ── normal items ──────────────────────────────────────────
+        if not asset_only:
+            normal_rows = (
+                db.session.query(
+                    IndentMaster.indent_no,
+                    IndentItem.id.label("indent_item_id"),
+                    IndentItem.item_code,
+                    Item.item_name,
+                    Unit.unit_name.label("item_unit"),
+                    IndentItem.qty.label("indent_qty"),
+                    IndentItem.note,
+                    IndentItem.location,
+                    func.coalesce(
+                        func.sum(
+                            case((OrderMaster.workflow_status != "Rejected", OrderItem.qty), else_=0)
+                        ), 0
+                    ).label("used_qty")
                 )
-
+                .join(IndentItem, IndentMaster.id == IndentItem.indent_id)
+                .join(Item, Item.item_code == IndentItem.item_code)
+                .outerjoin(Unit, Unit.id == Item.unit_id)
+                .outerjoin(OrderItem, OrderItem.indent_item_id == IndentItem.id)
+                .outerjoin(OrderMaster, OrderMaster.id == OrderItem.order_id)
+                .filter(
+                    IndentItem.is_asset == False,
+                    IndentMaster.project_code == project_code,
+                    IndentMaster.category_code == sub_code,
+                    IndentMaster.workflow_status == "Approved"
+                )
+                .group_by(
+                    IndentMaster.indent_no, IndentItem.id, IndentItem.item_code,
+                    Item.item_name, Unit.unit_name, IndentItem.qty, IndentItem.location
+                )
+                .all()
             )
 
-            .join(
-                IndentItem,
-                IndentMaster.id ==
-                IndentItem.indent_id
-            )
+            for row in normal_rows:
+                used_qty    = round(float(row.used_qty or 0), 3)
+                balance_qty = round(float(row.indent_qty or 0) - used_qty, 3)
+                if balance_qty <= 0:
+                    continue
+                result.append({
+                    "indentItemId": row.indent_item_id,
+                    "indentNo":     row.indent_no,
+                    "itemCode":     row.item_code,
+                    "note":         row.note,
+                    "itemName":     row.item_name,
+                    "itemUnit":     row.item_unit,
+                    "indentQty":    round(float(row.indent_qty or 0), 3),
+                    "usedQty":      round(float(used_qty or 0), 3),
+                    "balanceQty":   balance_qty,
+                    "orderQty":     balance_qty,
+                    "location":     row.location,
+                    "isAsset":      False
+                })
 
-            .join(
-                Item,
-                Item.item_code ==
-                IndentItem.item_code
-            )
-            .join(
-                CCCode,
-                CCCode.id == Item.cc_code_id
-            )
-
-            .join(
-                GroupMaster,
-                GroupMaster.id == CCCode.group_id
-            )
-            .outerjoin(
-                Unit,
-                Unit.id ==
-                Item.unit_id
-            )
-
-            .outerjoin(
-                OrderItem,
-                OrderItem.indent_item_id == IndentItem.id
-            )
-            .outerjoin(
-                OrderMaster,
-                OrderMaster.id == OrderItem.order_id
-            )
-
-            .filter(
-
-                IndentMaster.project_code ==
-                project_code,
-
-                IndentMaster.category_code ==
-                sub_code,
-
-                IndentMaster.workflow_status ==
-                "Approved"
-
-            )
-        )
-
+        # ── asset items ───────────────────────────────────────────
         if asset_only:
-
-            query = query.filter(
-            GroupMaster.group_name == "Fixed Asset"
-        )
-
-        else:
-
-            query = query.filter(
-            GroupMaster.group_name != "Fixed Asset"
-        )
-
-        rows=(query .group_by(
-
-                IndentMaster.indent_no,
-
-                IndentItem.id,
-
-                IndentItem.item_code,
-
-                Item.item_name,
-
-                Unit.unit_name,
-
-                IndentItem.qty,
-
-                IndentItem.location
+            asset_rows = (
+                db.session.query(
+                    IndentMaster.indent_no,
+                    IndentItem.id.label("indent_item_id"),
+                    IndentItem.asset_code,
+                    AssetModel.asset_name,
+                    Unit.unit_name.label("item_unit"),
+                    IndentItem.qty.label("indent_qty"),
+                    IndentItem.note,
+                    IndentItem.location,
+                    func.coalesce(
+                        func.sum(
+                            case((OrderMaster.workflow_status != "Rejected", OrderItem.qty), else_=0)
+                        ), 0
+                    ).label("used_qty")
+                )
+                .join(IndentItem, IndentMaster.id == IndentItem.indent_id)
+                .join(AssetModel, AssetModel.asset_code == IndentItem.asset_code)
+                .outerjoin(Unit, Unit.id == AssetModel.unit_id)
+                .outerjoin(OrderItem, OrderItem.indent_item_id == IndentItem.id)
+                .outerjoin(OrderMaster, OrderMaster.id == OrderItem.order_id)
+                .filter(
+                    IndentItem.is_asset == True,
+                    IndentMaster.project_code == project_code,
+                    IndentMaster.category_code == sub_code,
+                    IndentMaster.workflow_status == "Approved"
+                )
+                .group_by(
+                    IndentMaster.indent_no, IndentItem.id, IndentItem.asset_code,
+                    AssetModel.asset_name, Unit.unit_name, IndentItem.qty, IndentItem.location
+                )
+                .all()
             )
 
-            .all()
-
-
-        )
-
-        for row in rows:
-
-            used_qty    = round(float(row.used_qty    or 0), 3)
-            balance_qty = round(float(row.indent_qty or 0) - used_qty, 3)
-
-            if balance_qty <= 0:
-                continue
-
-
-            result.append({
-
-                "indentItemId":
-                row.indent_item_id,
-
-                "indentNo":
-                row.indent_no,
-
-                "itemCode":
-                row.item_code,
-
-                "note":
-                row.note,
-
-                "itemName":
-                row.item_name,
-                "itemUnit":
-                row.item_unit,
-                "indentQty":  round(float(row.indent_qty or 0), 3),
-                "usedQty":    round(float(used_qty or 0), 3),
-                "balanceQty": balance_qty,
-                "orderQty":   balance_qty,
-
-                "location":
-                row.location
-
-            })
+            for row in asset_rows:
+                used_qty    = round(float(row.used_qty or 0), 3)
+                balance_qty = round(float(row.indent_qty or 0) - used_qty, 3)
+                if balance_qty <= 0:
+                    continue
+                result.append({
+                    "indentItemId": row.indent_item_id,
+                    "indentNo":     row.indent_no,
+                    "itemCode":     row.asset_code,
+                    "note":         row.note,
+                    "itemName":     row.asset_name,
+                    "itemUnit":     row.item_unit,
+                    "indentQty":    round(float(row.indent_qty or 0), 3),
+                    "usedQty":      round(float(used_qty or 0), 3),
+                    "balanceQty":   balance_qty,
+                    "orderQty":     balance_qty,
+                    "location":     row.location,
+                    "isAsset":      True
+                })
 
 
         return res(
@@ -674,6 +641,15 @@ def get_order_details(
 
         for item in order.items:
 
+            if item.is_asset:
+                item_code  = item.asset_code
+                item_name  = item.asset.asset_name if item.asset else None
+                item_unit  = item.asset.unit.unit_name if item.asset and item.asset.unit else None
+            else:
+                item_code  = item.item_code
+                item_name  = item.item.item_name if item.item else None
+                item_unit  = item.item.unit.unit_name if item.item and item.item.unit else None
+
             items.append({
 
                 "id":
@@ -686,15 +662,16 @@ def get_order_details(
                 item.indent_item.indent.indent_no if item.indent_item else None,
 
                 "itemCode":
-                item.item_code,
+                item_code,
 
                 "itemUnit":
-                item.item.unit.unit_name ,
+                item_unit,
 
                 "itemName":
-                item.item.item_name
-                if item.item
-                else None,
+                item_name,
+
+                "isAsset":
+                item.is_asset,
 
                 "note":item.custom_note ,
 

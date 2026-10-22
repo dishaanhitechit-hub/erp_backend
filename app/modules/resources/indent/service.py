@@ -185,63 +185,79 @@ def create_indent(data,files=None, created_by=None):
 
         for row in items:
 
-            item = Item.query.filter_by(
-                item_code=row.get("itemCode")
-            ).first()
-
-            if not item:
-                db.session.rollback()
-                return res(
-                    f"Invalid item code : {row.get('itemCode')}",
-                    [],
-                    400
-                )
-
-            # ======================================
-            # CATEGORY MATCH VALIDATION
-            # ======================================
-
-            if item.category_code != data.get("categoryCode"):
-                db.session.rollback()
-
-                return res(
-                    f"Item {item.item_code} "
-                    f"does not belong to category "
-                    f"{data.get('categoryCode')}",
-                    [],
-                    400
-                )
-
-            # ======================================
-            # QTY VALIDATION
-            # ======================================
-
+            is_asset = bool(row.get("isAsset", False))
+            item_code_val = row.get("itemCode")
             qty = row.get("qty")
 
-            if not qty or float(qty) <= 0:
-                db.session.rollback()
+            if is_asset:
+                # validate against assets table
+                asset = Asset.query.filter_by(asset_code=item_code_val).first()
 
-                return res(
-                    f"Invalid qty for item "
-                    f"{item.item_code}",
-                    [],
-                    400
+                if not asset:
+                    db.session.rollback()
+                    return res(
+                        f"Invalid asset code : {item_code_val}",
+                        [],
+                        400
+                    )
+
+                if asset.category_code != data.get("categoryCode"):
+                    db.session.rollback()
+                    return res(
+                        f"Asset {asset.asset_code} does not belong to category {data.get('categoryCode')}",
+                        [],
+                        400
+                    )
+
+                if not qty or float(qty) <= 0:
+                    db.session.rollback()
+                    return res(f"Invalid qty for asset {asset.asset_code}", [], 400)
+
+                indent_item = IndentItem(
+                    indent_id=indent.id,
+                    is_asset=True,
+                    asset_code=asset.asset_code,
+                    item_code=None,
+                    qty=qty,
+                    location=row.get("location"),
+                    note=row.get("note"),
+                    created_by=created_by
                 )
 
-            indent_item = IndentItem(
+            else:
+                # validate against items table
+                item = Item.query.filter_by(item_code=item_code_val).first()
 
-                indent_id=indent.id,
+                if not item:
+                    db.session.rollback()
+                    return res(
+                        f"Invalid item code : {item_code_val}",
+                        [],
+                        400
+                    )
 
-                item_code=item.item_code,
+                if item.category_code != data.get("categoryCode"):
+                    db.session.rollback()
+                    return res(
+                        f"Item {item.item_code} does not belong to category {data.get('categoryCode')}",
+                        [],
+                        400
+                    )
 
-                qty=qty,
+                if not qty or float(qty) <= 0:
+                    db.session.rollback()
+                    return res(f"Invalid qty for item {item.item_code}", [], 400)
 
-                location=row.get("location"),
-
-                note=row.get("note"),
-
-                created_by=created_by
-            )
+                indent_item = IndentItem(
+                    indent_id=indent.id,
+                    is_asset=False,
+                    item_code=item.item_code,
+                    asset_code=None,
+                    qty=qty,
+                    location=row.get("location"),
+                    note=row.get("note"),
+                    created_by=created_by
+                )
 
             db.session.add(indent_item)
 
@@ -417,14 +433,22 @@ def get_indent_details(indent_id):
 
         for row in indent.indent_items:
 
+            if row.is_asset:
+                item_code  = row.asset_code
+                item_name  = row.asset.asset_name if row.asset else None
+                unit       = row.asset.unit.short_name if row.asset and row.asset.unit else None
+            else:
+                item_code  = row.item_code
+                item_name  = row.item.item_name if row.item else None
+                unit       = row.item.unit.short_name if row.item and row.item.unit else None
+
             item_rows.append({
 
                 "id": row.id,
 
-                "itemCode": row.item_code,
+                "itemCode": item_code,
 
-                "itemName": row.item.item_name
-                if row.item else None,
+                "itemName": item_name,
 
                 "qty": float(row.qty),
 
@@ -432,11 +456,9 @@ def get_indent_details(indent_id):
 
                 "note": row.note,
 
-                "unit": (
-                    row.item.unit.short_name
-                    if row.item and row.item.unit
-                    else None
-                )
+                "unit": unit,
+
+                "isAsset": row.is_asset
             })
 
         response = {
@@ -545,7 +567,8 @@ def get_items_by_category(category_code, asset_filter="exclude"):
                 "gst": (
                     float(row.gst_percentage)
                     if row.gst_percentage else 0
-                )
+                ),
+                "isAsset": False
             })
 
         # When asset_filter == "all" and category is MAT_001,
@@ -583,7 +606,7 @@ def get_items_by_category(category_code, asset_filter="exclude"):
                         float(row.gst_percentage)
                         if row.gst_percentage else 0
                     ),
-                    #"isAsset": True
+                    "isAsset": True
                 })
 
         return res(
@@ -699,29 +722,59 @@ def update_indent(indent_id, data, files=None, updated_by=None):
 
             for row in items:
 
-                item = Item.query.filter_by(item_code=row.get("itemCode")).first()
-
-                if not item:
-                    db.session.rollback()
-                    return res(f"Invalid item code: {row.get('itemCode')}", [], 400)
-
-                if item.category_code != category_code:
-                    db.session.rollback()
-                    return res(f"Item {item.item_code} does not belong to category {category_code}", [], 400)
-
+                is_asset = bool(row.get("isAsset", False))
+                item_code_val = row.get("itemCode")
                 qty = row.get("qty")
 
-                if not qty or float(qty) <= 0:
-                    return res(f"Invalid qty for item {item.item_code}", [], 400)
+                if is_asset:
+                    asset = Asset.query.filter_by(asset_code=item_code_val).first()
 
-                indent_item = IndentItem(
-                    indent_id=indent.id,
-                    item_code=item.item_code,
-                    qty=qty,
-                    location=row.get("location"),
-                    note=row.get("note"),
-                    created_by=updated_by
-                )
+                    if not asset:
+                        db.session.rollback()
+                        return res(f"Invalid asset code: {item_code_val}", [], 400)
+
+                    if asset.category_code != category_code:
+                        db.session.rollback()
+                        return res(f"Asset {asset.asset_code} does not belong to category {category_code}", [], 400)
+
+                    if not qty or float(qty) <= 0:
+                        return res(f"Invalid qty for asset {asset.asset_code}", [], 400)
+
+                    indent_item = IndentItem(
+                        indent_id=indent.id,
+                        is_asset=True,
+                        asset_code=asset.asset_code,
+                        item_code=None,
+                        qty=qty,
+                        location=row.get("location"),
+                        note=row.get("note"),
+                        created_by=updated_by
+                    )
+
+                else:
+                    item = Item.query.filter_by(item_code=item_code_val).first()
+
+                    if not item:
+                        db.session.rollback()
+                        return res(f"Invalid item code: {item_code_val}", [], 400)
+
+                    if item.category_code != category_code:
+                        db.session.rollback()
+                        return res(f"Item {item.item_code} does not belong to category {category_code}", [], 400)
+
+                    if not qty or float(qty) <= 0:
+                        return res(f"Invalid qty for item {item.item_code}", [], 400)
+
+                    indent_item = IndentItem(
+                        indent_id=indent.id,
+                        is_asset=False,
+                        item_code=item.item_code,
+                        asset_code=None,
+                        qty=qty,
+                        location=row.get("location"),
+                        note=row.get("note"),
+                        created_by=updated_by
+                    )
 
                 db.session.add(indent_item)
 

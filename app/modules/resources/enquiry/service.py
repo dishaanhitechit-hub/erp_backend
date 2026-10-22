@@ -6,6 +6,7 @@ from app.response import res
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
 from app.models.item import Item
+from app.models.asset import Asset
 
 from app.models.enquiry_master import EnquiryMaster
 from app.models.enquiry_item import EnquiryItem
@@ -72,21 +73,24 @@ def get_indent_items_for_enquiry(indent_id):
 
         for row in indent.indent_items:
 
+            if row.is_asset:
+                item_code = row.asset_code
+                item_name = row.asset.asset_name if row.asset else None
+                unit      = row.asset.unit.short_name if row.asset and row.asset.unit else None
+            else:
+                item_code = row.item_code
+                item_name = row.item.item_name if row.item else None
+                unit      = row.item.unit.short_name if row.item and row.item.unit else None
+
             items.append({
                 "indentItemId": row.id,
-                "itemCode":     row.item_code,
-                "itemName": (
-                    row.item.item_name
-                    if row.item else None
-                ),
-                "unit": (
-                    row.item.unit.short_name
-                    if row.item and row.item.unit
-                    else None
-                ),
-                "indentQty":  float(row.qty),
-                "note":       row.location,
-                "location":   row.location,
+                "itemCode":     item_code,
+                "itemName":     item_name,
+                "unit":         unit,
+                "isAsset":      row.is_asset,
+                "indentQty":    float(row.qty),
+                "note":         row.location,
+                "location":     row.location,
             })
 
         data = {
@@ -193,43 +197,32 @@ def create_enquiry(data, created_by=None):
                 )
 
             enquiry_qty = row.get("enquiryQty")
+            ref_code = indent_item.asset_code if indent_item.is_asset else indent_item.item_code
 
             if not enquiry_qty or float(enquiry_qty) <= 0:
                 db.session.rollback()
                 return res(
-                    f"Invalid enquiry qty for item "
-                    f"{indent_item.item_code}",
-                    [],
-                    400
+                    f"Invalid enquiry qty for item {ref_code}",
+                    [], 400
                 )
 
-            # enquiry qty must not exceed indent qty
             if float(enquiry_qty) > float(indent_item.qty):
                 db.session.rollback()
                 return res(
-                    f"Enquiry qty cannot exceed indent "
-                    f"qty for item "
-                    f"{indent_item.item_code}",
-                    [],
-                    400
+                    f"Enquiry qty cannot exceed indent qty for item {ref_code}",
+                    [], 400
                 )
 
             enq_item = EnquiryItem(
-
                 enquiry_id=enquiry.id,
-
                 indent_item_id=indent_item.id,
-
+                is_asset=indent_item.is_asset,
                 item_code=indent_item.item_code,
-
+                asset_code=indent_item.asset_code,
                 indent_qty=float(indent_item.qty),
-
                 enquiry_qty=float(enquiry_qty),
-
                 location=row.get("location"),
-
                 note=row.get("note"),
-
                 created_by=created_by
             )
 
@@ -362,23 +355,26 @@ def get_enquiry_details(enquiry_id):
 
         for row in enquiry.enquiry_items:
 
+            if row.is_asset:
+                item_code = row.asset_code
+                item_name = row.asset.asset_name if row.asset else None
+                unit      = row.asset.unit.short_name if row.asset and row.asset.unit else None
+            else:
+                item_code = row.item_code
+                item_name = row.item.item_name if row.item else None
+                unit      = row.item.unit.short_name if row.item and row.item.unit else None
+
             item_rows.append({
                 "id":           row.id,
                 "indentItemId": row.indent_item_id,
-                "itemCode":     row.item_code,
-                "itemName": (
-                    row.item.item_name
-                    if row.item else None
-                ),
-                "unit": (
-                    row.item.unit.short_name
-                    if row.item and row.item.unit
-                    else None
-                ),
-                "indentQty":   float(row.indent_qty),
-                "enquiryQty":  float(row.enquiry_qty),
-                "location":    row.location,
-                "note":        row.note,
+                "itemCode":     item_code,
+                "itemName":     item_name,
+                "unit":         unit,
+                "isAsset":      row.is_asset,
+                "indentQty":    float(row.indent_qty),
+                "enquiryQty":   float(row.enquiry_qty),
+                "location":     row.location,
+                "note":         row.note,
             })
 
         term_rows = []
@@ -475,29 +471,28 @@ def update_enquiry(enquiry_id, data, updated_by=None):
                 )
 
             enquiry_qty = row.get("enquiryQty")
+            ref_code = indent_item.asset_code if indent_item.is_asset else indent_item.item_code
 
             if not enquiry_qty or float(enquiry_qty) <= 0:
                 db.session.rollback()
                 return res(
-                    f"Invalid enquiry qty for item "
-                    f"{indent_item.item_code}",
-                    [],
-                    400
+                    f"Invalid enquiry qty for item {ref_code}",
+                    [], 400
                 )
 
             if float(enquiry_qty) > float(indent_item.qty):
                 db.session.rollback()
                 return res(
-                    f"Enquiry qty exceeds indent qty "
-                    f"for item {indent_item.item_code}",
-                    [],
-                    400
+                    f"Enquiry qty exceeds indent qty for item {ref_code}",
+                    [], 400
                 )
 
             enq_item = EnquiryItem(
                 enquiry_id=enquiry.id,
                 indent_item_id=indent_item.id,
+                is_asset=indent_item.is_asset,
                 item_code=indent_item.item_code,
+                asset_code=indent_item.asset_code,
                 indent_qty=float(indent_item.qty),
                 enquiry_qty=float(enquiry_qty),
                 location=row.get("location"),
