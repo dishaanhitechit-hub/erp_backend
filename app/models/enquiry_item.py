@@ -34,7 +34,19 @@ class EnquiryItem(db.Model):
     item_code = db.Column(
         db.String(50),
         db.ForeignKey("items.item_code"),
+        nullable=True
+    )
+
+    is_asset = db.Column(
+        db.Boolean,
+        default=False,
         nullable=False
+    )
+
+    asset_code = db.Column(
+        db.String(50),
+        db.ForeignKey("assets.asset_code"),
+        nullable=True
     )
 
     # =====================================================
@@ -97,6 +109,14 @@ class EnquiryItem(db.Model):
         "Item",
         backref="enquiry_items",
         lazy=True
+    )
+
+    asset = db.relationship(
+        "Asset",
+        backref="enquiry_items",
+        lazy=True,
+        foreign_keys=[asset_code],
+        primaryjoin="EnquiryItem.asset_code == Asset.asset_code"
     )
 
     indent_item = db.relationship(

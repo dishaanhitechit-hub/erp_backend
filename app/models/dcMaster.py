@@ -131,6 +131,18 @@ class DcItem(db.Model):
         nullable=True
     )
 
+    is_asset = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False
+    )
+
+    asset_code = db.Column(
+        db.String(50),
+        db.ForeignKey("assets.asset_code"),
+        nullable=True
+    )
+
     issue_qty = db.Column(db.Numeric(17, 4), default=0)
     stock_location = db.Column(db.String(150), nullable=True)
 
@@ -139,3 +151,8 @@ class DcItem(db.Model):
     # relationships
     order_item = db.relationship("OrderItem")
     item = db.relationship("Item")
+    asset = db.relationship(
+        "Asset",
+        foreign_keys=[asset_code],
+        primaryjoin="DcItem.asset_code == Asset.asset_code"
+    )

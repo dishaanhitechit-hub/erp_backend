@@ -282,6 +282,18 @@ class GrnItem(db.Model):
         nullable=True
     )
 
+    is_asset = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False
+    )
+
+    asset_code = db.Column(
+        db.String(50),
+        db.ForeignKey("assets.asset_code"),
+        nullable=True
+    )
+
     note = db.Column(
         db.Text,
         nullable=True
@@ -330,6 +342,12 @@ class GrnItem(db.Model):
     # ── relationships ──────────────────────────────────────────────
     item = db.relationship(
         "Item"
+    )
+
+    asset = db.relationship(
+        "Asset",
+        foreign_keys=[asset_code],
+        primaryjoin="GrnItem.asset_code == Asset.asset_code"
     )
 
     order_item = db.relationship(

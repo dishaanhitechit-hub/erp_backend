@@ -29,7 +29,19 @@ class IndentItem(db.Model):
     item_code = db.Column(
         db.String(50),
         db.ForeignKey("items.item_code"),
+        nullable=True
+    )
+
+    is_asset = db.Column(
+        db.Boolean,
+        default=False,
         nullable=False
+    )
+
+    asset_code = db.Column(
+        db.String(50),
+        db.ForeignKey("assets.asset_code"),
+        nullable=True
     )
 
     # ==================================
@@ -59,6 +71,14 @@ class IndentItem(db.Model):
         "Item",
         backref="indent_items",
         lazy=True
+    )
+
+    asset = db.relationship(
+        "Asset",
+        backref="indent_items",
+        lazy=True,
+        foreign_keys=[asset_code],
+        primaryjoin="IndentItem.asset_code == Asset.asset_code"
     )
 
     # ==================================

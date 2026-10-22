@@ -42,6 +42,39 @@ def _name(module_code: str) -> str:
     return MODULE_NAMES.get(module_code, module_code.replace("_", " ").title())
 
 
+_PRINT_SLUG = {
+    "indent": "indent",
+    "order": "order",
+    "grn": "grn",
+    "gin": "gin",
+    "srn": "srn",
+    "dc": "dc",
+    "dlr": "dlr",
+    "pw_order": "pw-order",
+    "bvs": "bvs",
+    "bss": "bss",
+    "batching_plant": "batching-plant",
+    "brr": "brr",
+    "brb": "brb",
+    "brg": "brg",
+    "brs": "brs",
+    "purchase_bill": "purchase-bill",
+    "sale_bill": "sale-bill",
+    "payment_voucher": "payment-voucher",
+    "bill_payment_receipt": "payment",
+    "purchase_voucher": "purchase-voucher",
+    "budget": "budget",
+    "drawing_register": "drawing-register",
+    "bbs_register": "bbs-register",
+    "hindrance_register": "hindrance-register",
+    "concrete_registry": "concrete-registry",
+    "billing": "billing",
+    "og_sale_order": "og-sale-order",
+}
+
+_PRINT_BASE = "http://132.154.156.82/print"
+
+
 def _base() -> str:
     return (os.getenv("FRONTEND_BASE_URL") or "").rstrip("/")
 
@@ -53,7 +86,8 @@ def _phone(user) -> str | None:
 
 
 def _pdf_url(module_code: str, uuid: str) -> str:
-    return f"{_base()}/pdf/{module_code}/{uuid}"
+    slug = _PRINT_SLUG.get(module_code, module_code.replace("_", "-"))
+    return f"{_PRINT_BASE}/{slug}/{uuid}"
 
 
 def _action_url(module_code: str, uuid: str) -> str:

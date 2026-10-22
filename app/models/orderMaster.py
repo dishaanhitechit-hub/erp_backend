@@ -294,7 +294,20 @@ class OrderItem(db.Model):
         db.String(50),
         db.ForeignKey(
             "items.item_code"
-        )
+        ),
+        nullable=True
+    )
+
+    is_asset=db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False
+    )
+
+    asset_code=db.Column(
+        db.String(50),
+        db.ForeignKey("assets.asset_code"),
+        nullable=True
     )
 
     custom_note=db.Column(
@@ -352,6 +365,12 @@ class OrderItem(db.Model):
 
     item=db.relationship(
         "Item"
+    )
+
+    asset=db.relationship(
+        "Asset",
+        foreign_keys=[asset_code],
+        primaryjoin="OrderItem.asset_code == Asset.asset_code"
     )
 
     indent_item=db.relationship(
