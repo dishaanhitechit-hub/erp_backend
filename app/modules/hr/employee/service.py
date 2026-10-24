@@ -1,6 +1,9 @@
+import json
+import time
 from app.extensions import db
 from app.response import res
 from app.models.employee import Employee
+from app.cloudinary_uploader import upload_file_to_bunny
 
 
 def get_all_employees(data):
@@ -138,3 +141,34 @@ def get_departments():
     ).distinct().all()
     depts = sorted([r[0] for r in rows if r[0]])
     return res("ok", depts)
+
+
+def upload_employee_doc(emp_id, file, data):
+    emp = Employee.query.get(emp_id)
+    if not emp:
+        return res("Employee not found", {}, 404)
+    if not file:
+        return res("No file provided", {}, 400)
+
+    doc_type = data.get("doc_type", "other")
+    doc_name = data.get("doc_name") or doc_type.replace("_", " ").title()
+
+    url = upload_file_to_bunny(file, "hr", f"employee/{emp_id}", f"{doc_type}_{emp.emp_code}_{int(time.time())}")
+    if not url:
+        return res("Upload failed", {}, 500)
+
+    if doc_type == "cv":
+        emp.cv_url = url
+    else:
+        try:
+            existing = json.loads(emp.other_doc_urls or "[]")
+            if not isinstance(existing, list):
+                existing = []
+        except Exception:
+            existing = []
+        existing = [d for d in existing if d.get("doc_type") != doc_type]
+        existing.append({"id": str(int(time.time())), "name": doc_name, "url": url, "doc_type": doc_type})
+        emp.other_doc_urls = json.dumps(existing)
+
+    db.session.commit()
+    return res("Uploaded", emp.to_detail_dict())

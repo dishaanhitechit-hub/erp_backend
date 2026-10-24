@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-from .service import get_all_employees, get_employee, create_employee, update_employee, get_departments
+from .service import get_all_employees, get_employee, create_employee, update_employee, get_departments, upload_employee_doc
 
 employee_bp = Blueprint("employee", __name__)
 
@@ -38,3 +38,9 @@ def api_update_employee(emp_id):
 @jwt_required()
 def api_departments():
     return get_departments()
+
+
+@employee_bp.route("/<int:emp_id>/upload-doc", methods=["POST"])
+@jwt_required()
+def api_upload_employee_doc(emp_id):
+    return upload_employee_doc(emp_id, request.files.get("file"), request.form)
