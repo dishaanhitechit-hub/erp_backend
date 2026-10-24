@@ -1,6 +1,7 @@
 from app.extensions import db
 from app.response import res
 from app.models.recruitment import JobOpening, Candidate
+from app.models.employee import Employee
 
 
 def get_job_openings(data):
@@ -38,6 +39,8 @@ def create_job_opening(data):
         job_type=data.get("job_type"),
         status=data.get("status", "Open"),
         description=data.get("description"),
+        salary_band=data.get("salary_band"),
+        deadline=data.get("deadline"),
     )
     db.session.add(job)
     db.session.commit()
@@ -50,7 +53,8 @@ def update_job_opening(job_id, data):
         return res("Job opening not found", {}, 404)
 
     for f in ["title", "department", "location", "openings_count",
-              "experience_required", "job_type", "status", "description"]:
+              "experience_required", "job_type", "status", "description",
+              "salary_band", "deadline"]:
         if f in data:
             setattr(job, f, data[f])
 
@@ -114,6 +118,20 @@ def update_candidate_stage(candidate_id, data):
 
     db.session.commit()
     return res("Candidate updated", candidate.to_dict())
+
+
+def get_offer_letter_data(candidate_id):
+    candidate = Candidate.query.get(candidate_id)
+    if not candidate:
+        return res("Candidate not found", {}, 404)
+
+    job = candidate.job_opening
+    data = candidate.to_dict()
+    data["job_title"] = job.title if job else None
+    data["department"] = job.department if job else None
+    data["job_type"] = job.job_type if job else None
+    data["location"] = job.location if job else None
+    return res("ok", data)
 
 
 def get_pipeline_stats():

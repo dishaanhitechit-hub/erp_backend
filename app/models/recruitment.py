@@ -13,6 +13,8 @@ class JobOpening(db.Model):
     job_type = db.Column(db.String(30))        # Full-time, Contract, Intern
     status = db.Column(db.String(20), default="Open")  # Open, Closed, On Hold
     description = db.Column(db.Text)
+    salary_band = db.Column(db.String(100))
+    deadline = db.Column(db.Date)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     candidates = db.relationship("Candidate", backref="job_opening", lazy=True)
@@ -29,6 +31,9 @@ class JobOpening(db.Model):
             "status": self.status,
             "description": self.description,
             "applied_count": len(self.candidates),
+            "in_progress_count": sum(1 for c in self.candidates if c.stage not in ("Joined", "Rejected")),
+            "salary_band": self.salary_band,
+            "deadline": str(self.deadline) if self.deadline else None,
             "created_at": str(self.created_at) if self.created_at else None,
         }
 

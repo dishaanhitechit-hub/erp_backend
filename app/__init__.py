@@ -253,6 +253,11 @@ def create_app():
     from .modules.hr.performance.routes import performance_bp
     app.register_blueprint(performance_bp, url_prefix="/hr/performance")
 
+    from .models import onboarding  # noqa — registers OnboardingTask with Alembic
+
+    from .modules.hr.onboarding.routes import onboarding_bp
+    app.register_blueprint(onboarding_bp, url_prefix="/hr/onboarding")
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 

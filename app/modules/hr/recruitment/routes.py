@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required
 from .service import (
     get_job_openings, create_job_opening, update_job_opening,
     get_candidates, create_candidate, update_candidate_stage,
-    get_pipeline_stats,
+    get_pipeline_stats, get_offer_letter_data,
 )
 
 recruitment_bp = Blueprint("recruitment", __name__)
@@ -59,3 +59,9 @@ def api_update_candidate(candidate_id):
 @jwt_required()
 def api_pipeline_stats():
     return get_pipeline_stats()
+
+
+@recruitment_bp.route("/offer-letter/<int:candidate_id>", methods=["GET"])
+@jwt_required()
+def api_offer_letter_data(candidate_id):
+    return get_offer_letter_data(candidate_id)
