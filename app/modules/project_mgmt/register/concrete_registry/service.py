@@ -84,7 +84,7 @@ def create_resigistry(request, user_id=None):
         if not project:
             return res("Invalid Project Code", [], 400)
 
-        allowed = is_creator(pc, "concrete_registry", user_id)
+        allowed = is_creator(pc, "concrete_register", user_id)
         if not allowed:
             return res("You are not Concrete Registry creator", [], 403)
 
@@ -92,7 +92,7 @@ def create_resigistry(request, user_id=None):
         attach_file = file.get("attachBatchFile")
         batch_file = upload_file_to_bunny(
             file=attach_file,
-            mainFolder="concrete_registry",
+            mainFolder="concrete_register",
             subFolder=xtmp,
             fileName="attach_file"
         )
@@ -165,7 +165,7 @@ def update_registry(registry_id, request, user_id=None):
         if registry.workflow_status not in ["Draft", "Reback"]:
             return res("Only Draft or Reback records can be edited", [], 400)
 
-        allowed = is_creator(registry.projectcode, "concrete_registry", user_id)
+        allowed = is_creator(registry.projectcode, "concrete_register", user_id)
         if not allowed:
             return res("You are not Concrete Registry creator", [], 403)
 
@@ -196,7 +196,7 @@ def update_registry(registry_id, request, user_id=None):
         if attach_file:
             batch_file = upload_file_to_bunny(
                 file=attach_file,
-                mainFolder="concrete_registry",
+                mainFolder="concrete_register",
                 subFolder=registry.reference_order_no,
                 fileName="attach_file"
             )
@@ -232,7 +232,7 @@ def submit_registry(registry_id, submitted_by=None):
         if registry.workflow_status == "Reback":
             registry.current_level = 0
 
-        first_level = get_first_approver(registry.projectcode, "concrete_registry")
+        first_level = get_first_approver(registry.projectcode, "concrete_register")
 
         if not first_level:
             registry.workflow_status = "Approved"
@@ -248,7 +248,7 @@ def submit_registry(registry_id, submitted_by=None):
 
         create_history(
             project_code=registry.projectcode,
-            module_code="concrete_registry",
+            module_code="concrete_register",
             record_id=registry.id,
             level_no=registry.current_level,
             action="SUBMIT",
@@ -295,7 +295,7 @@ def approve_registry(registry_id, approved_by=None, comments=None):
 
         allowed = is_current_approver(
             registry.projectcode,
-            "concrete_registry",
+            "concrete_register",
             registry.current_level,
             approved_by
         )
@@ -303,20 +303,20 @@ def approve_registry(registry_id, approved_by=None, comments=None):
         if not allowed:
             return res("You are not current approver", [], 403)
 
-        gap = get_gap_level(registry.projectcode, "concrete_registry", registry.current_level)
+        gap = get_gap_level(registry.projectcode, "concrete_register", registry.current_level)
         if gap:
             return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(
             registry.projectcode,
-            "concrete_registry",
+            "concrete_register",
             registry.current_level
         )
 
         if next_level:
             create_history(
                 project_code=registry.projectcode,
-                module_code="concrete_registry",
+                module_code="concrete_register",
                 record_id=registry.id,
                 level_no=registry.current_level,
                 action="APPROVE",
@@ -328,7 +328,7 @@ def approve_registry(registry_id, approved_by=None, comments=None):
         else:
             create_history(
                 project_code=registry.projectcode,
-                module_code="concrete_registry",
+                module_code="concrete_register",
                 record_id=registry.id,
                 level_no=registry.current_level,
                 action="FINAL_APPROVE",
@@ -382,7 +382,7 @@ def reback_registry(registry_id, reback_by=None, comments=None):
 
         allowed = is_current_approver(
             registry.projectcode,
-            "concrete_registry",
+            "concrete_register",
             registry.current_level,
             reback_by
         )
@@ -398,7 +398,7 @@ def reback_registry(registry_id, reback_by=None, comments=None):
 
         create_history(
             project_code=registry.projectcode,
-            module_code="concrete_registry",
+            module_code="concrete_register",
             record_id=registry.id,
             level_no=registry.current_level,
             action="REBACK",
@@ -441,7 +441,7 @@ def reject_registry(registry_id, rejected_by=None, comments=None):
 
         allowed = is_current_approver(
             registry.projectcode,
-            "concrete_registry",
+            "concrete_register",
             registry.current_level,
             rejected_by
         )
@@ -459,7 +459,7 @@ def reject_registry(registry_id, rejected_by=None, comments=None):
 
         create_history(
             project_code=registry.projectcode,
-            module_code="concrete_registry",
+            module_code="concrete_register",
             record_id=registry.id,
             level_no=registry.current_level,
             action="REJECT",
@@ -494,7 +494,7 @@ def get_registry_history(registry_id):
         if not registry:
             return res("Concrete Registry not found", [], 404)
 
-        rows = get_history("concrete_registry", registry.id)
+        rows = get_history("concrete_register", registry.id)
 
         data = []
         for row in rows:
@@ -512,7 +512,7 @@ def get_registry_history(registry_id):
 
         steps = get_approval_steps(
             registry.project_code,
-            "concrete_registry",
+            "concrete_register",
             registry,
             rows
         )
@@ -533,7 +533,7 @@ def get_registry_my_approval_status(registry_id, user_id):
         registry = ConcreteRegistry.query.get(registry_id)
         if not registry:
             return res("Concrete Registry not found", [], 404)
-        data = get_my_approval_status(registry.project_code, "concrete_registry", registry, user_id)
+        data = get_my_approval_status(registry.project_code, "concrete_register", registry, user_id)
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
