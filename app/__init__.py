@@ -234,6 +234,25 @@ def create_app():
     from .modules.communication.routes import wa_bp
     app.register_blueprint(wa_bp)
 
+    # HR models — register with Alembic
+    from .models import employee      # noqa
+    from .models import recruitment   # noqa
+    from .models import payrollModel  # noqa
+    from .models import performanceModel  # noqa
+
+    # HR blueprints
+    from .modules.hr.employee.routes import employee_bp
+    app.register_blueprint(employee_bp, url_prefix="/hr/employee")
+
+    from .modules.hr.recruitment.routes import recruitment_bp
+    app.register_blueprint(recruitment_bp, url_prefix="/hr/recruitment")
+
+    from .modules.hr.payroll.routes import payroll_bp
+    app.register_blueprint(payroll_bp, url_prefix="/hr/payroll")
+
+    from .modules.hr.performance.routes import performance_bp
+    app.register_blueprint(performance_bp, url_prefix="/hr/performance")
+
     # from .modules.communication.communication_routes import comm_bp
     # app.register_blueprint(comm_bp, url_prefix="/comm")
 
