@@ -464,7 +464,8 @@ def edit_budget(budget_id, data, user_id):
             budget.remarks = data.get("remarks") or None
 
         # Rebuild items and CC codes from scratch
-        BudgetItem.query.filter_by(budget_id=budget.id).delete()
+        for _item in BudgetItem.query.filter_by(budget_id=budget.id).all():
+            db.session.delete(_item)
         db.session.flush()
 
         total_initial = Decimal("0")
