@@ -11,6 +11,8 @@ from app.models.bssMaster import BssMaster, BssItem
 from app.models.item import Item
 from app.models.cc_code import CCCode
 from app.response import res
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -739,6 +741,23 @@ def submit_bss(bss_id, submitted_by=None):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="bss",
+                    doc_no=bss.bss_no,
+                    uuid=str(bss.id),
+                    project_code=bss.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=bss.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "BSS submitted successfully",
             {
@@ -815,6 +834,35 @@ def approve_bss(bss_id, approved_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="bss",
+                    doc_no=bss.bss_no,
+                    uuid=str(bss.id),
+                    project_code=bss.project_code,
+                    approver_name=approver_name,
+                    prev_level=bss.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=bss.id,
+                )
+            else:
+                creator_user = User.query.get(bss.created_by)
+                wa.on_final_approve(
+                    module_code="bss",
+                    doc_no=bss.bss_no,
+                    uuid=str(bss.id),
+                    project_code=bss.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=bss.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "BSS approved successfully",
             {
@@ -874,6 +922,23 @@ def reback_bss(bss_id, reback_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(bss.created_by)
+            wa.on_reback(
+                module_code="bss",
+                doc_no=bss.bss_no,
+                uuid=str(bss.id),
+                project_code=bss.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bss.id,
+            )
+        except Exception:
+            pass
+
         return res(
             "BSS sent for correction",
             {"bssId": bss.id, "workflowStatus": bss.workflow_status},
@@ -930,6 +995,23 @@ def reject_bss(bss_id, rejected_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(bss.created_by)
+            wa.on_reject(
+                module_code="bss",
+                doc_no=bss.bss_no,
+                uuid=str(bss.id),
+                project_code=bss.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bss.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "BSS rejected",

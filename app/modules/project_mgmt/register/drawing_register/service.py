@@ -5,6 +5,8 @@ from datetime import datetime
 from app.models.drawingRegister import DrawingRegister
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -350,6 +352,23 @@ def submit_drawing_register(dr_id, submitted_by=None):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="drawing_register",
+                    doc_no=dr.drawing_no,
+                    uuid=str(dr.id),
+                    project_code=dr.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=dr.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Drawing Register submitted successfully",
             {
@@ -436,6 +455,35 @@ def approve_drawing_register(dr_id, approved_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="drawing_register",
+                    doc_no=dr.drawing_no,
+                    uuid=str(dr.id),
+                    project_code=dr.project_code,
+                    approver_name=approver_name,
+                    prev_level=dr.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=dr.id,
+                )
+            else:
+                creator_user = User.query.get(dr.created_by)
+                wa.on_final_approve(
+                    module_code="drawing_register",
+                    doc_no=dr.drawing_no,
+                    uuid=str(dr.id),
+                    project_code=dr.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=dr.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Drawing Register approved successfully",
             {
@@ -501,6 +549,23 @@ def reback_drawing_register(dr_id, reback_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(dr.created_by)
+            wa.on_reback(
+                module_code="drawing_register",
+                doc_no=dr.drawing_no,
+                uuid=str(dr.id),
+                project_code=dr.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=dr.id,
+            )
+        except Exception:
+            pass
+
         return res(
             "Drawing Register sent for correction",
             {"drId": dr.id, "workflowStatus": dr.workflow_status},
@@ -563,6 +628,23 @@ def reject_drawing_register(dr_id, rejected_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(dr.created_by)
+            wa.on_reject(
+                module_code="drawing_register",
+                doc_no=dr.drawing_no,
+                uuid=str(dr.id),
+                project_code=dr.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=dr.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "Drawing Register rejected",

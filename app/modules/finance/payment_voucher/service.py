@@ -19,6 +19,8 @@ from app.modules.work_flow import (
     get_approval_steps,
     get_my_approval_status,
 )
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 _MODULE = "payment"
 
@@ -603,6 +605,23 @@ def submit_payment_voucher(pvm_id, user_id):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(user_id)
+            submitter_name = submitter.username if submitter else str(user_id)
+            if first_level:
+                wa.on_submit(
+                    module_code="payment_voucher",
+                    doc_no=pvm.utr_voucher_no,
+                    uuid=str(pvm.payment_vouch_uuid),
+                    project_code=pvm.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=pvm.id,
+                )
+        except Exception:
+            pass
+
         return res("Payment voucher submitted", {
             "id":             pvm.id,
             "workflowStatus": pvm.workflow_status,
@@ -662,6 +681,35 @@ def approve_payment_voucher(pvm_id, approved_by, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="payment_voucher",
+                    doc_no=pvm.utr_voucher_no,
+                    uuid=str(pvm.payment_vouch_uuid),
+                    project_code=pvm.project_code,
+                    approver_name=approver_name,
+                    prev_level=pvm.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=pvm.id,
+                )
+            else:
+                creator_user = User.query.get(pvm.created_by)
+                wa.on_final_approve(
+                    module_code="payment_voucher",
+                    doc_no=pvm.utr_voucher_no,
+                    uuid=str(pvm.payment_vouch_uuid),
+                    project_code=pvm.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=pvm.id,
+                )
+        except Exception:
+            pass
+
         return res("Payment voucher approved", {
             "id":             pvm.id,
             "workflowStatus": pvm.workflow_status,
@@ -706,6 +754,23 @@ def reback_payment_voucher(pvm_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(pvm.created_by)
+            wa.on_reback(
+                module_code="payment_voucher",
+                doc_no=pvm.utr_voucher_no,
+                uuid=str(pvm.payment_vouch_uuid),
+                project_code=pvm.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=pvm.id,
+            )
+        except Exception:
+            pass
 
         return res("Payment voucher sent for correction", {
             "id":             pvm.id,
@@ -753,6 +818,23 @@ def reject_payment_voucher(pvm_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(pvm.created_by)
+            wa.on_reject(
+                module_code="payment_voucher",
+                doc_no=pvm.utr_voucher_no,
+                uuid=str(pvm.payment_vouch_uuid),
+                project_code=pvm.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=pvm.id,
+            )
+        except Exception:
+            pass
 
         return res("Payment voucher rejected", {
             "id":             pvm.id,

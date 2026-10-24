@@ -18,6 +18,8 @@ from app.modules.work_flow import (
     get_approval_steps,
     get_my_approval_status,
 )
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 _MODULE = "purchases"
 
@@ -411,6 +413,23 @@ def submit_purchase_voucher(voucher_id, user_id):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(user_id)
+            submitter_name = submitter.username if submitter else str(user_id)
+            if first_level:
+                wa.on_submit(
+                    module_code="purchase_voucher",
+                    doc_no=v.voucher_no,
+                    uuid=str(v.voucher_uuid),
+                    project_code=v.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=v.id,
+                )
+        except Exception:
+            pass
+
         return res("Purchase voucher submitted", {
             "id":             v.id,
             "workflowStatus": v.workflow_status,
@@ -470,6 +489,35 @@ def approve_purchase_voucher(voucher_id, approved_by, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="purchase_voucher",
+                    doc_no=v.voucher_no,
+                    uuid=str(v.voucher_uuid),
+                    project_code=v.project_code,
+                    approver_name=approver_name,
+                    prev_level=v.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=v.id,
+                )
+            else:
+                creator_user = User.query.get(v.created_by)
+                wa.on_final_approve(
+                    module_code="purchase_voucher",
+                    doc_no=v.voucher_no,
+                    uuid=str(v.voucher_uuid),
+                    project_code=v.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=v.id,
+                )
+        except Exception:
+            pass
+
         return res("Purchase voucher approved", {
             "id":             v.id,
             "workflowStatus": v.workflow_status,
@@ -514,6 +562,23 @@ def reback_purchase_voucher(voucher_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(v.created_by)
+            wa.on_reback(
+                module_code="purchase_voucher",
+                doc_no=v.voucher_no,
+                uuid=str(v.voucher_uuid),
+                project_code=v.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=v.id,
+            )
+        except Exception:
+            pass
 
         return res("Purchase voucher sent for correction", {
             "id":             v.id,
@@ -561,6 +626,23 @@ def reject_purchase_voucher(voucher_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(v.created_by)
+            wa.on_reject(
+                module_code="purchase_voucher",
+                doc_no=v.voucher_no,
+                uuid=str(v.voucher_uuid),
+                project_code=v.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=v.id,
+            )
+        except Exception:
+            pass
 
         return res("Purchase voucher rejected", {
             "id":             v.id,

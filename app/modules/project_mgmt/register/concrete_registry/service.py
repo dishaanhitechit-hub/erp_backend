@@ -7,6 +7,8 @@ from app.response import res
 from app.models.project import Project
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.models.concrete_registry import ConcreteRegistry
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -261,6 +263,23 @@ def submit_registry(registry_id, submitted_by=None):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="concrete_registry",
+                    doc_no=registry.reference_order_no,
+                    uuid=str(registry.id),
+                    project_code=registry.projectcode,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=registry.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Concrete Registry submitted successfully",
             {
@@ -345,6 +364,35 @@ def approve_registry(registry_id, approved_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="concrete_registry",
+                    doc_no=registry.reference_order_no,
+                    uuid=str(registry.id),
+                    project_code=registry.projectcode,
+                    approver_name=approver_name,
+                    prev_level=registry.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=registry.id,
+                )
+            else:
+                creator_user = User.query.get(registry.created_by)
+                wa.on_final_approve(
+                    module_code="concrete_registry",
+                    doc_no=registry.reference_order_no,
+                    uuid=str(registry.id),
+                    project_code=registry.projectcode,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=registry.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Concrete Registry approved successfully",
             {
@@ -408,6 +456,23 @@ def reback_registry(registry_id, reback_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(registry.created_by)
+            wa.on_reback(
+                module_code="concrete_registry",
+                doc_no=registry.reference_order_no,
+                uuid=str(registry.id),
+                project_code=registry.projectcode,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=registry.id,
+            )
+        except Exception:
+            pass
+
         return res(
             "Concrete Registry sent for correction",
             {"id": registry.id, "workflowStatus": registry.workflow_status},
@@ -468,6 +533,23 @@ def reject_registry(registry_id, rejected_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(registry.created_by)
+            wa.on_reject(
+                module_code="concrete_registry",
+                doc_no=registry.reference_order_no,
+                uuid=str(registry.id),
+                project_code=registry.projectcode,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=registry.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "Concrete Registry rejected",

@@ -14,6 +14,8 @@ from app.models.item import Item
 from app.models.asset import Asset
 from app.models.cc_code import CCCode
 from app.response import res
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -720,6 +722,23 @@ def submit_brg(brg_id, submitted_by=None):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="brg",
+                    doc_no=brg.brg_no,
+                    uuid=str(brg.id),
+                    project_code=brg.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=brg.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "BRG submitted successfully",
             {"brgId": brg.id, "brgNo": brg.brg_no, "workflowStatus": brg.workflow_status},
@@ -792,6 +811,35 @@ def approve_brg(brg_id, approved_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="brg",
+                    doc_no=brg.brg_no,
+                    uuid=str(brg.id),
+                    project_code=brg.project_code,
+                    approver_name=approver_name,
+                    prev_level=brg.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=brg.id,
+                )
+            else:
+                creator_user = User.query.get(brg.created_by)
+                wa.on_final_approve(
+                    module_code="brg",
+                    doc_no=brg.brg_no,
+                    uuid=str(brg.id),
+                    project_code=brg.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=brg.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "BRG approved successfully",
             {"brgId": brg.id, "workflowStatus": brg.workflow_status, "currentLevel": brg.current_level},
@@ -846,6 +894,23 @@ def reback_brg(brg_id, reback_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(brg.created_by)
+            wa.on_reback(
+                module_code="brg",
+                doc_no=brg.brg_no,
+                uuid=str(brg.id),
+                project_code=brg.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=brg.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "BRG sent for correction",
@@ -903,6 +968,23 @@ def reject_brg(brg_id, rejected_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(brg.created_by)
+            wa.on_reject(
+                module_code="brg",
+                doc_no=brg.brg_no,
+                uuid=str(brg.id),
+                project_code=brg.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=brg.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "BRG rejected",

@@ -23,6 +23,8 @@ from app.modules.work_flow import (
     get_approval_steps,
     get_my_approval_status,
 )
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 _MODULE = "payment"
 
@@ -624,6 +626,23 @@ def submit_bill_payment(receipt_id, user_id):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(user_id)
+            submitter_name = submitter.username if submitter else str(user_id)
+            if first_level:
+                wa.on_submit(
+                    module_code="bill_payment_receipt",
+                    doc_no=r.receipt_no,
+                    uuid=str(r.receipt_uuid),
+                    project_code=r.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=r.id,
+                )
+        except Exception:
+            pass
+
         return res("Bill payment receipt submitted", {"id": r.id, "workflowStatus": r.workflow_status}, 200)
 
     except SQLAlchemyError as e:
@@ -680,6 +699,35 @@ def approve_bill_payment(receipt_id, approved_by, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="bill_payment_receipt",
+                    doc_no=r.receipt_no,
+                    uuid=str(r.receipt_uuid),
+                    project_code=r.project_code,
+                    approver_name=approver_name,
+                    prev_level=r.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=r.id,
+                )
+            else:
+                creator_user = User.query.get(r.created_by)
+                wa.on_final_approve(
+                    module_code="bill_payment_receipt",
+                    doc_no=r.receipt_no,
+                    uuid=str(r.receipt_uuid),
+                    project_code=r.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=r.id,
+                )
+        except Exception:
+            pass
+
         return res("Bill payment receipt approved", {"id": r.id, "workflowStatus": r.workflow_status}, 200)
 
     except SQLAlchemyError as e:
@@ -721,6 +769,23 @@ def reback_bill_payment(receipt_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(r.created_by)
+            wa.on_reback(
+                module_code="bill_payment_receipt",
+                doc_no=r.receipt_no,
+                uuid=str(r.receipt_uuid),
+                project_code=r.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=r.id,
+            )
+        except Exception:
+            pass
 
         return res("Bill payment receipt sent for correction", {"id": r.id, "workflowStatus": r.workflow_status}, 200)
 
@@ -765,6 +830,23 @@ def reject_bill_payment(receipt_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(r.created_by)
+            wa.on_reject(
+                module_code="bill_payment_receipt",
+                doc_no=r.receipt_no,
+                uuid=str(r.receipt_uuid),
+                project_code=r.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=r.id,
+            )
+        except Exception:
+            pass
 
         return res("Bill payment receipt rejected", {"id": r.id, "workflowStatus": r.workflow_status}, 200)
 

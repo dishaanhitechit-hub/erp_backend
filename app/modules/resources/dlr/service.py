@@ -11,6 +11,8 @@ from app.models.supplier import SupplierLedgerMap
 from app.models.project import Project
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.cloudinary_uploader import upload_file_to_bunny
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -323,6 +325,24 @@ def submit_dlr(dlr_id, user_id, project_code):
 
     create_history(project_code, MODULE_CODE, d.id, 0, "SUBMIT", user_id)
     db.session.commit()
+
+    try:
+        submitter = User.query.get(user_id)
+        submitter_name = submitter.username if submitter else str(user_id)
+        if first:
+            wa.on_submit(
+                module_code="dlr",
+                doc_no=d.dlr_no,
+                uuid=str(d.id),
+                project_code=project_code,
+                submitter_name=submitter_name,
+                approver_user=first.user,
+                current_level=first.level_no,
+                record_id=d.id,
+            )
+    except Exception:
+        pass
+
     return res("DLR submitted", [_serialize(d)], 200)
 
 
@@ -356,6 +376,36 @@ def approve_dlr(dlr_id, user_id, project_code, comments=None):
         d.updated_by = user_id
         d.updated_at = datetime.utcnow()
         db.session.commit()
+
+        try:
+            approver_user = User.query.get(user_id)
+            approver_name = approver_user.username if approver_user else str(user_id)
+            if nxt:
+                wa.on_approve(
+                    module_code="dlr",
+                    doc_no=d.dlr_no,
+                    uuid=str(d.id),
+                    project_code=project_code,
+                    approver_name=approver_name,
+                    prev_level=d.current_level,
+                    next_approver_user=nxt.user,
+                    next_level=nxt.level_no,
+                    record_id=d.id,
+                )
+            else:
+                creator_user = User.query.get(d.created_by)
+                wa.on_final_approve(
+                    module_code="dlr",
+                    doc_no=d.dlr_no,
+                    uuid=str(d.id),
+                    project_code=project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=d.id,
+                )
+        except Exception:
+            pass
+
         return res("DLR approved", {"dlrId": d.id, "workflowStatus": d.workflow_status, "currentLevel": d.current_level}, 200)
 
     except SQLAlchemyError as e:
@@ -388,6 +438,24 @@ def reback_dlr(dlr_id, user_id, project_code, comments=None):
         d.correction_sent_at = datetime.utcnow()
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(user_id)
+            reback_name = reback_user.username if reback_user else str(user_id)
+            creator_user = User.query.get(d.created_by)
+            wa.on_reback(
+                module_code="dlr",
+                doc_no=d.dlr_no,
+                uuid=str(d.id),
+                project_code=project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=d.id,
+            )
+        except Exception:
+            pass
+
         return res("DLR rebacked", {"dlrId": d.id, "workflowStatus": d.workflow_status}, 200)
 
     except SQLAlchemyError as e:
@@ -420,6 +488,24 @@ def reject_dlr(dlr_id, user_id, project_code, comments=None):
         d.updated_at = datetime.utcnow()
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(user_id)
+            rejected_name = rejected_user.username if rejected_user else str(user_id)
+            creator_user = User.query.get(d.created_by)
+            wa.on_reject(
+                module_code="dlr",
+                doc_no=d.dlr_no,
+                uuid=str(d.id),
+                project_code=project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=d.id,
+            )
+        except Exception:
+            pass
+
         return res("DLR rejected", {"dlrId": d.id, "workflowStatus": d.workflow_status}, 200)
 
     except SQLAlchemyError as e:

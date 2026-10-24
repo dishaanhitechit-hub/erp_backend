@@ -31,6 +31,8 @@ from app.modules.billing.constants import (
     get_module_code,
 )
 from app.alias_helper import get_approval_module
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -911,6 +913,24 @@ def submit_brb(brb_id, submitted_by=None):
         brb.updated_at   = datetime.utcnow()
 
         db.session.commit()
+
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="brb",
+                    doc_no=brb.brb_no,
+                    uuid=str(brb.id),
+                    project_code=brb.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=brb.id,
+                )
+        except Exception:
+            pass
+
         return res("Billing submitted", {"brbId": brb.id, "brbNo": brb.brb_no, "workflowStatus": brb.workflow_status}, 200)
 
     except Exception as e:
@@ -957,6 +977,36 @@ def approve_brb(brb_id, approved_by=None, comments=None):
         brb.updated_by = approved_by
         brb.updated_at = datetime.utcnow()
         db.session.commit()
+
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="brb",
+                    doc_no=brb.brb_no,
+                    uuid=str(brb.id),
+                    project_code=brb.project_code,
+                    approver_name=approver_name,
+                    prev_level=brb.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=brb.id,
+                )
+            else:
+                creator_user = User.query.get(brb.created_by)
+                wa.on_final_approve(
+                    module_code="brb",
+                    doc_no=brb.brb_no,
+                    uuid=str(brb.id),
+                    project_code=brb.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=brb.id,
+                )
+        except Exception:
+            pass
+
         return res("Billing approved", {"brbId": brb.id, "workflowStatus": brb.workflow_status, "currentLevel": brb.current_level}, 200)
 
     except Exception as e:
@@ -993,6 +1043,24 @@ def reback_brb(brb_id, reback_by=None, comments=None):
                        level_no=brb.current_level, action="REBACK", action_by=reback_by, comments=comments)
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(brb.created_by)
+            wa.on_reback(
+                module_code="brb",
+                doc_no=brb.brb_no,
+                uuid=str(brb.id),
+                project_code=brb.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=brb.id,
+            )
+        except Exception:
+            pass
+
         return res("Billing sent for correction", {"brbId": brb.id, "workflowStatus": brb.workflow_status}, 200)
 
     except Exception as e:
@@ -1031,6 +1099,24 @@ def reject_brb(brb_id, rejected_by=None, comments=None):
                        level_no=brb.current_level, action="REJECT", action_by=rejected_by, comments=comments)
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(brb.created_by)
+            wa.on_reject(
+                module_code="brb",
+                doc_no=brb.brb_no,
+                uuid=str(brb.id),
+                project_code=brb.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=brb.id,
+            )
+        except Exception:
+            pass
+
         return res("Billing rejected", {"brbId": brb.id, "workflowStatus": brb.workflow_status}, 200)
 
     except Exception as e:

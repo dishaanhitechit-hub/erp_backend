@@ -9,6 +9,8 @@ from app.models.batchingPlant import BatchingPlantMaster
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.models.vendor import Vendor
 from app.response import res
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -313,6 +315,23 @@ def submit_batching_plant(bp_id, submitted_by):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="batching_plant",
+                    doc_no=bp.despatch_no,
+                    uuid=str(bp.bp_uuid),
+                    project_code=bp.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=bp.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Docket submitted successfully",
             {"id": bp.id, "despatchNo": bp.despatch_no, "workflowStatus": bp.workflow_status},
@@ -380,6 +399,35 @@ def approve_batching_plant(bp_id, approved_by, comments=None):
         bp.updated_at = datetime.utcnow()
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="batching_plant",
+                    doc_no=bp.despatch_no,
+                    uuid=str(bp.bp_uuid),
+                    project_code=bp.project_code,
+                    approver_name=approver_name,
+                    prev_level=bp.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=bp.id,
+                )
+            else:
+                creator_user = User.query.get(bp.created_by)
+                wa.on_final_approve(
+                    module_code="batching_plant",
+                    doc_no=bp.despatch_no,
+                    uuid=str(bp.bp_uuid),
+                    project_code=bp.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=bp.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "Docket approved",
             {"id": bp.id, "workflowStatus": bp.workflow_status, "currentLevel": bp.current_level},
@@ -430,6 +478,23 @@ def reback_batching_plant(bp_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(bp.created_by)
+            wa.on_reback(
+                module_code="batching_plant",
+                doc_no=bp.despatch_no,
+                uuid=str(bp.bp_uuid),
+                project_code=bp.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bp.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "Docket sent back for correction",
@@ -483,6 +548,23 @@ def reject_batching_plant(bp_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(bp.created_by)
+            wa.on_reject(
+                module_code="batching_plant",
+                doc_no=bp.despatch_no,
+                uuid=str(bp.bp_uuid),
+                project_code=bp.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bp.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "Docket rejected",

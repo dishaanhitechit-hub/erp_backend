@@ -20,6 +20,8 @@ from app.modules.work_flow import (
     get_approval_steps,
     get_my_approval_status,
 )
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 _MODULE      = "sale"
 VALID_MODES  = ("Sale Invoice", "Proforma Invoice")
@@ -582,6 +584,23 @@ def submit_sale_bill(bill_id, user_id):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(user_id)
+            submitter_name = submitter.username if submitter else str(user_id)
+            if first_level:
+                wa.on_submit(
+                    module_code="sale_bill",
+                    doc_no=bill.sale_bill_no,
+                    uuid=str(bill.sale_bill_uuid),
+                    project_code=bill.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=bill.id,
+                )
+        except Exception:
+            pass
+
         return res("Sale bill submitted", {
             "id":             bill.id,
             "workflowStatus": bill.workflow_status,
@@ -641,6 +660,35 @@ def approve_sale_bill(bill_id, approved_by, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="sale_bill",
+                    doc_no=bill.sale_bill_no,
+                    uuid=str(bill.sale_bill_uuid),
+                    project_code=bill.project_code,
+                    approver_name=approver_name,
+                    prev_level=bill.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=bill.id,
+                )
+            else:
+                creator_user = User.query.get(bill.created_by)
+                wa.on_final_approve(
+                    module_code="sale_bill",
+                    doc_no=bill.sale_bill_no,
+                    uuid=str(bill.sale_bill_uuid),
+                    project_code=bill.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=bill.id,
+                )
+        except Exception:
+            pass
+
         return res("Sale bill approved", {
             "id":             bill.id,
             "workflowStatus": bill.workflow_status,
@@ -685,6 +733,23 @@ def reback_sale_bill(bill_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(bill.created_by)
+            wa.on_reback(
+                module_code="sale_bill",
+                doc_no=bill.sale_bill_no,
+                uuid=str(bill.sale_bill_uuid),
+                project_code=bill.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bill.id,
+            )
+        except Exception:
+            pass
 
         return res("Sale bill sent for correction", {
             "id":             bill.id,
@@ -732,6 +797,23 @@ def reject_sale_bill(bill_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(bill.created_by)
+            wa.on_reject(
+                module_code="sale_bill",
+                doc_no=bill.sale_bill_no,
+                uuid=str(bill.sale_bill_uuid),
+                project_code=bill.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=bill.id,
+            )
+        except Exception:
+            pass
 
         return res("Sale bill rejected", {
             "id":             bill.id,

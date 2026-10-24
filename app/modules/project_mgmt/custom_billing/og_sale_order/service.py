@@ -8,6 +8,8 @@ import json
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.response import res
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -455,6 +457,23 @@ def submit_og_sale_order(so_id, submitted_by):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="og_sale_order",
+                    doc_no=og_so.og_sale_order_no,
+                    uuid=str(og_so.og_sale_order_uuid),
+                    project_code=og_so.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=og_so.id,
+                )
+        except Exception:
+            pass
+
         return res("OG Sale Order submitted", {
             "id":             og_so.id,
             "ogSaleOrderNo":  og_so.og_sale_order_no,
@@ -517,6 +536,35 @@ def approve_og_sale_order(so_id, approved_by, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="og_sale_order",
+                    doc_no=og_so.og_sale_order_no,
+                    uuid=str(og_so.og_sale_order_uuid),
+                    project_code=og_so.project_code,
+                    approver_name=approver_name,
+                    prev_level=og_so.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=og_so.id,
+                )
+            else:
+                creator_user = User.query.get(og_so.created_by)
+                wa.on_final_approve(
+                    module_code="og_sale_order",
+                    doc_no=og_so.og_sale_order_no,
+                    uuid=str(og_so.og_sale_order_uuid),
+                    project_code=og_so.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=og_so.id,
+                )
+        except Exception:
+            pass
+
         return res("OG Sale Order approved", {
             "id":             og_so.id,
             "workflowStatus": og_so.workflow_status,
@@ -564,6 +612,23 @@ def reback_og_sale_order(so_id, reback_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(og_so.created_by)
+            wa.on_reback(
+                module_code="og_sale_order",
+                doc_no=og_so.og_sale_order_no,
+                uuid=str(og_so.og_sale_order_uuid),
+                project_code=og_so.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=og_so.id,
+            )
+        except Exception:
+            pass
 
         return res("OG Sale Order sent for correction", {
             "id":             og_so.id,
@@ -613,6 +678,23 @@ def reject_og_sale_order(so_id, rejected_by, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(og_so.created_by)
+            wa.on_reject(
+                module_code="og_sale_order",
+                doc_no=og_so.og_sale_order_no,
+                uuid=str(og_so.og_sale_order_uuid),
+                project_code=og_so.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=og_so.id,
+            )
+        except Exception:
+            pass
 
         return res("OG Sale Order rejected", {
             "id":             og_so.id,
