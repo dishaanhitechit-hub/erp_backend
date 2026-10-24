@@ -6,6 +6,8 @@ from collections import defaultdict
 from decimal import Decimal
 import uuid as _uuid
 import json
+from app.models.user import User
+from app.modules.communication import whatsapp_events as wa
 
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster, ProjectWorkOrderItem
 from app.models.srnMaster import SrnMaster, SrnItem
@@ -546,6 +548,23 @@ def submit_srn(srn_id, submitted_by=None):
 
         db.session.commit()
 
+        try:
+            submitter = User.query.get(submitted_by)
+            submitter_name = submitter.username if submitter else str(submitted_by)
+            if first_level:
+                wa.on_submit(
+                    module_code="srn",
+                    doc_no=srn.srn_no,
+                    uuid=str(srn.srn_uuid),
+                    project_code=srn.project_code,
+                    submitter_name=submitter_name,
+                    approver_user=first_level.user,
+                    current_level=first_level.level_no,
+                    record_id=srn.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "SRN submitted successfully",
             {
@@ -630,6 +649,35 @@ def approve_srn(srn_id, approved_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            approver_user = User.query.get(approved_by)
+            approver_name = approver_user.username if approver_user else str(approved_by)
+            if next_level:
+                wa.on_approve(
+                    module_code="srn",
+                    doc_no=srn.srn_no,
+                    uuid=str(srn.srn_uuid),
+                    project_code=srn.project_code,
+                    approver_name=approver_name,
+                    prev_level=srn.current_level,
+                    next_approver_user=next_level.user,
+                    next_level=next_level.level_no,
+                    record_id=srn.id,
+                )
+            else:
+                creator_user = User.query.get(srn.created_by)
+                wa.on_final_approve(
+                    module_code="srn",
+                    doc_no=srn.srn_no,
+                    uuid=str(srn.srn_uuid),
+                    project_code=srn.project_code,
+                    approver_name=approver_name,
+                    creator_user=creator_user,
+                    record_id=srn.id,
+                )
+        except Exception:
+            pass
+
         return res(
             "SRN approved successfully",
             {
@@ -693,6 +741,23 @@ def reback_srn(srn_id, reback_by=None, comments=None):
 
         db.session.commit()
 
+        try:
+            reback_user = User.query.get(reback_by)
+            reback_name = reback_user.username if reback_user else str(reback_by)
+            creator_user = User.query.get(srn.created_by)
+            wa.on_reback(
+                module_code="srn",
+                doc_no=srn.srn_no,
+                uuid=str(srn.srn_uuid),
+                project_code=srn.project_code,
+                approver_name=reback_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=srn.id,
+            )
+        except Exception:
+            pass
+
         return res(
             "SRN sent for correction",
             {"srnId": srn.id, "workflowStatus": srn.workflow_status},
@@ -753,6 +818,23 @@ def reject_srn(srn_id, rejected_by=None, comments=None):
         )
 
         db.session.commit()
+
+        try:
+            rejected_user = User.query.get(rejected_by)
+            rejected_name = rejected_user.username if rejected_user else str(rejected_by)
+            creator_user = User.query.get(srn.created_by)
+            wa.on_reject(
+                module_code="srn",
+                doc_no=srn.srn_no,
+                uuid=str(srn.srn_uuid),
+                project_code=srn.project_code,
+                approver_name=rejected_name,
+                creator_user=creator_user,
+                comments=comments,
+                record_id=srn.id,
+            )
+        except Exception:
+            pass
 
         return res(
             "SRN rejected",
