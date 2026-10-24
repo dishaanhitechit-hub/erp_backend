@@ -16,6 +16,7 @@ def api_list_reviews():
         "search": request.args.get("search", ""),
         "status": request.args.get("status", ""),
         "department": request.args.get("department", ""),
+        "employee_id": request.args.get("employee_id", ""),
     }
     return get_reviews(data)
 
@@ -51,6 +52,7 @@ def api_list_discipline():
         "search": request.args.get("search", ""),
         "severity": request.args.get("severity", ""),
         "status": request.args.get("status", ""),
+        "employee_id": request.args.get("employee_id", ""),
     }
     return get_discipline_cases(data)
 

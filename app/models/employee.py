@@ -75,6 +75,7 @@ class Employee(db.Model):
     secondary_skills = db.Column(db.Text)
 
     cv_url = db.Column(db.String(500))
+    other_doc_urls = db.Column(db.Text)   # JSON array of {id, name, url}
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
@@ -146,6 +147,7 @@ class Employee(db.Model):
             "primary_skills": self.primary_skills,
             "secondary_skills": self.secondary_skills,
             "cv_url": self.cv_url,
+            "other_doc_urls": self.other_doc_urls,
             "reporting_manager_id": self.reporting_manager_id,
             "created_at": str(self.created_at) if self.created_at else None,
             "updated_at": str(self.updated_at) if self.updated_at else None,

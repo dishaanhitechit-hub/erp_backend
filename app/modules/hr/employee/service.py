@@ -96,6 +96,7 @@ def create_employee(data):
         primary_skills=data.get("primary_skills"),
         secondary_skills=data.get("secondary_skills"),
         cv_url=data.get("cv_url"),
+        other_doc_urls=data.get("other_doc_urls"),
     )
     db.session.add(emp)
     db.session.commit()
@@ -121,7 +122,7 @@ def update_employee(emp_id, data):
         "gratuity_eligible", "bank_name", "bank_account_masked", "ifsc_code",
         "payment_mode", "degree", "specialization", "university", "year_of_passing",
         "percentage_cgpa", "total_experience", "relevant_experience",
-        "primary_skills", "secondary_skills", "cv_url",
+        "primary_skills", "secondary_skills", "cv_url", "other_doc_urls",
     ]
     for f in fields:
         if f in data:

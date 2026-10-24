@@ -11,6 +11,10 @@ def get_reviews(data):
     search = data.get("search", "").strip()
     status = data.get("status", "").strip()
     dept = data.get("department", "").strip()
+    employee_id = data.get("employee_id")
+
+    if employee_id:
+        q = q.filter(PerformanceReview.employee_id == int(employee_id))
 
     if search or dept:
         q = q.join(Employee, PerformanceReview.employee_id == Employee.id)
@@ -97,6 +101,10 @@ def get_discipline_cases(data):
     search = data.get("search", "").strip()
     severity = data.get("severity", "").strip()
     status = data.get("status", "").strip()
+    employee_id = data.get("employee_id")
+
+    if employee_id:
+        q = q.filter(DisciplineCase.employee_id == int(employee_id))
 
     if search:
         q = q.join(Employee, DisciplineCase.employee_id == Employee.id).filter(
