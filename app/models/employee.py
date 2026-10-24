@@ -74,6 +74,8 @@ class Employee(db.Model):
     primary_skills = db.Column(db.Text)
     secondary_skills = db.Column(db.Text)
 
+    cv_url = db.Column(db.String(500))
+
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
 
@@ -95,6 +97,7 @@ class Employee(db.Model):
             "work_email": self.work_email,
             "ctc_annual": float(self.ctc_annual or 0),
             "reporting_manager": self.reporting_manager.username if self.reporting_manager else None,
+            "reporting_manager_id": self.reporting_manager_id,
         }
 
     def to_detail_dict(self):
@@ -142,6 +145,7 @@ class Employee(db.Model):
             "relevant_experience": self.relevant_experience,
             "primary_skills": self.primary_skills,
             "secondary_skills": self.secondary_skills,
+            "cv_url": self.cv_url,
             "reporting_manager_id": self.reporting_manager_id,
             "created_at": str(self.created_at) if self.created_at else None,
             "updated_at": str(self.updated_at) if self.updated_at else None,

@@ -116,6 +116,10 @@ def update_candidate_stage(candidate_id, data):
 
     new_stage = data.get("stage")
 
+    # Lock: cannot reject a candidate who has already joined
+    if candidate.stage == "Joined" and new_stage == "Rejected":
+        return res("Cannot reject a candidate who has already Joined.", {}, 400)
+
     # Lock: cannot move to Joined without both letters generated
     if new_stage == "Joined":
         if not candidate.offer_letter_generated:
@@ -241,6 +245,11 @@ def get_interviews(data):
 def create_interview(data):
     if not data.get("candidate_id"):
         return res("candidate_id is required", {}, 400)
+
+    # Block interview scheduling for already-joined or rejected candidates
+    cand_check = Candidate.query.get(data["candidate_id"])
+    if cand_check and cand_check.stage in ("Joined", "Rejected"):
+        return res(f"Cannot schedule interview — candidate is already in '{cand_check.stage}' stage.", {}, 400)
 
     iv = Interview(
         candidate_id=data["candidate_id"],
