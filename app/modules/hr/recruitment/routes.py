@@ -4,6 +4,8 @@ from .service import (
     get_job_openings, create_job_opening, update_job_opening,
     get_candidates, create_candidate, update_candidate_stage,
     get_pipeline_stats, get_offer_letter_data,
+    mark_offer_letter, mark_appointment_letter,
+    get_interviews, create_interview, update_interview,
 )
 
 recruitment_bp = Blueprint("recruitment", __name__)
@@ -55,6 +57,18 @@ def api_update_candidate(candidate_id):
     return update_candidate_stage(candidate_id, request.get_json() or {})
 
 
+@recruitment_bp.route("/candidates/<int:candidate_id>/mark-offer-letter", methods=["PUT"])
+@jwt_required()
+def api_mark_offer_letter(candidate_id):
+    return mark_offer_letter(candidate_id)
+
+
+@recruitment_bp.route("/candidates/<int:candidate_id>/mark-appointment-letter", methods=["PUT"])
+@jwt_required()
+def api_mark_appointment_letter(candidate_id):
+    return mark_appointment_letter(candidate_id)
+
+
 @recruitment_bp.route("/stats", methods=["GET"])
 @jwt_required()
 def api_pipeline_stats():
@@ -65,3 +79,25 @@ def api_pipeline_stats():
 @jwt_required()
 def api_offer_letter_data(candidate_id):
     return get_offer_letter_data(candidate_id)
+
+
+@recruitment_bp.route("/interviews", methods=["GET"])
+@jwt_required()
+def api_list_interviews():
+    data = {
+        "candidate_id": request.args.get("candidate_id"),
+        "status": request.args.get("status", ""),
+    }
+    return get_interviews(data)
+
+
+@recruitment_bp.route("/interviews", methods=["POST"])
+@jwt_required()
+def api_create_interview():
+    return create_interview(request.get_json() or {})
+
+
+@recruitment_bp.route("/interviews/<int:iv_id>", methods=["PUT"])
+@jwt_required()
+def api_update_interview(iv_id):
+    return update_interview(iv_id, request.get_json() or {})
