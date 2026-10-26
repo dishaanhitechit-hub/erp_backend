@@ -377,16 +377,32 @@ def get_brr_details(brr_id):
 
 
 def get_brr_by_uuid(brr_uuid):
-    """No-auth endpoint used by the print page."""
     try:
         brr = BrrMaster.query.filter_by(brr_uuid=brr_uuid).first()
         if not brr:
             return res("BRR not found", [], 404)
 
-        order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
+        # ── vendor ────────────────────────────────────────────────
+        vendor_info = None
+        if brr.vendor:
+            v = brr.vendor
+            vendor_info = {
+                "ledgerName":        v.ledger_name            if hasattr(v, "ledger_name")        else None,
+                "registeredAddress": v.registered_address     if hasattr(v, "registered_address") else None,
+                "gstin":             v.gstin                  if hasattr(v, "gstin")              else None,
+            }
 
-        creator_name  = brr.creator.username  if brr.creator  else None
-        approver_name = brr.approver.username if brr.approver else None
+        # ── order ─────────────────────────────────────────────────
+        order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
+        order_info = None
+        if order_obj:
+            order_info = {
+                "orderNo":   order_obj.order_no              if hasattr(order_obj, "order_no")   else None,
+                "orderDate": _fmt_date(order_obj.order_date) if hasattr(order_obj, "order_date") else None,
+            }
+
+        # ── users ─────────────────────────────────────────────────
+        _uname = lambda rel: rel.username if rel else None
 
         data = {
             "id":                brr.id,
@@ -395,13 +411,13 @@ def get_brr_by_uuid(brr_uuid):
             "brrDate":           _fmt_date(brr.brr_date),
             "projectCode":       brr.project_code,
             "vendorId":          brr.vendor_id,
-            "partyName":         brr.vendor.ledger_name        if brr.vendor else None,
-            "partyAddress":      brr.vendor.registered_address if brr.vendor else None,
-            "partyGstn":         brr.vendor.gstin              if brr.vendor else None,
+            "partyName":         vendor_info["ledgerName"]        if vendor_info else None,
+            "partyAddress":      vendor_info["registeredAddress"] if vendor_info else None,
+            "partyGstn":         vendor_info["gstin"]             if vendor_info else None,
             "orderCategory":     brr.order_category,
             "orderType":         brr.order_type,
-            "orderNo":           order_obj.order_no              if order_obj else None,
-            "orderDate":         _fmt_date(order_obj.order_date) if order_obj else None,
+            "orderNo":           order_info["orderNo"]   if order_info else None,
+            "orderDate":         order_info["orderDate"] if order_info else None,
             "partyBillNo":       brr.party_bill_no,
             "partyDate":         _fmt_date(brr.party_date),
             "receivedCategory":  brr.received_category,
@@ -409,13 +425,13 @@ def get_brr_by_uuid(brr_uuid):
             "submissionDate":    _fmt_date(brr.submission_date),
             "receivedThrough":   brr.received_through,
             "receivedReference": brr.received_reference,
-            "basicAmount":       float(brr.basic_amount or 0),
-            "gstAmount":         float(brr.gst_amount   or 0),
+            "basicAmount":       float(brr.basic_amount  or 0),
+            "gstAmount":         float(brr.gst_amount    or 0),
             "totalAmount":       float(brr.total_amount  or 0),
             "workflowStatus":    brr.workflow_status,
-            "createdBy":         creator_name,
+            "createdBy":         _uname(brr.creator),
             "createdAt":         _fmt_date(brr.created_at),
-            "approvedBy":        approver_name,
+            "approvedBy":        _uname(brr.approver),
             "finalApprovedAt":   _fmt_date(brr.final_approved_at),
         }
 
