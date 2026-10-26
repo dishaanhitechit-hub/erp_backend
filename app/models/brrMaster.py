@@ -3,6 +3,7 @@
 
 from app.extensions import db
 from datetime import datetime
+import uuid as _uuid_lib
 
 
 class BrrMaster(db.Model):
@@ -13,6 +14,9 @@ class BrrMaster(db.Model):
 
     brr_no   = db.Column(db.String(50), unique=True, nullable=False)
     brr_date = db.Column(db.Date, nullable=False)
+
+    brr_uuid = db.Column(db.String(36), unique=True, nullable=True,
+                         default=lambda: str(_uuid_lib.uuid4()))
 
     project_code = db.Column(
         db.String(50),

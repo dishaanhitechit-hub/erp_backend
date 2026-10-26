@@ -9,6 +9,7 @@ from app.modules.billing.bill_receive_register.service import (
     create_brr,
     get_brr_list,
     get_brr_details,
+    get_brr_by_uuid,
     edit_brr,
     submit_brr,
     approve_brr,
@@ -152,3 +153,12 @@ def api_brr_history(brr_id):
 def api_brr_my_approval_status(brr_id):
     user = g.current_user
     return get_brr_my_approval_status(brr_id, user["id"])
+
+
+# ==========================================
+# GET BY UUID — no auth (print page)
+# ==========================================
+
+@brr_bp.route("/uuid/<string:brr_uuid>", methods=["GET"])
+def api_brr_by_uuid(brr_uuid):
+    return get_brr_by_uuid(brr_uuid)

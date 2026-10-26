@@ -2,6 +2,7 @@ from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
+import uuid as _uuid_lib
 
 from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster
@@ -217,6 +218,7 @@ def create_brr(data, user_id, files=None):
             current_level      = 0,
             locked             = False,
             created_by         = user_id,
+            brr_uuid           = str(_uuid_lib.uuid4()),
         )
 
         db.session.add(brr)
@@ -332,8 +334,14 @@ def get_brr_details(brr_id):
 
         order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
 
+        # Lazily generate UUID for BRRs created before this column existed
+        if not brr.brr_uuid:
+            brr.brr_uuid = str(_uuid_lib.uuid4())
+            db.session.commit()
+
         data = {
             "id":                brr.id,
+            "uuid":              brr.brr_uuid,
             "brrNo":             brr.brr_no,
             "brrDate":           _fmt_date(brr.brr_date),
             "projectCode":       brr.project_code,
@@ -363,6 +371,55 @@ def get_brr_details(brr_id):
         }
 
         return res("BRR details fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_brr_by_uuid(brr_uuid):
+    """No-auth endpoint used by the print page."""
+    try:
+        brr = BrrMaster.query.filter_by(brr_uuid=brr_uuid).first()
+        if not brr:
+            return res("BRR not found", [], 404)
+
+        order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
+
+        creator_name  = brr.creator.name  if brr.creator  else None
+        approver_name = brr.approver.name if brr.approver else None
+
+        data = {
+            "id":                brr.id,
+            "uuid":              brr.brr_uuid,
+            "brrNo":             brr.brr_no,
+            "brrDate":           _fmt_date(brr.brr_date),
+            "projectCode":       brr.project_code,
+            "vendorId":          brr.vendor_id,
+            "partyName":         brr.vendor.ledger_name        if brr.vendor else None,
+            "partyAddress":      brr.vendor.registered_address if brr.vendor else None,
+            "partyGstn":         brr.vendor.gstin              if brr.vendor else None,
+            "orderCategory":     brr.order_category,
+            "orderType":         brr.order_type,
+            "orderNo":           order_obj.order_no              if order_obj else None,
+            "orderDate":         _fmt_date(order_obj.order_date) if order_obj else None,
+            "partyBillNo":       brr.party_bill_no,
+            "partyDate":         _fmt_date(brr.party_date),
+            "receivedCategory":  brr.received_category,
+            "submittedByName":   brr.submitted_by_name,
+            "submissionDate":    _fmt_date(brr.submission_date),
+            "receivedThrough":   brr.received_through,
+            "receivedReference": brr.received_reference,
+            "basicAmount":       float(brr.basic_amount or 0),
+            "gstAmount":         float(brr.gst_amount   or 0),
+            "totalAmount":       float(brr.total_amount  or 0),
+            "workflowStatus":    brr.workflow_status,
+            "createdBy":         creator_name,
+            "createdAt":         _fmt_date(brr.created_at),
+            "approvedBy":        approver_name,
+            "finalApprovedAt":   _fmt_date(brr.final_approved_at),
+        }
+
+        return res("BRR fetched", data, 200)
 
     except Exception as e:
         return res(str(e), [], 500)
