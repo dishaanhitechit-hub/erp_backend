@@ -4,6 +4,7 @@ from app.extensions import db
 from datetime import datetime
 from decimal import Decimal
 import json
+import uuid as _uuid_lib
 
 from app.models.brrMaster import BrrMaster
 from app.models.orderMaster import OrderMaster, OrderItem
@@ -371,6 +372,7 @@ def create_brb(data, user_id):
         brb = BrbMaster(
             brb_no        = _generate_brb_no(),
             brb_date      = data.get("brbDate"),
+            brb_uuid      = str(_uuid_lib.uuid4()),
             project_code  = data.get("projectCode"),
             brr_id        = brr_id,
             billing_type  = billing_type,
@@ -642,9 +644,15 @@ def get_brb_details(brb_id):
         except Exception:
             order_sub_codes = []
 
+        # lazily generate uuid for records created before this column existed
+        if not brb.brb_uuid:
+            brb.brb_uuid = str(_uuid_lib.uuid4())
+            db.session.commit()
+
         data = {
             # BRB
             "id":             brb.id,
+            "uuid":           brb.brb_uuid,
             "brbNo":          brb.brb_no,
             "brbDate":        _fmt_date(brb.brb_date),
             "billingType":    brb.billing_type,
@@ -700,7 +708,119 @@ def get_brb_details(brb_id):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 5. EDIT
+# 5. GET BY UUID — no auth (print page)
+# ══════════════════════════════════════════════════════════════════
+
+def get_brb_by_uuid(brb_uuid):
+    try:
+        brb = BrbMaster.query.filter_by(brb_uuid=brb_uuid).first()
+        if not brb:
+            return res("Billing not found", [], 404)
+
+        # ── users ─────────────────────────────────────────────────
+        _uname = lambda rel: rel.username if rel else None
+
+        # ── vendor + order via brr chain ──────────────────────────
+        brr = brb.brr
+        order, vendor = _get_order_and_vendor(brr, brb.billing_type) if brr else (None, None)
+
+        vendor_info = None
+        if vendor:
+            v = vendor
+            vendor_info = {
+                "ledgerName":        v.ledger_name            if hasattr(v, "ledger_name")        else None,
+                "registeredAddress": v.registered_address     if hasattr(v, "registered_address") else None,
+                "gstin":             v.gstin                  if hasattr(v, "gstin")              else None,
+            }
+
+        order_info = None
+        if order:
+            order_info = {
+                "orderNo":          order.order_no                  if hasattr(order, "order_no")          else None,
+                "orderDate":        _fmt_date(order.order_date)     if hasattr(order, "order_date")        else None,
+                "billingAddress":   order.billing_address           if hasattr(order, "billing_address")   else None,
+                "shippingAddress":  order.shipping_address          if hasattr(order, "shipping_address")  else None,
+            }
+
+        # ── items ─────────────────────────────────────────────────
+        items = []
+        for bi in brb.items:
+            if brb.billing_type == "GRN":
+                gi  = bi.grn_item
+                oi  = gi.order_item if gi else None
+                grn = bi.grn
+                items.append({
+                    "receiptNo":   grn.grn_no              if grn else None,
+                    "receiptDate": _fmt_date(grn.grn_date) if grn else None,
+                    "itemCode":    oi.item_code            if oi  else None,
+                    "itemName":    oi.item.item_name       if oi and oi.item else None,
+                    "itemUnit":    (oi.item.unit.unit_name if oi and oi.item and oi.item.unit else None),
+                    "billingQty":  float(bi.billing_qty or 0),
+                    "rate":        float(bi.rate        or 0),
+                    "amount":      float(bi.amount      or 0),
+                    "gstPercent":  float(bi.gst_percent or 0),
+                    "gstAmount":   float(bi.gst_amount  or 0),
+                })
+            else:
+                si  = bi.srn_item
+                oi  = si.pw_order_item if si else None
+                srn = bi.srn
+                items.append({
+                    "receiptNo":   srn.srn_no              if srn else None,
+                    "receiptDate": _fmt_date(srn.srn_date) if srn else None,
+                    "itemCode":    oi.item_code            if oi  else None,
+                    "itemName":    oi.item.item_name       if oi and oi.item else None,
+                    "itemUnit":    (oi.item.unit.unit_name if oi and oi.item and oi.item.unit else None),
+                    "billingQty":  float(bi.billing_qty or 0),
+                    "rate":        float(bi.rate        or 0),
+                    "amount":      float(bi.amount      or 0),
+                    "gstPercent":  float(bi.gst_percent or 0),
+                    "gstAmount":   float(bi.gst_amount  or 0),
+                })
+
+        data = {
+            "id":              brb.id,
+            "uuid":            brb.brb_uuid,
+            "brbNo":           brb.brb_no,
+            "brbDate":         _fmt_date(brb.brb_date),
+            "billingType":     brb.billing_type,
+            "projectCode":     brr.project_code   if brr else None,
+            "orderCategory":   brr.order_category if brr else None,
+            "partyBillNo":     brb.party_bill_no,
+            "partyDate":       _fmt_date(brb.party_date),
+            "basicAmount":     float(brb.basic_amount or 0),
+            "gstAmount":       float(brb.gst_amount   or 0),
+            "totalAmount":     float(brb.total_amount  or 0),
+            "workflowStatus":  brb.workflow_status,
+            # BRR ref
+            "brrNo":           brr.brr_no              if brr else None,
+            "brrDate":         _fmt_date(brr.brr_date) if brr else None,
+            # vendor
+            "partyName":         vendor_info["ledgerName"]        if vendor_info else None,
+            "partyAddress":      vendor_info["registeredAddress"] if vendor_info else None,
+            "partyGstn":         vendor_info["gstin"]             if vendor_info else None,
+            # order
+            "orderNo":           order_info["orderNo"]          if order_info else None,
+            "orderDate":         order_info["orderDate"]        if order_info else None,
+            "billingAddress":    order_info["billingAddress"]   if order_info else None,
+            "shippingAddress":   order_info["shippingAddress"]  if order_info else None,
+            # items
+            "items":           items,
+            # audit
+            "createdBy":       _uname(brb.creator),
+            "createdAt":       _fmt_date(brb.created_at),
+            "approvedBy":      _uname(brb.approver),
+            "finalApprovedAt": _fmt_date(brb.final_approved_at),
+        }
+
+        return res("Billing fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 6. EDIT
 # ══════════════════════════════════════════════════════════════════
 
 def edit_brb(brb_id, data, user_id):

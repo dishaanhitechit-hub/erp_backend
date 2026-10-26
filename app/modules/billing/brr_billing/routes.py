@@ -7,6 +7,7 @@ from .service import (
     create_brb,
     get_brb_list,
     get_brb_details,
+    get_brb_by_uuid,
     edit_brb,
     submit_brb,
     approve_brb,
@@ -93,3 +94,9 @@ def history(brb_id):
 def api_brb_my_approval_status(brb_id):
     user = g.current_user
     return get_brb_my_approval_status(brb_id, user["id"])
+
+
+# ── GET BY UUID — no auth (print page) ─────────────────────────
+@brb_bp.route("/uuid/<string:brb_uuid>", methods=["GET"])
+def api_brb_by_uuid(brb_uuid):
+    return get_brb_by_uuid(brb_uuid)
