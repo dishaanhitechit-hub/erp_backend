@@ -166,7 +166,7 @@ def get_available_dockets(params):
             .filter(
                 PettyCashDocketVoucher.project_code == project_code,
                 PettyCashDocketVoucher.workflow_status == "Approved",
-                BankCash.type == fund_source,
+                BankCash.type == fund_source.split("/")[0].upper(),
             )
             .order_by(PettyCashDocketVoucher.id.asc())
             .all()
@@ -175,7 +175,7 @@ def get_available_dockets(params):
         result = []
         for docket in dockets:
             account_type = docket.bank_cash.type if docket.bank_cash else fund_source
-            if account_type == "Bank":
+            if account_type.upper() == "BANK":
                 if any(d.id in used_ids for d in docket.details):
                     continue
                 available_rows = docket.details
