@@ -385,8 +385,8 @@ def get_brr_by_uuid(brr_uuid):
 
         order_obj = brr.order if brr.order_type == "GRN" else brr.pw_order
 
-        creator_name  = brr.creator.name  if brr.creator  else None
-        approver_name = brr.approver.name if brr.approver else None
+        creator_name  = brr.creator.username  if brr.creator  else None
+        approver_name = brr.approver.username if brr.approver else None
 
         data = {
             "id":                brr.id,
