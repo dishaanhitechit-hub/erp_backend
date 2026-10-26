@@ -175,7 +175,7 @@ def get_available_dockets(params):
         result = []
         for docket in dockets:
             account_type = docket.bank_cash.type if docket.bank_cash else fund_source
-            if account_type == "Bank":
+            if account_type in ("Bank", "Bank/UPI"):
                 if any(d.id in used_ids for d in docket.details):
                     continue
                 available_rows = docket.details
