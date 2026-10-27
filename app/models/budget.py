@@ -55,7 +55,7 @@ class BudgetMaster(db.Model):
     # Relationships
     project    = db.relationship("Project",           backref="budgets")
     sale_order = db.relationship("OgSaleOrderMaster", backref="budgets")
-    items      = db.relationship("BudgetItem", backref="budget", cascade="all,delete-orphan")
+    items      = db.relationship("BudgetItem", backref="budget", cascade="all,delete-orphan", order_by="BudgetItem.sl_no")
     creator    = db.relationship("User", foreign_keys=[created_by])
     updater    = db.relationship("User", foreign_keys=[updated_by])
     submitter  = db.relationship("User", foreign_keys=[submitted_by])
@@ -105,6 +105,7 @@ class BudgetItem(db.Model):
         "BudgetItemCCCode",
         backref="budget_item",
         cascade="all,delete-orphan",
+        order_by="BudgetItemCCCode.id",
     )
 
 
