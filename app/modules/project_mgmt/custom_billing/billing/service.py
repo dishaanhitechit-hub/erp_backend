@@ -156,6 +156,7 @@ def _serialize_rows(rows):
             "itemName":        item.item_name,
             "itemDescription": item.item_name_desc,
             "unit":            item.unit,
+            "orderQty":        float(item.order_qty   or 0),
             "claimQty":        float(item.claim_qty   or 0),
             "rate":            float(item.rate         or 0),
             "amount":          float(item.amount       or 0),
@@ -217,6 +218,7 @@ def _build_rows(raw_rows, billing_id, model_class, source_lookup=None):
         if rate is None:
             raise ValueError(f"Item {idx}: rate is required")
 
+        order_qty   = Decimal(str(row.get("orderQty") or 0))
         claim_qty   = Decimal(str(row.get("claimQty") or 0))
         rate        = Decimal(str(rate    or 0))
         gst_pct     = Decimal(str(gst_pct or 0))
@@ -230,6 +232,7 @@ def _build_rows(raw_rows, billing_id, model_class, source_lookup=None):
             item_name      = item_name,
             item_name_desc = item_desc,
             unit           = unit,
+            order_qty      = order_qty,
             claim_qty      = claim_qty,
             rate           = rate,
             amount         = amount,

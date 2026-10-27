@@ -99,6 +99,7 @@ class BillingItem(db.Model):
     item_name_desc = db.Column(db.Text,       nullable=True)
     unit           = db.Column(db.String(30), nullable=True)
 
+    order_qty   = db.Column(db.Numeric(17, 4), default=0)
     claim_qty   = db.Column(db.Numeric(17, 4), default=0)
     rate        = db.Column(db.Numeric(17, 4), default=0)
     amount      = db.Column(db.Numeric(14, 2), default=0)
@@ -127,6 +128,7 @@ class BillingBoqItem(db.Model):
     item_name_desc = db.Column(db.Text,       nullable=True)
     unit           = db.Column(db.String(30), nullable=True)
 
+    order_qty   = db.Column(db.Numeric(17, 4), default=0)
     claim_qty   = db.Column(db.Numeric(17, 4), default=0)
     rate        = db.Column(db.Numeric(17, 4), default=0)
     amount      = db.Column(db.Numeric(14, 2), default=0)
