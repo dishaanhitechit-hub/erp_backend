@@ -158,6 +158,7 @@ def _serialize_rows(rows):
             "unit":            item.unit,
             "orderQty":        float(item.order_qty   or 0),
             "claimQty":        float(item.claim_qty   or 0),
+            "certifiedQty":    float(item.claim_qty   or 0),
             "rate":            float(item.rate         or 0),
             "amount":          float(item.amount       or 0),
             "gstPercent":      float(item.gst_percent  or 0),
@@ -254,11 +255,40 @@ def _build_detail_payload(bill):
     job_balance = float(order_basic - billed)
 
     claim_bill_no = None
+    claim_qty_by_slno = {}
     if bill.claim_bill_id:
         cb = BillingMaster.query.get(bill.claim_bill_id)
         claim_bill_no = cb.billing_no if cb else None
+        if cb:
+            cb_items = BillingItem.query.filter_by(billing_id=cb.id).all()
+            cb_boq   = BillingBoqItem.query.filter_by(billing_id=cb.id).all()
+            for it in cb_items + cb_boq:
+                claim_qty_by_slno[it.sl_no] = float(it.claim_qty or 0)
+
+    def _serialize_with_claim_qty(rows):
+        result = []
+        for item in rows:
+            row = {
+                "id":              item.id,
+                "slNo":            item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemDescription": item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        float(item.order_qty   or 0),
+                "claimQty":        claim_qty_by_slno.get(item.sl_no, 0),
+                "certifiedQty":    float(item.claim_qty   or 0),
+                "rate":            float(item.rate         or 0),
+                "amount":          float(item.amount       or 0),
+                "gstPercent":      float(item.gst_percent  or 0),
+                "gstAmount":       float(item.gst_amount   or 0),
+            }
+            result.append(row)
+        return result
 
     boq_items = BillingBoqItem.query.filter_by(billing_id=bill.id).all()
+
+    serialize = _serialize_with_claim_qty if bill.claim_bill_id else _serialize_rows
 
     return {
         "id":                   bill.id,
@@ -295,8 +325,8 @@ def _build_detail_payload(bill):
         "finalApprovedAt":      _fmt_date(bill.final_approved_at),
         "rejectedBy":           bill.rejector.username  if bill.rejector  else None,
         "rejectedAt":           _fmt_date(bill.rejected_at),
-        "items":                _serialize_rows(bill.items),
-        "boqItems":             _serialize_rows(boq_items),
+        "items":                serialize(bill.items),
+        "boqItems":             serialize(boq_items),
         "billsUnderOgSo":       bills,
     }
 
@@ -340,6 +370,7 @@ def get_order_lookup(data):
                     "itemName":        bi.item_name,
                     "itemDescription": bi.item_name_desc,
                     "unit":            bi.unit,
+                    "orderQty":        float(bi.order_qty  or 0),
                     "claimQty":        float(bi.claim_qty  or 0),
                     "rate":            float(bi.rate        or 0),
                     "gstPercent":      float(bi.gst_percent or 0),
@@ -353,6 +384,7 @@ def get_order_lookup(data):
                     "itemName":        bi.item_name,
                     "itemDescription": bi.item_name_desc,
                     "unit":            bi.unit,
+                    "orderQty":        float(bi.order_qty  or 0),
                     "claimQty":        float(bi.claim_qty  or 0),
                     "rate":            float(bi.rate        or 0),
                     "gstPercent":      float(bi.gst_percent or 0),
