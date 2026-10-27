@@ -1,4 +1,5 @@
 from decimal import Decimal
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -6,6 +7,7 @@ import uuid as _uuid
 
 from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
 from app.models.billingMaster import BillingMaster, BillingBoqItem
+from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.cc_code import CCCode
 from app.models.bankCash import BankCash
 from app.response import res
@@ -165,7 +167,7 @@ def _build_detail_payload(bill):
 # ══════════════════════════════════════════════════════════════════
 
 def get_certified_bills_for_order(data):
-    """Return all Approved certified bills for a given OG Sale Order."""
+    """Return Approved certified bills that are still available for invoicing."""
     try:
         og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
         project_code     = (data.get("projectCode")   or "").strip()
@@ -174,6 +176,36 @@ def get_certified_bills_for_order(data):
             return res("ogSaleOrderNo required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
+
+        # Check if the order itself is fully invoiced (sum of non-Rejected sale bills >= order basic amount)
+        og_so = OgSaleOrderMaster.query.filter_by(
+            og_sale_order_no=og_sale_order_no,
+            project_code=project_code,
+        ).first()
+
+        if og_so:
+            total_invoiced = db.session.query(
+                func.coalesce(func.sum(SaleBillMaster.basic_amount), 0)
+            ).filter(
+                SaleBillMaster.sale_order_no    == og_sale_order_no,
+                SaleBillMaster.project_code     == project_code,
+                SaleBillMaster.workflow_status  != "Rejected",
+            ).scalar()
+
+            order_basic = Decimal(str(og_so.basic_amount or 0))
+            if Decimal(str(total_invoiced)) >= order_basic and order_basic > 0:
+                return res("Order is fully invoiced", [], 200)
+
+        # Collect certified bill ids that already have an active (non-Rejected) sale bill
+        billed_cert_ids = {
+            row[0]
+            for row in db.session.query(SaleBillMaster.certified_bill_id).filter(
+                SaleBillMaster.sale_order_no   == og_sale_order_no,
+                SaleBillMaster.project_code    == project_code,
+                SaleBillMaster.workflow_status != "Rejected",
+                SaleBillMaster.certified_bill_id.isnot(None),
+            ).all()
+        }
 
         bills = BillingMaster.query.filter(
             BillingMaster.og_sale_order_no == og_sale_order_no,
@@ -190,6 +222,7 @@ def get_certified_bills_for_order(data):
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }
             for b in bills
+            if b.id not in billed_cert_ids
         ]
 
         return res("Certified bills fetched", result, 200)
@@ -270,6 +303,16 @@ def create_sale_bill(data, user_id):
             return res("Approved certified bill not found", [], 404)
         if cert_bill.project_code != project_code:
             return res("Certified bill does not belong to this project", [], 403)
+
+        existing = SaleBillMaster.query.filter(
+            SaleBillMaster.certified_bill_id == cert_bill.id,
+            SaleBillMaster.workflow_status   != "Rejected",
+        ).first()
+        if existing:
+            return res(
+                f"A sale bill ({existing.sale_bill_no}) already exists for this certified bill",
+                [], 400,
+            )
 
         items = data.get("items", [])
         if not items:
