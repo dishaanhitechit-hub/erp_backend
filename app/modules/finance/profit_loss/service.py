@@ -2,6 +2,7 @@ from datetime import datetime
 from app.extensions import db
 from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode
+from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.response import res
 
 
@@ -73,21 +74,44 @@ def get_pl_report(args):
         cc_rows = cc_query.group_by(BudgetItemCCCode.cc_code).all()
         cc_map  = {row.cc_code.strip().upper(): float(row.total or 0) for row in cc_rows}
 
-        # ── Build rows — one per code, workDone/booked/stock/actual = null (future) ──
+        # ── C. BOOKED — approved Purchase Bill items grouped by cc_code ──
+        pb_query = (
+            db.session.query(
+                PurchaseBillItem.cc_code,
+                db.func.sum(PurchaseBillItem.basic_amount).label("total"),
+            )
+            .join(PurchaseBillMaster, PurchaseBillItem.purchase_bill_id == PurchaseBillMaster.id)
+            .filter(PurchaseBillMaster.workflow_status == "Approved")
+        )
+        if project_code:
+            pb_query = pb_query.filter(PurchaseBillMaster.project_code == project_code)
+        if from_date:
+            pb_query = pb_query.filter(PurchaseBillMaster.processing_date >= from_date)
+        if to_date:
+            pb_query = pb_query.filter(PurchaseBillMaster.processing_date <= to_date)
+
+        pb_rows   = pb_query.group_by(PurchaseBillItem.cc_code).all()
+        booked_map = {
+            row.cc_code.strip().upper(): float(row.total or 0)
+            for row in pb_rows
+            if row.cc_code
+        }
+
+        # ── Build rows ──
         rows = []
         for code in _ALL_CODES:
             if code in _SALE_CODES:
-                # Order column: total sale value under CRIN only; rest null for now
-                order_val = sale_order_value if code == "CRIN" else None
+                order_val  = sale_order_value if code == "CRIN" else None
+                booked_val = None
             else:
-                val = cc_map.get(code)
-                order_val = val if val is not None else None
+                order_val  = cc_map.get(code)
+                booked_val = booked_map.get(code)
 
             rows.append({
                 "code":     code,
                 "order":    order_val,
                 "workDone": None,
-                "booked":   None,
+                "booked":   booked_val,
                 "stock":    None,
                 "actual":   None,
             })
