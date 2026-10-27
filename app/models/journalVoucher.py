@@ -37,6 +37,7 @@ class PettyCashJournalVoucher(db.Model):
         "PettyCashJournalLine",
         backref="journal_voucher",
         cascade="all,delete-orphan",
+        order_by="PettyCashJournalLine.sl_no",
     )
 
 

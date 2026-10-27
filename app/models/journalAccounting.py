@@ -46,6 +46,7 @@ class PettyCashJournalAccounting(db.Model):
         "PettyCashJournalAccountingLine",
         backref="journal_accounting",
         cascade="all,delete-orphan",
+        order_by="PettyCashJournalAccountingLine.sl_no",
     )
 
 

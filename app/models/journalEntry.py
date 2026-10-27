@@ -44,7 +44,7 @@ class JournalEntryMaster(db.Model):
 
     # Relationships
     project = db.relationship("Project", backref="journal_entries")
-    lines   = db.relationship("JournalEntryLine", backref="entry", cascade="all,delete-orphan")
+    lines   = db.relationship("JournalEntryLine", backref="entry", cascade="all,delete-orphan", order_by="JournalEntryLine.sl_no")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

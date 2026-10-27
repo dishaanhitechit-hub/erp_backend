@@ -56,12 +56,14 @@ class OgSaleOrderMaster(db.Model):
     items     = db.relationship(
         "OgSaleOrderItem",
         backref="og_sale_order",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="OgSaleOrderItem.sl_no",
     )
     boq_items = db.relationship(
         "OgSaleOrderBoqItem",
         backref="og_sale_order",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="OgSaleOrderBoqItem.sl_no",
     )
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

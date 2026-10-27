@@ -55,8 +55,8 @@ class PurchaseVoucherMaster(db.Model):
     project   = db.relationship("Project", backref="purchase_vouchers")
     vendor    = db.relationship("Vendor",  backref="purchase_vouchers")
 
-    items     = db.relationship("PurchaseVoucherItem", backref="voucher", cascade="all,delete-orphan")
-    gst_lines = db.relationship("PurchaseVoucherGst",  backref="voucher", cascade="all,delete-orphan")
+    items     = db.relationship("PurchaseVoucherItem", backref="voucher", cascade="all,delete-orphan", order_by="PurchaseVoucherItem.sl_no")
+    gst_lines = db.relationship("PurchaseVoucherGst",  backref="voucher", cascade="all,delete-orphan", order_by="PurchaseVoucherGst.id")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

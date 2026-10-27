@@ -49,7 +49,7 @@ class PettyCashDocketVoucher(db.Model):
     project    = db.relationship("Project", backref="petty_cash_docket_vouchers")
     budget     = db.relationship("PettyCashBudget", backref="docket_vouchers", foreign_keys=[budget_id])
     bank_cash  = db.relationship("BankCash", foreign_keys=[bank_cash_id])
-    details = db.relationship("PettyCashDocketVoucherDetail", backref="voucher", cascade="all,delete-orphan")
+    details = db.relationship("PettyCashDocketVoucherDetail", backref="voucher", cascade="all,delete-orphan", order_by="PettyCashDocketVoucherDetail.sl_no")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

@@ -45,7 +45,7 @@ class PettyCashBudget(db.Model):
 
     # Relationships
     project  = db.relationship("Project", backref="petty_cash_budgets")
-    details  = db.relationship("PettyCashBudgetDetail",   backref="budget", cascade="all,delete-orphan")
+    details  = db.relationship("PettyCashBudgetDetail",   backref="budget", cascade="all,delete-orphan", order_by="PettyCashBudgetDetail.sl_no")
     revisions= db.relationship("PettyCashBudgetRevision", backref="budget", cascade="all,delete-orphan")
 
     creator   = db.relationship("User", foreign_keys=[created_by])

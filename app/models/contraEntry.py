@@ -43,7 +43,7 @@ class ContraEntryMaster(db.Model):
 
     # Relationships
     project = db.relationship("Project", backref="contra_entries")
-    lines   = db.relationship("ContraEntryLine", backref="entry", cascade="all,delete-orphan")
+    lines   = db.relationship("ContraEntryLine", backref="entry", cascade="all,delete-orphan", order_by="ContraEntryLine.sl_no")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

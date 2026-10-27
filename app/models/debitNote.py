@@ -48,8 +48,8 @@ class DebitNoteMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     project   = db.relationship("Project",      backref="debit_notes")
-    items     = db.relationship("DebitNoteItem", backref="debit_note", cascade="all,delete-orphan")
-    gst_lines = db.relationship("DebitNoteGst",  backref="debit_note", cascade="all,delete-orphan")
+    items     = db.relationship("DebitNoteItem", backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteItem.sl_no")
+    gst_lines = db.relationship("DebitNoteGst",  backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteGst.id")
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])

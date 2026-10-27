@@ -71,8 +71,8 @@ class BillPaymentReceiptMaster(db.Model):
     cash_account  = db.relationship("BankCash", foreign_keys=[cash_ac_id])
     bank_account  = db.relationship("BankCash", foreign_keys=[bank_ac_id])
 
-    items     = db.relationship("BillPaymentReceiptItem", backref="receipt", cascade="all,delete-orphan")
-    gst_lines = db.relationship("BillPaymentReceiptGst",  backref="receipt", cascade="all,delete-orphan")
+    items     = db.relationship("BillPaymentReceiptItem", backref="receipt", cascade="all,delete-orphan", order_by="BillPaymentReceiptItem.sl_no")
+    gst_lines = db.relationship("BillPaymentReceiptGst",  backref="receipt", cascade="all,delete-orphan", order_by="BillPaymentReceiptGst.id")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

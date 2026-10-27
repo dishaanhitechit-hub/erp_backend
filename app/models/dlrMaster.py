@@ -55,7 +55,7 @@ class DlrMaster(db.Model):
     vendor = db.relationship("Vendor", foreign_keys=[vendor_id], backref="dlrs")
     order = db.relationship("OrderMaster", foreign_keys=[order_id], backref="dlrs")
 
-    items = db.relationship("DlrItem", backref="dlr", cascade="all,delete-orphan")
+    items = db.relationship("DlrItem", backref="dlr", cascade="all,delete-orphan", order_by="DlrItem.sl_no")
 
     creator = db.relationship("User", foreign_keys=[created_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])

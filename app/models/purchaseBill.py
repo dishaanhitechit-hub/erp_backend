@@ -71,8 +71,8 @@ class PurchaseBillMaster(db.Model):
     pw_order  = db.relationship("ProjectWorkOrderMaster", backref="purchase_bills")
     brr       = db.relationship("BrrMaster",              backref="purchase_bills")
 
-    items     = db.relationship("PurchaseBillItem", backref="purchase_bill", cascade="all,delete-orphan")
-    gst_lines = db.relationship("PurchaseBillGst",  backref="purchase_bill", cascade="all,delete-orphan")
+    items     = db.relationship("PurchaseBillItem", backref="purchase_bill", cascade="all,delete-orphan", order_by="PurchaseBillItem.sl_no")
+    gst_lines = db.relationship("PurchaseBillGst",  backref="purchase_bill", cascade="all,delete-orphan", order_by="PurchaseBillGst.id")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])

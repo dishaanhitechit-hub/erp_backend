@@ -48,8 +48,8 @@ class CreditNoteMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     project   = db.relationship("Project",       backref="credit_notes")
-    items     = db.relationship("CreditNoteItem", backref="credit_note", cascade="all,delete-orphan")
-    gst_lines = db.relationship("CreditNoteGst",  backref="credit_note", cascade="all,delete-orphan")
+    items     = db.relationship("CreditNoteItem", backref="credit_note", cascade="all,delete-orphan", order_by="CreditNoteItem.sl_no")
+    gst_lines = db.relationship("CreditNoteGst",  backref="credit_note", cascade="all,delete-orphan", order_by="CreditNoteGst.id")
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])

@@ -66,8 +66,8 @@ class PaymentVoucherMaster(db.Model):
     cash_account     = db.relationship("BankCash", foreign_keys=[cash_ac_id])
     bank_account     = db.relationship("BankCash", foreign_keys=[bank_ac_id])
 
-    items     = db.relationship("PaymentVoucherItem", backref="payment_voucher", cascade="all,delete-orphan")
-    gst_lines = db.relationship("PaymentVoucherGst",  backref="payment_voucher", cascade="all,delete-orphan")
+    items     = db.relationship("PaymentVoucherItem", backref="payment_voucher", cascade="all,delete-orphan", order_by="PaymentVoucherItem.sl_no")
+    gst_lines = db.relationship("PaymentVoucherGst",  backref="payment_voucher", cascade="all,delete-orphan", order_by="PaymentVoucherGst.id")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])
