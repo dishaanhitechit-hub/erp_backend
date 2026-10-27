@@ -100,10 +100,10 @@ def _render_manpower(rows):
         return html + no_data_note()
     html += stat_row([("Workers Logged", str(len(rows)))])
     trows = [
-        [r.worker_name or "—", r.trade or "—", str(r.created_at.date()) if r.created_at else "—"]
+        [r.full_name or "—", r.category or "—", str(r.created_at.date()) if r.created_at else "—"]
         for r in rows
     ]
-    html += table(["Worker Name", "Trade", "Date"], trows)
+    html += table(["Worker Name", "Category", "Date"], trows)
     return html
 
 
