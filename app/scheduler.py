@@ -35,6 +35,12 @@ def _run_all_summaries(app):
                 logger.info("Monthly summary sent: %s", name)
             except Exception as exc:
                 logger.exception("Failed to send monthly summary for %s: %s", name, exc)
+                # Roll back any aborted transaction so the next module starts clean.
+                try:
+                    from app.extensions import db
+                    db.session.rollback()
+                except Exception:
+                    pass
 
 
 def init_scheduler(app):

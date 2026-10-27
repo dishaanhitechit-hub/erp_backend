@@ -93,7 +93,7 @@ def _render_sale_bills(rows, proj_map):
         for r in items:
             table_rows.append([
                 r.sale_bill_no,
-                str(r.processing_date) if r.processing_date else "—",
+                str(r.invoice_date) if r.invoice_date else "—",
                 r.workflow_status,
                 r.total_invoice_amount,
             ])

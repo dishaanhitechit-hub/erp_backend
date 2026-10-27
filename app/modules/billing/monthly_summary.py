@@ -27,9 +27,14 @@ def _project_map():
 
 
 def _q(model, start, end):
-    return db.session.query(model).filter(
-        model.created_at >= start, model.created_at <= end
-    ).all()
+    try:
+        result = db.session.query(model).filter(
+            model.created_at >= start, model.created_at <= end
+        ).all()
+        return result
+    except Exception:
+        db.session.rollback()
+        return []
 
 
 def _render_brr(rows, proj_map):

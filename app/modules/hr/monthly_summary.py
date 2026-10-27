@@ -123,8 +123,12 @@ def build_and_send():
     new_employees  = _q(Employee,           start, end)
     new_jobs       = _q(JobOpening,         start, end)
     new_candidates = _q(Candidate,          start, end)
-    payroll_runs   = _q(PayrollRun,         start, end)
-    payroll_entries= _q(PayrollEntry,       start, end)
+    payroll_runs   = _q(PayrollRun, start, end)
+    run_ids        = [r.id for r in payroll_runs]
+    payroll_entries = (
+        db.session.query(PayrollEntry).filter(PayrollEntry.payroll_run_id.in_(run_ids)).all()
+        if run_ids else []
+    )
     perf_reviews   = _q(PerformanceReview,  start, end)
     onboarding     = _q(OnboardingTask,     start, end)
 
