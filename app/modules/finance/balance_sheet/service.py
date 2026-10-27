@@ -321,6 +321,7 @@ def _pl_net(project_code=None, from_date=None, to_date=None):
         db.func.coalesce(db.func.sum(OgSaleOrderMaster.total_amount), 0)
     ).scalar() or 0)
 
+    # Direct Expenses — sum of all DE sibling cc_total from BudgetItemCCCode
     cc_q = (
         db.session.query(
             db.func.coalesce(db.func.sum(BudgetItemCCCode.cc_total), 0)
@@ -338,8 +339,28 @@ def _pl_net(project_code=None, from_date=None, to_date=None):
         cc_q = cc_q.filter(BudgetMaster.budget_date >= from_date)
     if to_date:
         cc_q = cc_q.filter(BudgetMaster.budget_date <= to_date)
-    expense = float(cc_q.scalar() or 0)
+    direct_expense = float(cc_q.scalar() or 0)
 
+    # Overhead — estimated costs from BudgetMaster.overhead_data JSON column
+    bm_q = BudgetMaster.query.filter(
+        BudgetMaster.workflow_status == "Approved",
+        BudgetMaster.status          == "Active",
+    )
+    if project_code:
+        bm_q = bm_q.filter(BudgetMaster.project_code == project_code)
+    if from_date:
+        bm_q = bm_q.filter(BudgetMaster.budget_date >= from_date)
+    if to_date:
+        bm_q = bm_q.filter(BudgetMaster.budget_date <= to_date)
+
+    overhead_total = 0.0
+    for (od,) in bm_q.with_entities(BudgetMaster.overhead_data).all():
+        if od:
+            for entry in od.get("projectOverhead", []) + od.get("employeeOverhead", []):
+                overhead_total += float(entry.get("estimatedCost") or 0)
+
+    # TEC = Direct Expenses + Overhead; P&L net = Income − TEC
+    expense = direct_expense + overhead_total
     return income - expense
 
 

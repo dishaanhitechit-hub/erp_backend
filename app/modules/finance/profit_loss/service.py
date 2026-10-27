@@ -2,6 +2,9 @@ from datetime import datetime
 from app.extensions import db
 from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode
+
+# DE sibling codes stored per-item — DRCW is their computed sum, not stored
+_DE_SIBLING_CODES = {"DRMC", "DRFD", "DRMH", "DRUS", "DRMR", "DRLC", "DRLS", "DRMS"}
 from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.response import res
 
@@ -73,6 +76,30 @@ def get_pl_report(args):
 
         cc_rows = cc_query.group_by(BudgetItemCCCode.cc_code).all()
         cc_map  = {row.cc_code.strip().upper(): float(row.total or 0) for row in cc_rows}
+
+        # DRCW is no longer stored as its own BudgetItemCCCode row —
+        # derive it as the sum of all stored DE sibling codes.
+        cc_map["DRCW"] = sum(cc_map.get(c, 0) for c in _DE_SIBLING_CODES)
+
+        # ── B2. Overhead CC codes — estimated costs from BudgetMaster.overhead_data ──
+        # These live in a JSON column; aggregate in Python after fetching matching budgets.
+        bm_filter = BudgetMaster.query.filter(
+            BudgetMaster.workflow_status == "Approved",
+            BudgetMaster.status          == "Active",
+        )
+        if project_code:
+            bm_filter = bm_filter.filter(BudgetMaster.project_code == project_code)
+        if from_date:
+            bm_filter = bm_filter.filter(BudgetMaster.budget_date >= from_date)
+        if to_date:
+            bm_filter = bm_filter.filter(BudgetMaster.budget_date <= to_date)
+
+        for bm in bm_filter.with_entities(BudgetMaster.overhead_data).all():
+            od = bm.overhead_data or {}
+            for entry in od.get("projectOverhead", []) + od.get("employeeOverhead", []):
+                code = (entry.get("ccCode") or "").strip().upper()
+                if code:
+                    cc_map[code] = cc_map.get(code, 0) + float(entry.get("estimatedCost") or 0)
 
         # ── C. BOOKED — approved Purchase Bill items grouped by cc_code ──
         pb_query = (

@@ -49,17 +49,41 @@ def _render_budget(rows, proj_map):
     if not rows:
         return html + no_data_note()
     groups = _group(rows)
-    total_count, total_cost = 0, 0
+    total_count, total_amount, total_tec, total_profit = 0, 0.0, 0.0, 0.0
     for code, items in sorted(groups.items()):
         name, client = proj_map.get(code, (code, ""))
         html += project_block_open(code, name, client)
         trows = []
         for r in items:
-            trows.append([r.budget_no, r.workflow_status, r.total_initial_cost])
-            total_count += 1
-            total_cost += float(r.total_initial_cost or 0)
-        html += table(["Budget No", "Status", "Total Initial Cost"], trows, amount_cols={2})
-    html = stat_row([("Budgets Created", str(total_count)), ("Total Cost", f"₹{total_cost:,.2f}")]) + html
+            amount = float(r.total_initial_cost or 0)
+            drcw   = float(r.total_cc_cost      or 0)
+            od     = r.overhead_data or {}
+            overhead = sum(
+                float(e.get("estimatedCost") or 0)
+                for e in od.get("projectOverhead", []) + od.get("employeeOverhead", [])
+            )
+            tec    = drcw + overhead
+            profit = amount - tec
+            profit_pct = round(profit / amount * 100, 2) if amount else 0.0
+            trows.append([
+                r.budget_no, r.workflow_status,
+                amount, drcw, overhead, tec, profit, f"{profit_pct}%",
+            ])
+            total_count  += 1
+            total_amount += amount
+            total_tec    += tec
+            total_profit += profit
+        html += table(
+            ["Budget No", "Status", "Sale Order Amt", "Direct Expenses", "Overhead", "TEC", "Profit", "Profit %"],
+            trows,
+            amount_cols={2, 3, 4, 5, 6},
+        )
+    html = stat_row([
+        ("Budgets Created", str(total_count)),
+        ("Total Amount",    f"₹{total_amount:,.2f}"),
+        ("Total TEC",       f"₹{total_tec:,.2f}"),
+        ("Total Profit",    f"₹{total_profit:,.2f}"),
+    ]) + html
     return html
 
 
