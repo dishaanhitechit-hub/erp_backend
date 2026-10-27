@@ -83,12 +83,14 @@ def _render_machinery(rows, proj_map):
         html += project_block_open(code, name, client)
         trows = [
             [
-                str(r.log_date) if r.log_date else "—",
-                str(r.id),
+                r.log_book_no or "—",
+                str(r.create_date) if r.create_date else "—",
+                r.machinery_name or "—",
+                r.workflow_status,
             ]
             for r in items
         ]
-        html += table(["Log Date", "Record ID"], trows)
+        html += table(["Log Book No", "Date", "Machinery", "Status"], trows)
     return html
 
 

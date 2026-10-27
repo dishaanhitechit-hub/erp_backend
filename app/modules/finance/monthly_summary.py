@@ -163,7 +163,7 @@ def _render_journal_entries(rows, proj_map):
     for code, items in sorted(groups.items()):
         name, client = proj_map.get(code, (code, ""))
         html += project_block_open(code, name, client)
-        table_rows = [[r.entry_no or "—", str(r.entry_date) if r.entry_date else "—", r.workflow_status] for r in items]
+        table_rows = [[r.voucher_no or "—", str(r.entry_date) if r.entry_date else "—", r.workflow_status] for r in items]
         html += table(["Entry No", "Date", "Status"], table_rows)
     return html
 
