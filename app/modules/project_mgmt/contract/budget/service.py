@@ -7,6 +7,7 @@ import uuid as _uuid
 from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode, BudgetItemCCCodeEntry
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem
 from app.models.cc_code import CCCode
+from app.models.category_group import GroupMaster
 from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
@@ -107,31 +108,35 @@ def _serialize_items(items):
 
 
 def _build_detail_payload(budget):
+    overhead = budget.overhead_data or {"projectOverhead": [], "employeeOverhead": []}
     return {
-        "id":               budget.id,
-        "budgetNo":         budget.budget_no,
-        "budgetUuid":       budget.budget_uuid,
-        "budgetDate":       _fmt_date(budget.budget_date),
-        "saleOrderId":      budget.sale_order_id,
-        "saleOrderNo":      budget.sale_order_no,
-        "saleOrderTitle":   budget.sale_order_title,
-        "projectCode":      budget.project_code,
-        "remarks":          budget.remarks,
-        "totalInitialCost": float(budget.total_initial_cost or 0),
-        "totalCcCost":      float(budget.total_cc_cost      or 0),
-        "grandTotal":       float(budget.grand_total        or 0),
-        "workflowStatus":   budget.workflow_status,
-        "currentLevel":     budget.current_level,
-        "locked":           budget.locked,
-        "createdBy":        budget.creator.username   if budget.creator   else None,
-        "createdAt":        _fmt_date(budget.created_at),
-        "submittedBy":      budget.submitter.username if budget.submitter else None,
-        "submittedAt":      _fmt_date(budget.submitted_at),
-        "approvedBy":       budget.approver.username  if budget.approver  else None,
-        "finalApprovedAt":  _fmt_date(budget.final_approved_at),
-        "rejectedBy":       budget.rejector.username  if budget.rejector  else None,
-        "rejectedAt":       _fmt_date(budget.rejected_at),
-        "items":            _serialize_items(budget.items),
+        "id":                  budget.id,
+        "budgetNo":            budget.budget_no,
+        "budgetUuid":          budget.budget_uuid,
+        "budgetDate":          _fmt_date(budget.budget_date),
+        "saleOrderId":         budget.sale_order_id,
+        "saleOrderNo":         budget.sale_order_no,
+        "saleOrderTitle":      budget.sale_order_title,
+        "projectCode":         budget.project_code,
+        "remarks":             budget.remarks,
+        "orderValueExclGst":   float(budget.order_value_excl_gst or 0),
+        "totalInitialCost":    float(budget.total_initial_cost or 0),
+        "totalCcCost":         float(budget.total_cc_cost      or 0),
+        "grandTotal":          float(budget.grand_total        or 0),
+        "projectOverhead":     overhead.get("projectOverhead",  []),
+        "employeeOverhead":    overhead.get("employeeOverhead", []),
+        "workflowStatus":      budget.workflow_status,
+        "currentLevel":        budget.current_level,
+        "locked":              budget.locked,
+        "createdBy":           budget.creator.username   if budget.creator   else None,
+        "createdAt":           _fmt_date(budget.created_at),
+        "submittedBy":         budget.submitter.username if budget.submitter else None,
+        "submittedAt":         _fmt_date(budget.submitted_at),
+        "approvedBy":          budget.approver.username  if budget.approver  else None,
+        "finalApprovedAt":     _fmt_date(budget.final_approved_at),
+        "rejectedBy":          budget.rejector.username  if budget.rejector  else None,
+        "rejectedAt":          _fmt_date(budget.rejected_at),
+        "items":               _serialize_items(budget.items),
     }
 
 
@@ -199,11 +204,16 @@ def get_sale_order_items(so_id):
         items = [_serialize(item, "non_boq") for item in og_so.items] + \
                 [_serialize(item, "boq")     for item in og_so.boq_items]
 
+        total_amount  = float(og_so.total_amount  or 0)
+        gst_amount    = float(og_so.gst_amount    or 0)
+        order_value_excl_gst = round(total_amount - gst_amount, 2)
+
         return res("Sale order items fetched", {
-            "saleOrderId":    og_so.id,
-            "ogSaleOrderNo":  og_so.og_sale_order_no,
-            "orderTitle":     og_so.order_title,
-            "items":          items,
+            "saleOrderId":         og_so.id,
+            "ogSaleOrderNo":       og_so.og_sale_order_no,
+            "orderTitle":          og_so.order_title,
+            "orderValueExclGst":   order_value_excl_gst,
+            "items":               items,
         }, 200)
 
     except Exception as e:
@@ -216,13 +226,28 @@ def get_sale_order_items(so_id):
 
 def get_cc_codes_list(args):
     try:
-        rows = CCCode.query.filter(CCCode.status == "Active").order_by(CCCode.cc_code).all()
+        group_name = args.get("group")  # optional: "Direct Expenses", "Project Overhead", etc.
+
+        query = (
+            CCCode.query
+            .join(GroupMaster, CCCode.group_id == GroupMaster.id)
+            .filter(CCCode.status == "Active")
+        )
+
+        if group_name:
+            query = query.filter(GroupMaster.group_name == group_name)
+
+        rows = query.order_by(CCCode.cc_code).all()
 
         result = [
             {
-                "id":     row.id,
-                "ccCode": row.cc_code,
-                "ccName": row.cc_name,
+                "id":           row.id,
+                "ccCode":       row.cc_code,
+                "ccName":       row.cc_name,
+                "groupId":      row.group_id,
+                "groupName":    row.group.group_name    if row.group    else None,
+                "categoryCode": row.category_code,
+                "categoryName": row.category.category_name if row.category else None,
             }
             for row in rows
         ]
@@ -266,19 +291,28 @@ def create_budget(data, user_id):
         budget_no   = _generate_budget_no()
         budget_uuid = str(_uuid.uuid4())
 
+        order_value_excl_gst = Decimal(str(data.get("orderValueExclGst") or 0))
+
+        overhead_data = {
+            "projectOverhead":  data.get("projectOverhead",  []),
+            "employeeOverhead": data.get("employeeOverhead", []),
+        }
+
         budget = BudgetMaster(
-            budget_no        = budget_no,
-            budget_uuid      = budget_uuid,
-            budget_date      = budget_date,
-            sale_order_id    = og_so.id,
-            sale_order_no    = og_so.og_sale_order_no,
-            sale_order_title = og_so.order_title,
-            project_code     = project_code,
-            remarks          = data.get("remarks") or None,
-            workflow_status  = "Draft",
-            current_level    = 0,
-            locked           = False,
-            created_by       = user_id,
+            budget_no            = budget_no,
+            budget_uuid          = budget_uuid,
+            budget_date          = budget_date,
+            sale_order_id        = og_so.id,
+            sale_order_no        = og_so.og_sale_order_no,
+            sale_order_title     = og_so.order_title,
+            project_code         = project_code,
+            remarks              = data.get("remarks") or None,
+            order_value_excl_gst = order_value_excl_gst,
+            overhead_data        = overhead_data,
+            workflow_status      = "Draft",
+            current_level        = 0,
+            locked               = False,
+            created_by           = user_id,
         )
 
         db.session.add(budget)
@@ -464,6 +498,12 @@ def edit_budget(budget_id, data, user_id):
             budget.budget_date = _parse_date(data.get("budgetDate"))
         if data.get("remarks") is not None:
             budget.remarks = data.get("remarks") or None
+        if data.get("orderValueExclGst") is not None:
+            budget.order_value_excl_gst = Decimal(str(data.get("orderValueExclGst") or 0))
+        budget.overhead_data = {
+            "projectOverhead":  data.get("projectOverhead",  []),
+            "employeeOverhead": data.get("employeeOverhead", []),
+        }
 
         # Rebuild items and CC codes from scratch
         for _item in BudgetItem.query.filter_by(budget_id=budget.id).all():

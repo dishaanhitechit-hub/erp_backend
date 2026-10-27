@@ -28,9 +28,15 @@ class BudgetMaster(db.Model):
 
     remarks = db.Column(db.Text, nullable=True)
 
+    # Snapshot — sale order value excl GST, used for overhead % calc
+    order_value_excl_gst = db.Column(db.Numeric(14, 2), default=0)
+
+    # Overhead CC data: {projectOverhead:[{ccCodeId,ccCode,ccName,estimatedCost}], employeeOverhead:[...]}
+    overhead_data = db.Column(db.JSON, nullable=True)
+
     # Financials — computed on save
     total_initial_cost = db.Column(db.Numeric(14, 2), default=0)  # sum of item initial amounts
-    total_cc_cost      = db.Column(db.Numeric(14, 2), default=0)  # sum of all CC code costs
+    total_cc_cost      = db.Column(db.Numeric(14, 2), default=0)  # sum of all Direct Expense CC costs
     grand_total        = db.Column(db.Numeric(14, 2), default=0)  # initial + cc
 
     # Workflow
