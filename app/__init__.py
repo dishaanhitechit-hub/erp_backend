@@ -272,4 +272,8 @@ def create_app():
     print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
     print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
 
+    # Monthly email reports scheduler
+    from .scheduler import init_scheduler
+    init_scheduler(app)
+
     return app

@@ -14,3 +14,20 @@ class Config:
     PDF_BASE_URL = os.getenv("PDF_BASE_URL") or "/resource/order/pdf-file"
     PUBLIC_BASE_URL  = os.getenv("PUBLIC_BASE_URL") or None
 
+    # ── Monthly Email Reports ────────────────────────────────────────────────
+    MAIL_SENDER       = os.getenv("MAIL_SENDER", "dishaanhitechit@gmail.com")
+    MAIL_APP_PASSWORD = os.getenv("MAIL_APP_PASSWORD", "")
+    MAIL_SCHEDULE_DAY  = int(os.getenv("MAIL_SCHEDULE_DAY",  "1"))   # 1 = 1st of month
+    MAIL_SCHEDULE_HOUR = int(os.getenv("MAIL_SCHEDULE_HOUR", "8"))   # 8 AM
+    MAIL_TIMEZONE      = os.getenv("MAIL_TIMEZONE", "Asia/Kolkata")
+
+    # Recipients (comma-separated for multiple addresses)
+    MAIL_RECIPIENT_FINANCE      = os.getenv("MAIL_RECIPIENT_FINANCE",      "")
+    MAIL_RECIPIENT_HR           = os.getenv("MAIL_RECIPIENT_HR",           "")
+    MAIL_RECIPIENT_BILLING      = os.getenv("MAIL_RECIPIENT_BILLING",      "")
+    MAIL_RECIPIENT_PROJECT      = os.getenv("MAIL_RECIPIENT_PROJECT",      "")
+    MAIL_RECIPIENT_PROJECT_MGMT = os.getenv("MAIL_RECIPIENT_PROJECT_MGMT", "")
+    MAIL_RECIPIENT_RESOURCES    = os.getenv("MAIL_RECIPIENT_RESOURCES",    "")
+    MAIL_RECIPIENT_MASTER       = os.getenv("MAIL_RECIPIENT_MASTER",       "")
+    MAIL_RECIPIENT_COMPANY      = os.getenv("MAIL_RECIPIENT_COMPANY",      "")
+
