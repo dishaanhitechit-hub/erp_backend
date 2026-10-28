@@ -590,9 +590,12 @@ def get_labour_by_supplier(supplier_id):
 
 # ── PW ORDERS BY SUPPLIER FOR CURRENT PROJECT ────────────────────
 
-def get_pw_orders_by_supplier(supplier_id):
-    _, project_id = _current_user()
-    project_code = _project_code(project_id)
+def get_pw_orders_by_supplier(supplier_id, project_code_param=None):
+    if project_code_param:
+        project_code = project_code_param
+    else:
+        _, project_id = _current_user()
+        project_code = _project_code(project_id)
     if not project_code:
         return res("Project not resolved for current user", [], 400)
 

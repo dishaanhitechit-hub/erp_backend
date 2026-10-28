@@ -116,4 +116,4 @@ def api_dlr_labour_by_supplier(supplier_id):
 @dlr_bp.route("/pw-orders-by-supplier/<int:supplier_id>", methods=["GET"])
 @login_required
 def api_dlr_pw_orders_by_supplier(supplier_id):
-    return get_pw_orders_by_supplier(supplier_id)
+    return get_pw_orders_by_supplier(supplier_id, request.args.get("projectCode"))
