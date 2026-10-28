@@ -102,20 +102,22 @@ class UncertainAllocationLine(db.Model):
     item_name             = db.Column(db.String(2000), nullable=True)
     item_name_desc        = db.Column(db.Text,         nullable=True)
     unit                  = db.Column(db.String(30),   nullable=True)
-    boq_qty               = db.Column(db.Numeric(17, 4), nullable=True)
+    og_boq_qty            = db.Column(db.Numeric(17, 4), nullable=True)   # original sale order ordered qty
+    boq_qty               = db.Column(db.Numeric(17, 4), nullable=True)   # claim qty (from claim bill)
+    certified_qty         = db.Column(db.Numeric(17, 4), nullable=True)   # certified qty
     unit_rate             = db.Column(db.Numeric(17, 4), nullable=True)
 
-    # Auto-computed from BillingMaster at save time (per item)
+    # Computed amounts (qty × unit_rate), stored for fast aggregation
     claim_amount     = db.Column(db.Numeric(14, 2), default=0)
     certified_amount = db.Column(db.Numeric(14, 2), default=0)
     difference       = db.Column(db.Numeric(14, 2), default=0)
 
-    # Manual justification (5 fields)
-    over_billing_calculation_mistake    = db.Column(db.Numeric(14, 2), default=0)
-    certified_hold_amendment_pending    = db.Column(db.Numeric(14, 2), default=0)
-    non_boq_items_rate                  = db.Column(db.Numeric(14, 2), default=0)
-    hold_work                           = db.Column(db.Numeric(14, 2), default=0)
-    hold_for_full_work_not_completed    = db.Column(db.Numeric(14, 2), default=0)
+    # Manual justification — stored as QTY; amount = qty × unit_rate
+    over_billing_calculation_mistake    = db.Column(db.Numeric(17, 4), default=0)
+    certified_hold_amendment_pending    = db.Column(db.Numeric(17, 4), default=0)
+    non_boq_items_rate                  = db.Column(db.Numeric(17, 4), default=0)
+    hold_work                           = db.Column(db.Numeric(17, 4), default=0)
+    hold_for_full_work_not_completed    = db.Column(db.Numeric(17, 4), default=0)
 
     remarks = db.Column(db.Text, nullable=True)
 

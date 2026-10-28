@@ -152,13 +152,15 @@ def _line_payload(line):
         "itemName":                        line.item_name,
         "itemNameDesc":                    line.item_name_desc,
         "unit":                            line.unit,
-        "boqQty":                          float(line.boq_qty  or 0),
-        "unitRate":                        float(line.unit_rate or 0),
-        # Computed amounts
+        "ogBOQQty":                        float(line.og_boq_qty    or 0),  # original sale order qty
+        "boqQty":                          float(line.boq_qty       or 0),  # claim qty
+        "certifiedQty":                    float(line.certified_qty  or 0),
+        "unitRate":                        float(line.unit_rate      or 0),
+        # Stored amounts (qty × rate, for fast totals)
         "claimAmount":                     float(line.claim_amount     or 0),
         "certifiedAmount":                 float(line.certified_amount or 0),
         "difference":                      float(line.difference       or 0),
-        # Justification fields
+        # Justification — stored as QTY
         "overBillingCalculationMistake":   float(line.over_billing_calculation_mistake    or 0),
         "certifiedHoldAmendmentPending":   float(line.certified_hold_amendment_pending    or 0),
         "nonBoqItemsRate":                 float(line.non_boq_items_rate                  or 0),
@@ -326,41 +328,61 @@ def get_claim_bill_items_for_ua(billing_id):
 
         result = []
 
+        def _cert_qty(cert_amt, rate):
+            r = Decimal(str(rate or 0))
+            return float(cert_amt / r) if r else 0.0
+
         # Regular items
         for item in bill.items:
             cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "item")
+            claim_qty   = float(item.claim_qty  or 0)
+            order_qty   = float(item.order_qty  or 0)
+            unit_rate   = float(item.rate       or 0)
+            claim_amt   = float(item.amount     or 0)
+            cert_qty    = _cert_qty(cert_amt, item.rate)
+            cert_amt_f  = float(cert_amt)
             result.append({
-                "billingItemId": item.id,
-                "itemType":      "item",
-                "boqSlNo":       item.sl_no,
-                "itemCode":      item.item_code,
-                "itemName":      item.item_name,
-                "itemNameDesc":  item.item_name_desc,
-                "unit":          item.unit,
-                "claimQty":      float(item.claim_qty  or 0),
-                "unitRate":      float(item.rate        or 0),
-                "claimAmount":   float(item.amount      or 0),
-                "certifiedAmount": float(cert_amt),
-                "difference":    float(item.amount or 0) - float(cert_amt),
+                "billingItemId":   item.id,
+                "itemType":        "item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        order_qty,
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        unit_rate,
+                "claimAmount":     claim_amt,
+                "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
             })
 
         # BOQ items
         boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
         for item in boq_items:
             cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "boq_item")
+            claim_qty   = float(item.claim_qty  or 0)
+            order_qty   = float(item.order_qty  or 0)
+            unit_rate   = float(item.rate       or 0)
+            claim_amt   = float(item.amount     or 0)
+            cert_qty    = _cert_qty(cert_amt, item.rate)
+            cert_amt_f  = float(cert_amt)
             result.append({
-                "billingItemId": item.id,
-                "itemType":      "boq_item",
-                "boqSlNo":       item.sl_no,
-                "itemCode":      item.item_code,
-                "itemName":      item.item_name,
-                "itemNameDesc":  item.item_name_desc,
-                "unit":          item.unit,
-                "claimQty":      float(item.claim_qty  or 0),
-                "unitRate":      float(item.rate        or 0),
-                "claimAmount":   float(item.amount      or 0),
-                "certifiedAmount": float(cert_amt),
-                "difference":    float(item.amount or 0) - float(cert_amt),
+                "billingItemId":   item.id,
+                "itemType":        "boq_item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        order_qty,
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        unit_rate,
+                "claimAmount":     claim_amt,
+                "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
             })
 
         return res("Claim bill items fetched", {
@@ -421,14 +443,18 @@ def create_ua(data, user_id):
             item_type = row.get("itemType")
             item_code = row.get("itemCode")
 
-            # Amounts come directly from the frontend (already computed from claim bill item)
-            claim_amt = Decimal(str(row.get("claimAmount") or 0))
+            unit_rate  = Decimal(str(row.get("unitRate") or 0))
+            claim_qty  = Decimal(str(row.get("boqQty")  or 0))   # claim qty from claim bill
+            og_boq_qty = Decimal(str(row.get("ogBOQQty") or 0))  # original sale order ordered qty
+            claim_amt  = claim_qty * unit_rate
+
             # Re-compute certified from DB to stay fresh
             if billing_id and item_code:
                 cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
                 cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
-            diff = claim_amt - cert_amt
+            cert_qty = (cert_amt / unit_rate).quantize(Decimal('0.0001')) if unit_rate else Decimal('0')
+            diff     = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
                 ua_id                 = ua.id,
@@ -447,16 +473,19 @@ def create_ua(data, user_id):
                 item_name             = row.get("itemName"),
                 item_name_desc        = row.get("itemNameDesc"),
                 unit                  = row.get("unit"),
-                boq_qty               = Decimal(str(row.get("boqQty")   or 0)),
-                unit_rate             = Decimal(str(row.get("unitRate")  or 0)),
+                og_boq_qty            = og_boq_qty,
+                boq_qty               = claim_qty,
+                certified_qty         = cert_qty,
+                unit_rate             = unit_rate,
                 claim_amount          = claim_amt,
                 certified_amount      = cert_amt,
                 difference            = diff,
-                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake")    or 0)),
-                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending")    or 0)),
-                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")                  or 0)),
-                hold_work                        = Decimal(str(row.get("holdWork")                         or 0)),
-                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")       or 0)),
+                # Justification stored as QTY
+                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake") or 0)),
+                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending") or 0)),
+                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")               or 0)),
+                hold_work                        = Decimal(str(row.get("holdWork")                      or 0)),
+                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")    or 0)),
                 remarks                          = row.get("remarks"),
             )
             db.session.add(line)
@@ -606,12 +635,17 @@ def edit_ua(ua_id, data, user_id):
             item_type = row.get("itemType")
             item_code = row.get("itemCode")
 
-            claim_amt = Decimal(str(row.get("claimAmount") or 0))
+            unit_rate  = Decimal(str(row.get("unitRate") or 0))
+            claim_qty  = Decimal(str(row.get("boqQty")  or 0))
+            og_boq_qty = Decimal(str(row.get("ogBOQQty") or 0))
+            claim_amt  = claim_qty * unit_rate
+
             if billing_id and item_code:
                 cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
                 cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
-            diff = claim_amt - cert_amt
+            cert_qty = (cert_amt / unit_rate).quantize(Decimal('0.0001')) if unit_rate else Decimal('0')
+            diff     = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
                 ua_id                 = ua.id,
@@ -630,16 +664,18 @@ def edit_ua(ua_id, data, user_id):
                 item_name             = row.get("itemName"),
                 item_name_desc        = row.get("itemNameDesc"),
                 unit                  = row.get("unit"),
-                boq_qty               = Decimal(str(row.get("boqQty")   or 0)),
-                unit_rate             = Decimal(str(row.get("unitRate")  or 0)),
+                og_boq_qty            = og_boq_qty,
+                boq_qty               = claim_qty,
+                certified_qty         = cert_qty,
+                unit_rate             = unit_rate,
                 claim_amount          = claim_amt,
                 certified_amount      = cert_amt,
                 difference            = diff,
-                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake")    or 0)),
-                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending")    or 0)),
-                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")                  or 0)),
-                hold_work                        = Decimal(str(row.get("holdWork")                         or 0)),
-                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")       or 0)),
+                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake") or 0)),
+                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending") or 0)),
+                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")               or 0)),
+                hold_work                        = Decimal(str(row.get("holdWork")                      or 0)),
+                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")    or 0)),
                 remarks                          = row.get("remarks"),
             )
             db.session.add(line)
