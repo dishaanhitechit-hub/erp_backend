@@ -1,9 +1,22 @@
 # app/modules/auth/service.py
 
 from app.models.user import User
+from app.models.tokenBlocklist import TokenBlocklist
 from app.extensions import db
 from app.response import res
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, get_jwt
+
+
+def logout_user():
+    jti = get_jwt().get("jti")
+    try:
+        db.session.add(TokenBlocklist(jti=jti))
+        db.session.commit()
+        return res("Logged out successfully", [])
+    except Exception:
+        db.session.rollback()
+        return res("Logout failed", [], code=500)
+
 
 def login_user(loginUserName, password):
     user = User.query.filter_by(login_username =  loginUserName).first()

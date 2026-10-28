@@ -18,6 +18,9 @@ def create_app():
     bcrypt.init_app(app)
     migrate.init_app(app, db)
 
+    # auth models — must be imported so Alembic detects the table
+    from .models import tokenBlocklist  # noqa — registers TokenBlocklist with Alembic
+
     # maintenance model — must be imported so Alembic detects the table
     from .models import maintenance_txn  # noqa
     from .models import manpower  # noqa — registers ManpowerWorker with Alembic

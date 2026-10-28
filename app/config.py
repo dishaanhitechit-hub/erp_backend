@@ -6,7 +6,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY") or "super-secret"
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or "jwt-super-secret"
-    JWT_ACCESS_TOKEN_EXPIRES = False
+    JWT_ACCESS_TOKEN_EXPIRES = False  # testing phase — tokens don't auto-expire
+    # JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=48)  # enable for production (import timedelta from datetime)
     SQLALCHEMY_DATABASE_URI = (
         f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
     )
