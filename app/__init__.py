@@ -137,8 +137,12 @@ def create_app():
     from .modules.project_mgmt.custom_billing.og_sale_order.routes import og_sale_order_bp
     app.register_blueprint(og_sale_order_bp, url_prefix="/project-mgmt/og-sale-order")
 
-    from .models import billingMaster  # noqa — registers BillingMaster, BillingItem with Alembic
-    from .models import ogSaleOrder    # noqa — registers OgSaleOrderMaster, OgSaleOrderItem with Alembic
+    from .modules.project_mgmt.custom_billing.uncertain_allocation.routes import ua_bp
+    app.register_blueprint(ua_bp, url_prefix="/project-mgmt/uncertain-allocation")
+
+    from .models import billingMaster        # noqa — registers BillingMaster, BillingItem with Alembic
+    from .models import ogSaleOrder          # noqa — registers OgSaleOrderMaster, OgSaleOrderItem with Alembic
+    from .models import uncertainAllocation  # noqa — registers UncertainAllocationMaster, UncertainAllocationLine with Alembic
 
     from .modules.project_mgmt.contract.budget.routes import budget_bp
     app.register_blueprint(budget_bp, url_prefix="/project-mgmt/contract/budget")
