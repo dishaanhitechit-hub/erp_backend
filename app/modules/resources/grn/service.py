@@ -42,6 +42,25 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
+def _fmt_date_only(d):
+    """Return date-only YYYY-MM-DD regardless of whether d is date or datetime."""
+    if d is None:
+        return None
+    return d.strftime("%Y-%m-%d")
+
+
+def _parse_datetime(s):
+    """Parse date/datetime string from frontend into a datetime object."""
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def _pre_received_qty(order_item_id):
     """
     Sum of all current_received_qty already posted in approved/submitted GRNs
@@ -320,12 +339,12 @@ def create_grn(data, user_id, files=None):
             billing_address=data.get("billingAddress"),
             shipping_address=data.get("shippingAddress"),
             challan_no=data.get("challanNo"),
-            challan_date=data.get("challanDate"),
+            challan_date=_parse_datetime(data.get("challanDate")),
             party_bill_no=data.get("partyBillNo"),
             party_bill_date=data.get("partyBillDate"),
             deliver_vehicle_no=data.get("deliverVehicleNo"),
             delivered_concern=data.get("deliveredConcern"),
-            unloading_datetime=data.get("unloadingDatetime"),
+            unloading_datetime=_parse_datetime(data.get("unloadingDatetime")),
             physically_verified_by=data.get("physicallyVerifiedBy"),
             attached_doc=attached_doc,
             workflow_status="Draft",
@@ -549,7 +568,7 @@ def get_grn_details(grn_id):
             "billingAddress": grn.billing_address,
             "shippingAddress": grn.shipping_address,
             "challanNo": grn.challan_no,
-            "challanDate":_fmt_date(grn.challan_date),
+            "challanDate": _fmt_date_only(grn.challan_date),
             "partyBillNo": grn.party_bill_no,
             "partyBillDate": _fmt_date(grn.party_bill_date),
             "deliverVehicleNo": grn.deliver_vehicle_no,
@@ -1007,11 +1026,11 @@ def edit_grn(grn_id, data, user_id, files=None):
         if data.get("deliveredConcern"):
             grn.delivered_concern = data.get("deliveredConcern")
         if data.get("unloadingDatetime"):
-            grn.unloading_datetime = data.get("unloadingDatetime")
+            grn.unloading_datetime = _parse_datetime(data.get("unloadingDatetime"))
         if data.get("physicallyVerifiedBy"):
             grn.physically_verified_by = data.get("physicallyVerifiedBy")
         if data.get("challanDate"):
-            grn.challan_date = data.get("challanDate")
+            grn.challan_date = _parse_datetime(data.get("challanDate"))
 
         # ── file update ────────────────────────────────────────
         if data.get("clearAttachedDoc") == "true":
@@ -1329,7 +1348,7 @@ def get_grn_by_uuid(grn_uuid):
             "locked":            grn.locked,
 
             "receivedCategory":    grn.received_category,
-            "challanDate": _fmt_date(grn.challan_date),
+            "challanDate": _fmt_date_only(grn.challan_date),
             "itemCategory":        grn.item_category,
             "costHead":            grn.cost_head,
             "billingAddress":      grn.billing_address,
