@@ -1014,7 +1014,9 @@ def edit_grn(grn_id, data, user_id, files=None):
             grn.challan_date = data.get("challanDate")
 
         # ── file update ────────────────────────────────────────
-        if files:
+        if data.get("clearAttachedDoc") == "true":
+            grn.attached_doc = None
+        elif files:
             doc_file = files.get("attachedDoc")
             if doc_file:
                 grn.attached_doc = upload_file_to_bunny(
