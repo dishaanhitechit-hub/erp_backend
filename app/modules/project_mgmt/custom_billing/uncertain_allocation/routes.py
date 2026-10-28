@@ -4,6 +4,8 @@ from app.middleware.auth_middleware import login_required
 from .service import (
     get_sale_orders_for_lookup,
     get_sale_order_items_for_ua,
+    get_claim_bills_for_so,
+    get_claim_bill_items_for_ua,
     create_ua,
     get_ua_list,
     get_ua_details,
@@ -38,6 +40,20 @@ def api_sale_order_lookup():
 def api_sale_order_items(og_sale_order_id):
     project_code = request.args.get("projectCode")
     return get_sale_order_items_for_ua(og_sale_order_id, project_code)
+
+
+# ── 1c. CLAIM BILL LOOKUP ────────────────────────────────────────
+@ua_bp.route("/claim-bills/<int:og_sale_order_id>", methods=["GET"])
+@login_required
+def api_claim_bills(og_sale_order_id):
+    return get_claim_bills_for_so(og_sale_order_id)
+
+
+# ── 1d. CLAIM BILL ITEMS ─────────────────────────────────────────
+@ua_bp.route("/claim-bill-items/<int:billing_id>", methods=["GET"])
+@login_required
+def api_claim_bill_items(billing_id):
+    return get_claim_bill_items_for_ua(billing_id)
 
 
 # ── 2. CREATE ────────────────────────────────────────────────────

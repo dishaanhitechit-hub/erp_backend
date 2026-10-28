@@ -6,7 +6,7 @@ import uuid as _uuid_lib
 
 from app.models.uncertainAllocation import UncertainAllocationMaster, UncertainAllocationLine
 from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
-from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
+from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -82,7 +82,6 @@ def _fetch_certified_amount(og_sale_order_no, project_code):
 
 
 def _fetch_item_claim_amount(og_sale_order_id, item_code, item_type):
-    """Sum of BillingItem/BillingBoqItem.amount for approved sale_claim_bill for this SO + item_code."""
     ItemModel = BillingBoqItem if item_type == "boq_item" else BillingItem
     result = (
         db.session.query(func.coalesce(func.sum(ItemModel.amount), 0))
@@ -99,7 +98,6 @@ def _fetch_item_claim_amount(og_sale_order_id, item_code, item_type):
 
 
 def _fetch_item_certified_amount(og_sale_order_id, item_code, item_type):
-    """Sum of BillingItem/BillingBoqItem.amount for approved sale_certified_bill for this SO + item_code."""
     ItemModel = BillingBoqItem if item_type == "boq_item" else BillingItem
     result = (
         db.session.query(func.coalesce(func.sum(ItemModel.amount), 0))
@@ -109,6 +107,23 @@ def _fetch_item_certified_amount(og_sale_order_id, item_code, item_type):
             BillingMaster.mode             == "sale_certified_bill",
             BillingMaster.workflow_status  == "Approved",
             ItemModel.item_code            == item_code,
+        )
+        .scalar()
+    )
+    return Decimal(str(result or 0))
+
+
+def _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type):
+    """Sum certified bill item amounts for all approved certified bills linked to billing_id."""
+    ItemModel = BillingBoqItem if item_type == "boq_item" else BillingItem
+    result = (
+        db.session.query(func.coalesce(func.sum(ItemModel.amount), 0))
+        .join(BillingMaster, ItemModel.billing_id == BillingMaster.id)
+        .filter(
+            BillingMaster.claim_bill_id   == billing_id,
+            BillingMaster.mode            == "sale_certified_bill",
+            BillingMaster.workflow_status == "Approved",
+            ItemModel.item_code           == item_code,
         )
         .scalar()
     )
@@ -126,6 +141,9 @@ def _line_payload(line):
         "orderNo":                         line.order_no,
         "orderDate":                       _fmt_date(line.order_date),
         "ogSaleOrderDate":                 _fmt_date(og.og_sale_order_date) if og else None,
+        # Claim bill reference
+        "billingId":                       line.billing_id,
+        "billingNo":                       line.billing_no,
         # Item-level fields
         "ogSaleOrderItemId":               line.og_sale_order_item_id,
         "itemType":                        line.item_type,
@@ -264,6 +282,101 @@ def get_sale_order_items_for_ua(og_sale_order_id, project_code):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 1c. CLAIM BILL LOOKUP (for a given sale order)
+# ══════════════════════════════════════════════════════════════════
+
+def get_claim_bills_for_so(og_sale_order_id):
+    try:
+        bills = (
+            BillingMaster.query
+            .filter(
+                BillingMaster.og_sale_order_id == og_sale_order_id,
+                BillingMaster.mode             == "sale_claim_bill",
+                BillingMaster.workflow_status  == "Approved",
+            )
+            .order_by(BillingMaster.id.desc())
+            .all()
+        )
+        result = [
+            {
+                "billingId":   b.id,
+                "billingNo":   b.billing_no,
+                "billingDate": _fmt_date(b.billing_date),
+                "thisBillClaim": float(b.this_bill_claim or 0),
+            }
+            for b in bills
+        ]
+        return res("Claim bills fetched", result, 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1d. CLAIM BILL ITEMS (item-level, for table population)
+# ══════════════════════════════════════════════════════════════════
+
+def get_claim_bill_items_for_ua(billing_id):
+    try:
+        bill = BillingMaster.query.get(billing_id)
+        if not bill:
+            return res("Claim bill not found", [], 404)
+
+        og_so = bill.og_so
+
+        result = []
+
+        # Regular items
+        for item in bill.items:
+            cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "item")
+            result.append({
+                "billingItemId": item.id,
+                "itemType":      "item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "claimQty":      float(item.claim_qty  or 0),
+                "unitRate":      float(item.rate        or 0),
+                "claimAmount":   float(item.amount      or 0),
+                "certifiedAmount": float(cert_amt),
+                "difference":    float(item.amount or 0) - float(cert_amt),
+            })
+
+        # BOQ items
+        boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
+        for item in boq_items:
+            cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "boq_item")
+            result.append({
+                "billingItemId": item.id,
+                "itemType":      "boq_item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "claimQty":      float(item.claim_qty  or 0),
+                "unitRate":      float(item.rate        or 0),
+                "claimAmount":   float(item.amount      or 0),
+                "certifiedAmount": float(cert_amt),
+                "difference":    float(item.amount or 0) - float(cert_amt),
+            })
+
+        return res("Claim bill items fetched", {
+            "billingId":     bill.id,
+            "billingNo":     bill.billing_no,
+            "ogSaleOrderId": og_so.id   if og_so else None,
+            "ogSaleOrderNo": og_so.og_sale_order_no if og_so else bill.og_sale_order_no,
+            "orderTitle":    og_so.order_title if og_so else None,
+            "orderNo":       og_so.order_no    if og_so else None,
+            "items":         result,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 2. CREATE
 # ══════════════════════════════════════════════════════════════════
 
@@ -298,19 +411,22 @@ def create_ua(data, user_id):
         total_cert  = Decimal('0')
 
         for idx, row in enumerate(lines_data, start=1):
-            og_so_id = row.get("ogSaleOrderId")
-            og_so    = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            og_so_id   = row.get("ogSaleOrderId")
+            billing_id = row.get("billingId")
+            og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
+            og_so_no   = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
             item_code = row.get("itemCode")
 
-            if og_so_id and item_code:
-                claim_amt = _fetch_item_claim_amount(og_so_id, item_code, item_type)
-                cert_amt  = _fetch_item_certified_amount(og_so_id, item_code, item_type)
+            # Amounts come directly from the frontend (already computed from claim bill item)
+            claim_amt = Decimal(str(row.get("claimAmount") or 0))
+            # Re-compute certified from DB to stay fresh
+            if billing_id and item_code:
+                cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
-                claim_amt = Decimal(str(row.get("claimAmount") or 0))
-                cert_amt  = Decimal(str(row.get("certifiedAmount") or 0))
+                cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
             diff = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
@@ -321,6 +437,8 @@ def create_ua(data, user_id):
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
+                billing_id            = billing_id,
+                billing_no            = bill.billing_no if bill else row.get("billingNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),
@@ -478,19 +596,20 @@ def edit_ua(ua_id, data, user_id):
         total_cert  = Decimal('0')
 
         for idx, row in enumerate(lines_data, start=1):
-            og_so_id = row.get("ogSaleOrderId")
-            og_so    = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            og_so_id   = row.get("ogSaleOrderId")
+            billing_id = row.get("billingId")
+            og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
+            og_so_no   = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
             item_code = row.get("itemCode")
 
-            if og_so_id and item_code:
-                claim_amt = _fetch_item_claim_amount(og_so_id, item_code, item_type)
-                cert_amt  = _fetch_item_certified_amount(og_so_id, item_code, item_type)
+            claim_amt = Decimal(str(row.get("claimAmount") or 0))
+            if billing_id and item_code:
+                cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
-                claim_amt = Decimal(str(row.get("claimAmount") or 0))
-                cert_amt  = Decimal(str(row.get("certifiedAmount") or 0))
+                cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
             diff = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
@@ -501,6 +620,8 @@ def edit_ua(ua_id, data, user_id):
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
+                billing_id            = billing_id,
+                billing_no            = bill.billing_no if bill else row.get("billingNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),

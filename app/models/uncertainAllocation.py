@@ -86,6 +86,14 @@ class UncertainAllocationLine(db.Model):
     order_no         = db.Column(db.String(50),  nullable=True)
     order_date       = db.Column(db.Date,        nullable=True)
 
+    # Claim bill reference (source of this line's claim amount)
+    billing_id = db.Column(
+        db.Integer,
+        db.ForeignKey("billing_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    billing_no = db.Column(db.String(50), nullable=True)
+
     # Item-level columns (one row per BOQ/non-BOQ item)
     og_sale_order_item_id = db.Column(db.Integer,      nullable=True)  # PK of OgSaleOrderItem or OgSaleOrderBoqItem
     item_type             = db.Column(db.String(20),   nullable=True)  # 'item' or 'boq_item'
@@ -114,3 +122,4 @@ class UncertainAllocationLine(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     og_sale_order = db.relationship("OgSaleOrderMaster", foreign_keys=[og_sale_order_id])
+    claim_bill    = db.relationship("BillingMaster",      foreign_keys=[billing_id])
