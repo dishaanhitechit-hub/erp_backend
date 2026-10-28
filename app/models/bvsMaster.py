@@ -82,7 +82,8 @@ class BvsMaster(db.Model):
     items = db.relationship(
         "BvsItem",
         backref="bvs",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="BvsItem.id",
     )
 
     creator   = db.relationship("User", foreign_keys=[created_by])

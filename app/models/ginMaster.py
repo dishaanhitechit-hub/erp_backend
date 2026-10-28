@@ -177,7 +177,8 @@ class GinMaster(db.Model):
     items = db.relationship(
         "GinItem",
         backref="gin",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="GinItem.id",
     )
 
     creator = db.relationship("User", foreign_keys=[created_by])

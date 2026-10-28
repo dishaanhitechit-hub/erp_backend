@@ -213,7 +213,8 @@ class GrnMaster(db.Model):
     items = db.relationship(
         "GrnItem",
         backref="grn",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="GrnItem.id",
     )
 
     creator = db.relationship(

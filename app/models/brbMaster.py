@@ -77,7 +77,8 @@ class BrbMaster(db.Model):
     items = db.relationship(
         "BrbItem",
         backref="brb",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="BrbItem.id",
     )
 
     creator   = db.relationship("User", foreign_keys=[created_by])

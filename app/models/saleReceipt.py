@@ -40,4 +40,5 @@ class SaleReceiptMaster(db.Model):
         "SaleReceiptBillingMaster",
         backref="receipt",
         cascade="all,delete-orphan",
+        order_by="SaleReceiptBillingMaster.id",
     )

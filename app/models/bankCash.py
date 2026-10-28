@@ -40,4 +40,5 @@ class BankCash(db.Model):
 
     creator  = db.relationship("User", foreign_keys=[created_by])
     projects = db.relationship("BankCashProject", backref="bank_cash",
-                               cascade="all, delete-orphan", lazy="joined")
+                               cascade="all, delete-orphan", lazy="joined",
+                               order_by="BankCashProject.id")
