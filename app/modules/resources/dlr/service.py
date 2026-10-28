@@ -103,6 +103,9 @@ def _serialize(d: DlrMaster):
         "dlrNo": d.dlr_no,
         "dlrDate": d.dlr_date.isoformat() if d.dlr_date else None,
         "projectCode": d.project_code,
+        "supplierId": d.supplier_id,
+        "supplierName": d.supplier.supplier_name if d.supplier else None,
+        "supplierCode": d.supplier.supplier_code if d.supplier else None,
         "vendorId": d.vendor_id,
         "vendorName": d.vendor.ledger_name if d.vendor else None,
         "orderId": d.order_id,
@@ -204,7 +207,7 @@ def create_dlr(request):
         dlr_no=dlr_no,
         dlr_date=dlr_date,
         project_code=project_code,
-        vendor_id=data.get("vendorId") or None,
+        supplier_id=data.get("vendorId") or None,
         order_id=data.get("orderId") or None,
         report_by=data.get("reportBy"),
         verified_by=data.get("verifiedBy"),
@@ -270,7 +273,7 @@ def edit_dlr(dlr_id, request):
     if data.get("dlrDate"):
         d.dlr_date = _parse_date(data.get("dlrDate"))
     if "vendorId" in data:
-        d.vendor_id = data.get("vendorId") or None
+        d.supplier_id = data.get("vendorId") or None
     if "orderId" in data:
         d.order_id = data.get("orderId") or None
     if "reportBy" in data:

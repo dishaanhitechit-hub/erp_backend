@@ -24,6 +24,12 @@ class DlrMaster(db.Model):
         nullable=True,
     )
 
+    supplier_id = db.Column(
+        db.Integer,
+        db.ForeignKey("suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     order_id = db.Column(
         db.Integer,
         db.ForeignKey("order_master.id", ondelete="SET NULL"),
@@ -53,6 +59,7 @@ class DlrMaster(db.Model):
     # ── relationships ─────────────────────────────────────────────
     project = db.relationship("Project", backref="dlrs")
     vendor = db.relationship("Vendor", foreign_keys=[vendor_id], backref="dlrs")
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id], backref="dlrs")
     order = db.relationship("OrderMaster", foreign_keys=[order_id], backref="dlrs")
 
     items = db.relationship("DlrItem", backref="dlr", cascade="all,delete-orphan", order_by="DlrItem.sl_no")
