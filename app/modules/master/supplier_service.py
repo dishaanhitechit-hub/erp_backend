@@ -223,10 +223,19 @@ def create_supplier(request):
 # ─────────────────────────────────────────
 
 def get_all_suppliers():
-    supplier_type = flask_request.args.get("supplierType")
-    search = flask_request.args.get("search", "").strip()
+    supplier_type   = flask_request.args.get("supplierType")
+    search          = flask_request.args.get("search", "").strip()
+    project_code_qp = flask_request.args.get("projectCode", "").strip()
+    has_ledger      = flask_request.args.get("hasLedger", "").lower() == "true"
 
-    user_id, project_id = _get_current_user()
+    user_id, session_project_id = _get_current_user()
+
+    # Resolve project_id: explicit query param wins over session
+    project_id = session_project_id
+    if project_code_qp:
+        proj = Project.query.filter_by(project_code=project_code_qp).first()
+        if proj:
+            project_id = proj.id
 
     query = Supplier.query
     if project_id:
@@ -234,6 +243,11 @@ def get_all_suppliers():
             SupplierProjectMap,
             SupplierProjectMap.supplier_id == Supplier.id
         ).filter(SupplierProjectMap.project_id == project_id)
+
+    # Only return suppliers that have at least one vendor ledger linked
+    if has_ledger:
+        linked_ids = db.session.query(SupplierLedgerMap.supplier_id).distinct().subquery()
+        query = query.filter(Supplier.id.in_(linked_ids))
 
     if supplier_type:
         query = query.filter(
