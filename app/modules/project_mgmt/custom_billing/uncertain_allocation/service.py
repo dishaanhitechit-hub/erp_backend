@@ -299,9 +299,10 @@ def get_claim_bills_for_so(og_sale_order_id):
         )
         result = [
             {
-                "billingId":   b.id,
-                "billingNo":   b.billing_no,
-                "billingDate": _fmt_date(b.billing_date),
+                "billingId":     b.id,
+                "billingNo":     b.billing_no,
+                "title":         b.title or "",
+                "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }
             for b in bills
