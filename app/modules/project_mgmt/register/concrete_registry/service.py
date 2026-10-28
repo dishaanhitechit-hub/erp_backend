@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.response import res
 from app.models.project import Project
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.concrete_registry import ConcreteRegistry
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
@@ -203,6 +203,9 @@ def update_registry(registry_id, request, user_id=None):
                 fileName="attach_file"
             )
             registry.attach_batch_file = batch_file
+        elif data.get("clearAttachBatchFile") == "true":
+            delete_file_from_storage(registry.attach_batch_file)
+            registry.attach_batch_file = None
 
         if registry.workflow_status == "Reback":
             registry.correction_sent_at = None

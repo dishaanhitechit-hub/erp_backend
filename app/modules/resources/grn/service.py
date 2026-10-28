@@ -13,7 +13,7 @@ from app.models.asset import Asset
 from app.models.unit import Unit
 from app.models.companies import Company
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -1034,6 +1034,7 @@ def edit_grn(grn_id, data, user_id, files=None):
 
         # ── file update ────────────────────────────────────────
         if data.get("clearAttachedDoc") == "true":
+            delete_file_from_storage(grn.attached_doc)
             grn.attached_doc = None
         elif files:
             doc_file = files.get("attachedDoc")

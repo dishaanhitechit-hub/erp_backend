@@ -13,7 +13,7 @@ from app.models.ORDER_projectwork import ProjectWorkOrderMaster, ProjectWorkOrde
 from app.models.srnMaster import SrnMaster, SrnItem
 from app.models.companies import Company
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 # from app.alias_helper import get_approval_module
 from app.modules.work_flow import (
     is_creator,
@@ -924,6 +924,9 @@ def edit_srn(srn_id, data, user_id, files=None):
                     subFolder=srn.srn_no,
                     fileName="attached_doc"
                 )
+            elif data.get("clearAttachedDoc") == "true":
+                delete_file_from_storage(srn.attached_doc)
+                srn.attached_doc = None
 
         # wipe old items & rebuild
         SrnItem.query.filter_by(srn_id=srn.id).delete()

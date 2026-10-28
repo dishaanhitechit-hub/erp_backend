@@ -8,7 +8,7 @@ import json
 
 from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
 from app.models.ogSaleOrder import OgSaleOrderMaster
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
@@ -777,6 +777,9 @@ def edit_billing(bill_id, req, user_id):
         new_file = req.files.get("attachment")
         if new_file and new_file.filename:
             bill.attachment = _upload_billing_attachment(new_file, bill.billing_no)
+        elif req.form.get("clearAttachment") == "true":
+            delete_file_from_storage(bill.attachment)
+            bill.attachment = None
 
         BillingItem.query.filter_by(billing_id=bill.id).delete()
         BillingBoqItem.query.filter_by(billing_id=bill.id).delete()

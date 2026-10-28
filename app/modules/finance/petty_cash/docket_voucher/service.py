@@ -12,7 +12,7 @@ from app.models.pettyCashDocketVoucher import (
 )
 from app.models.pettyCashBudget import PettyCashBudget, PettyCashBudgetDetail
 from app.models.bankCash import BankCash, BankCashProject
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -441,6 +441,9 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
                     subFolder="docket_voucher",
                     fileName=str(_uuid.uuid4()),
                 )
+            elif data.get("clearAttachment") == "true":
+                delete_file_from_storage(voucher.attachment)
+                voucher.attachment = None
 
         PettyCashDocketVoucherDetail.query.filter_by(voucher_id=voucher.id).delete()
         db.session.flush()

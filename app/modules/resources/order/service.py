@@ -2167,6 +2167,9 @@ def edit_order(order_id, data, user_id, files=None):
                     subFolder=order.id,
                     fileName="support"
                 )
+            elif data.get("clearOrderFile") == "true":
+                delete_file_from_storage(order.supporting_file)
+                order.supporting_file = None
 
         # ── wipe old items & terms ────────────────────────────
         # Delete first so previous_qty query below excludes this order cleanly

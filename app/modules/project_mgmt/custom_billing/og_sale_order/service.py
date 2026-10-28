@@ -6,7 +6,7 @@ import uuid as _uuid
 import json
 
 from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
@@ -365,16 +365,25 @@ def edit_og_sale_order(so_id, request, user_id):
         if data.get("orderTitle"):
             og_so.order_title = data.get("orderTitle").strip()
 
-        # Upload attachments only if new file provided
+        # Upload new attachments or clear if explicitly removed
         f1 = request.files.get("attachment_1")
         f2 = request.files.get("attachment_2")
         f3 = request.files.get("attachment_3")
         if f1 and f1.filename:
             og_so.attachment_1 = _upload_attachment(f1, og_so.og_sale_order_no, "attachment_1")
+        elif request.form.get("clearAttachment_1") == "true":
+            delete_file_from_storage(og_so.attachment_1)
+            og_so.attachment_1 = None
         if f2 and f2.filename:
             og_so.attachment_2 = _upload_attachment(f2, og_so.og_sale_order_no, "attachment_2")
+        elif request.form.get("clearAttachment_2") == "true":
+            delete_file_from_storage(og_so.attachment_2)
+            og_so.attachment_2 = None
         if f3 and f3.filename:
             og_so.attachment_3 = _upload_attachment(f3, og_so.og_sale_order_no, "attachment_3")
+        elif request.form.get("clearAttachment_3") == "true":
+            delete_file_from_storage(og_so.attachment_3)
+            og_so.attachment_3 = None
 
         # Rebuild both tables from scratch — switching between tables is handled here
         OgSaleOrderItem.query.filter_by(og_sale_order_id=og_so.id).delete()

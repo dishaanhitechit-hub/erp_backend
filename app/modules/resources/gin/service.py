@@ -11,7 +11,7 @@ from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.ginMaster import GinMaster, GinItem
 from app.models.companies import Company
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -918,6 +918,9 @@ def edit_gin(gin_id, data, user_id, files=None):
                     subFolder=gin.gin_no,
                     fileName="attached_doc"
                 )
+            elif data.get("clearAttachedDoc") == "true":
+                delete_file_from_storage(gin.attached_doc)
+                gin.attached_doc = None
 
         # wipe old items & rebuild
         GinItem.query.filter_by(gin_id=gin.id).delete()

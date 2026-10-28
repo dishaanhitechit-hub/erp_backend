@@ -41,7 +41,7 @@ from app.alias_helper import *
 from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -526,6 +526,9 @@ def edit_pw_order(order_id, data, user_id, files=None):
                     subFolder=order.id,
                     fileName="support",
                 )
+            elif data.get("clearOrderFile") == "true":
+                delete_file_from_storage(order.supporting_file)
+                order.supporting_file = None
 
         # ── wipe old items & terms (flush so subquery excludes them)
         ProjectWorkOrderItem.query.filter_by(order_id=order.id).delete()

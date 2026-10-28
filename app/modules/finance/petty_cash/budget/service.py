@@ -10,7 +10,7 @@ from app.models.pettyCashBudget import (
     PettyCashBudgetDetail,
     PettyCashBudgetRevision,
 )
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -297,6 +297,9 @@ def edit_petty_cash_budget(budget_id, data, user_id, files=None):
                     subFolder="budget",
                     fileName=str(_uuid.uuid4()),
                 )
+            elif data.get("clearAttachment") == "true":
+                delete_file_from_storage(budget.attachment)
+                budget.attachment = None
 
         PettyCashBudgetDetail.query.filter_by(budget_id=budget.id).delete()
         db.session.flush()

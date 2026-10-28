@@ -4,7 +4,7 @@ from datetime import datetime
 
 from app.models.drawingRegister import DrawingRegister
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
@@ -285,6 +285,9 @@ def edit_drawing_register(dr_id, data, user_id, files=None):
                     subFolder=dr.dr_no,
                     fileName="attachment"
                 )
+            elif data.get("clearAttachment") == "true":
+                delete_file_from_storage(dr.attachment)
+                dr.attachment = None
 
         if dr.workflow_status == "Reback":
             dr.correction_sent_at = None

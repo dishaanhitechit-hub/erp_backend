@@ -1,5 +1,22 @@
 import os
 
+def delete_file_from_storage(url):
+    """Delete a previously uploaded file given its public URL. Silent no-op on any error."""
+    if not url:
+        return
+    try:
+        media_base_path = os.getenv("MEDIA_BASE_PATH")
+        media_base_url  = os.getenv("MEDIA_BASE_URL")
+        if not media_base_path or not media_base_url:
+            return
+        if url.startswith(media_base_url):
+            relative  = url[len(media_base_url):].lstrip("/")
+            file_path = os.path.join(media_base_path, relative)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+    except Exception as e:
+        print("Delete file error:", str(e))
+
 def upload_file_to_bunny(file, mainFolder, subFolder, fileName):
     if not file:
         return None

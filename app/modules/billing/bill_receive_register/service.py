@@ -10,7 +10,7 @@ from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.models.brbMaster import BrbMaster
 from app.modules.billing.constants import get_billing_type
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
@@ -508,6 +508,9 @@ def edit_brr(brr_id, data, user_id, files=None):
                     subFolder  = brr.brr_no,
                     fileName   = "attached_doc"
                 )
+            elif data.get("clearAttachedDoc") == "true":
+                delete_file_from_storage(brr.attached_doc)
+                brr.attached_doc = None
 
         if brr.workflow_status == "Reback":
             brr.correction_sent_at = None

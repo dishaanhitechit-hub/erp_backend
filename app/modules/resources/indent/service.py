@@ -712,6 +712,9 @@ def update_indent(indent_id, data, files=None, updated_by=None):
                     )
 
                 )
+            elif data.get("clearIndentFile") == "true":
+                delete_file_from_storage(indent.supporting_file)
+                indent.supporting_file = None
         # ==========================================
         # UPDATE ITEMS ONLY IF SENT
         # ==========================================

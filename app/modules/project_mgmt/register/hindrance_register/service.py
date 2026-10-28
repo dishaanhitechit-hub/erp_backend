@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models.hindranceRegister import HindranceRegister
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
@@ -291,6 +291,9 @@ def edit_hindrance_register(hr_id, data, user_id, files=None):
                     subFolder=hr.hindrance_no,
                     fileName="attachment"
                 )
+            elif data.get("clearAttachment") == "true":
+                delete_file_from_storage(hr.attachment)
+                hr.attachment = None
 
         hr.updated_by = user_id
         hr.updated_at = datetime.utcnow()

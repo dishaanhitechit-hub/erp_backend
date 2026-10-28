@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models.bbsRegister import BbsRegister
 from app.response import res
-from app.cloudinary_uploader import upload_file_to_bunny
+from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
@@ -277,6 +277,9 @@ def edit_bbs_register(bbs_id, data, user_id, files=None):
                     subFolder=bbs.bbs_no,
                     fileName="attachment"
                 )
+            elif data.get("clearAttachment") == "true":
+                delete_file_from_storage(bbs.attachment)
+                bbs.attachment = None
 
         bbs.updated_by = user_id
         bbs.updated_at = datetime.utcnow()
