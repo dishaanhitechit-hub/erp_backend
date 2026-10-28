@@ -244,6 +244,200 @@ def _build_project_entries(project_code, from_date=None, to_date=None):
     return summary, entries
 
 
+def _build_all_projects_entries(projects, from_date=None, to_date=None):
+    """
+    Fetch all 8 document types in 8 global queries (one per type, no per-project loop),
+    then group by project_code in Python. Returns {project_code: (summary, entries) | None}.
+    """
+    if not projects:
+        return {}
+
+    project_codes = [p.project_code for p in projects]
+
+    def _df(q, date_col):
+        if from_date:
+            q = q.filter(date_col >= from_date)
+        if to_date:
+            q = q.filter(date_col <= to_date)
+        return q
+
+    sale_bills = _df(
+        SaleBillMaster.query.filter(
+            SaleBillMaster.project_code.in_(project_codes),
+            SaleBillMaster.workflow_status == "Approved",
+        ),
+        SaleBillMaster.invoice_date,
+    ).all()
+
+    sale_receipts = _df(
+        SaleReceiptBillingMaster.query.filter(
+            SaleReceiptBillingMaster.project_code.in_(project_codes),
+            SaleReceiptBillingMaster.workflow_status == "Approved",
+        ),
+        SaleReceiptBillingMaster.invoice_date,
+    ).all()
+
+    pv_records = _df(
+        PurchaseVoucherMaster.query.filter(
+            PurchaseVoucherMaster.project_code.in_(project_codes),
+            PurchaseVoucherMaster.workflow_status == "Approved",
+        ),
+        PurchaseVoucherMaster.processing_date,
+    ).all()
+
+    pb_records = _df(
+        PurchaseBillMaster.query.filter(
+            PurchaseBillMaster.project_code.in_(project_codes),
+            PurchaseBillMaster.workflow_status == "Approved",
+        ),
+        PurchaseBillMaster.processing_date,
+    ).all()
+
+    pvm_records = _df(
+        PaymentVoucherMaster.query.filter(
+            PaymentVoucherMaster.project_code.in_(project_codes),
+            PaymentVoucherMaster.workflow_status == "Approved",
+        ),
+        PaymentVoucherMaster.payment_date,
+    ).all()
+
+    bpr_records = _df(
+        BillPaymentReceiptMaster.query.filter(
+            BillPaymentReceiptMaster.project_code.in_(project_codes),
+            BillPaymentReceiptMaster.workflow_status == "Approved",
+        ),
+        BillPaymentReceiptMaster.payment_date,
+    ).all()
+
+    dn_records = _df(
+        DebitNoteMaster.query.filter(
+            DebitNoteMaster.project_code.in_(project_codes),
+            DebitNoteMaster.workflow_status == "Approved",
+        ),
+        DebitNoteMaster.entry_date,
+    ).all()
+
+    cn_records = _df(
+        CreditNoteMaster.query.filter(
+            CreditNoteMaster.project_code.in_(project_codes),
+            CreditNoteMaster.workflow_status == "Approved",
+        ),
+        CreditNoteMaster.entry_date,
+    ).all()
+
+    # Batch-load all vendor names in one query
+    vendor_ids = set()
+    for r in pv_records + pb_records + pvm_records + bpr_records:
+        if r.vendor_id:
+            vendor_ids.add(r.vendor_id)
+    for r in dn_records + cn_records:
+        if r.vendor_id:
+            vendor_ids.add(r.vendor_id)
+    v_map = _vendor_map(vendor_ids)
+
+    # Group raw records into per-project entry lists
+    by_project = {pc: [] for pc in project_codes}
+
+    for r in sale_bills:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.invoice_date), "_sort_dt": r.invoice_date, "_sort_id": r.id,
+            "docType": "Sale Bill", "docNo": r.sale_bill_no, "docId": r.id,
+            "vendorName": None, "particular": "Sale Invoice " + r.sale_bill_no,
+            "debit": float(r.total_invoice_amount or 0), "credit": 0.0,
+        })
+
+    for r in sale_receipts:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.invoice_date), "_sort_dt": r.invoice_date, "_sort_id": r.id,
+            "docType": "Sale Receipt", "docNo": r.srb_no, "docId": r.id,
+            "vendorName": None, "particular": "Sale Receipt " + r.srb_no,
+            "debit": float(r.total_invoice_amount or 0), "credit": 0.0,
+        })
+
+    for r in pv_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.processing_date), "_sort_dt": r.processing_date, "_sort_id": r.id,
+            "docType": "Purchase Voucher", "docNo": r.voucher_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id),
+            "particular": "Purchase Voucher " + r.voucher_no,
+            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
+        })
+
+    for r in pb_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.processing_date), "_sort_dt": r.processing_date, "_sort_id": r.id,
+            "docType": "Purchase Bill", "docNo": r.purchase_bill_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id),
+            "particular": "Purchase Bill " + r.purchase_bill_no + (f" | {r.vendor_bill_no}" if r.vendor_bill_no else ""),
+            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
+        })
+
+    for r in pvm_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.payment_date), "_sort_dt": r.payment_date, "_sort_id": r.id,
+            "docType": "Payment Voucher", "docNo": r.payment_vouch_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id),
+            "particular": "Payment Voucher " + r.payment_vouch_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
+            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
+        })
+
+    for r in bpr_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.payment_date), "_sort_dt": r.payment_date, "_sort_id": r.id,
+            "docType": "Bill Payment", "docNo": r.receipt_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id),
+            "particular": "Bill Payment " + r.receipt_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
+            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
+        })
+
+    for r in dn_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.entry_date), "_sort_dt": r.entry_date, "_sort_id": r.id,
+            "docType": "Debit Note", "docNo": r.debit_note_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id) if r.vendor_id else r.vendor_name,
+            "particular": "Debit Note " + r.debit_note_no,
+            "debit": float(r.total_amount or 0), "credit": 0.0,
+        })
+
+    for r in cn_records:
+        by_project.setdefault(r.project_code, []).append({
+            "date": _fmt(r.entry_date), "_sort_dt": r.entry_date, "_sort_id": r.id,
+            "docType": "Credit Note", "docNo": r.credit_note_no, "docId": r.id,
+            "vendorName": v_map.get(r.vendor_id) if r.vendor_id else r.vendor_name,
+            "particular": "Credit Note " + r.credit_note_no,
+            "debit": 0.0, "credit": float(r.total_amount or 0),
+        })
+
+    # Compute running balance and summary per project
+    results = {}
+    for pc in project_codes:
+        entries = by_project.get(pc, [])
+        if not entries:
+            results[pc] = None
+            continue
+        entries.sort(key=lambda e: (e["_sort_dt"] or date_type.min, e["_sort_id"]))
+        balance = 0.0
+        for e in entries:
+            balance += e["debit"] - e["credit"]
+            e["balance"]     = round(abs(balance), 2)
+            e["balanceType"] = "Dr" if balance >= 0 else "Cr"
+            del e["_sort_dt"]
+            del e["_sort_id"]
+        total_debit  = round(sum(e["debit"]  for e in entries), 2)
+        total_credit = round(sum(e["credit"] for e in entries), 2)
+        closing      = round(total_debit - total_credit, 2)
+        results[pc] = (
+            {
+                "totalDebit":     total_debit,
+                "totalCredit":    total_credit,
+                "closingBalance": round(abs(closing), 2),
+                "balanceType":    "Dr" if closing >= 0 else "Cr",
+            },
+            entries,
+        )
+    return results
+
+
 # ══════════════════════════════════════════════════════════════════
 # PUBLIC FUNCTION
 # ══════════════════════════════════════════════════════════════════
@@ -275,10 +469,13 @@ def get_my_ledger(data):
     all_credit  = 0.0
     proj_blocks = []
 
+    bulk = _build_all_projects_entries(projects, from_date, to_date)
+
     for proj in projects:
-        summary, entries = _build_project_entries(proj.project_code, from_date, to_date)
-        if not entries:
+        result = bulk.get(proj.project_code)
+        if not result:
             continue
+        summary, entries = result
         all_debit  += summary["totalDebit"]
         all_credit += summary["totalCredit"]
         proj_blocks.append({

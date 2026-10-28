@@ -86,6 +86,32 @@ def _pre_received_qty(order_item_id):
     return Decimal(str(result or 0))
 
 
+def _pre_received_qty_bulk(order_item_ids):
+    """
+    Batch version of _pre_received_qty — fetches all order items in ONE query.
+    Returns dict {order_item_id: Decimal}.
+    """
+    if not order_item_ids:
+        return {}
+    rows = (
+        db.session.query(
+            GrnItem.order_item_id,
+            func.coalesce(func.sum(GrnItem.current_received_qty), 0).label("total"),
+        )
+        .join(GrnMaster, GrnMaster.id == GrnItem.grn_id)
+        .filter(
+            GrnItem.order_item_id.in_(order_item_ids),
+            GrnMaster.workflow_status != "Rejected",
+        )
+        .group_by(GrnItem.order_item_id)
+        .all()
+    )
+    result = {oid: Decimal("0") for oid in order_item_ids}
+    for row in rows:
+        result[row.order_item_id] = Decimal(str(row.total or 0))
+    return result
+
+
 def generate_grnl_no(line_no):
     return f"GRNL{line_no:03d}"
 
@@ -214,11 +240,14 @@ def get_order_items_for_grn(order_id):
         if order.workflow_status != "Approved":
             return res("Order is not approved", [], 400)
 
+        # Fetch all pre-received quantities in one query
+        pre_qty_map = _pre_received_qty_bulk([oi.id for oi in order.items])
+
         items = []
 
         for oi in order.items:
 
-            pre_qty = _pre_received_qty(oi.id)
+            pre_qty = pre_qty_map.get(oi.id, Decimal("0"))
             order_qty = Decimal(str(oi.qty or 0))
             balance_qty = order_qty - pre_qty
 
@@ -357,6 +386,10 @@ def create_grn(data, user_id, files=None):
         db.session.add(grn)
         db.session.flush()
 
+        # Bulk-fetch pre-received quantities for all items in one query
+        _item_ids = [row.get("orderItemId") for row in items if row.get("orderItemId")]
+        pre_qty_map = _pre_received_qty_bulk(_item_ids)
+
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
@@ -378,7 +411,7 @@ def create_grn(data, user_id, files=None):
                     [], 404
                 )
 
-            pre_qty = _pre_received_qty(order_item_id)
+            pre_qty = pre_qty_map.get(order_item_id, Decimal("0"))
             balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
             ref_code = order_item.asset_code if order_item.is_asset else order_item.item_code
@@ -504,11 +537,14 @@ def get_grn_details(grn_id):
         if not grn:
             return res("GRN not found", [], 404)
 
+        # Bulk-fetch pre-received quantities for all GRN items in one query
+        pre_qty_map = _pre_received_qty_bulk([gi.order_item_id for gi in grn.items])
+
         items = []
         for gi in grn.items:
 
             oi = gi.order_item
-            pre_qty = _pre_received_qty(gi.order_item_id)
+            pre_qty = pre_qty_map.get(gi.order_item_id, Decimal("0"))
 
             items.append({
 
@@ -1050,6 +1086,10 @@ def edit_grn(grn_id, data, user_id, files=None):
         GrnItem.query.filter_by(grn_id=grn.id).delete()
         db.session.flush()
 
+        # Bulk-fetch pre-received quantities after the wipe so current GRN is excluded
+        _item_ids = [row.get("orderItemId") for row in items if row.get("orderItemId")]
+        pre_qty_map = _pre_received_qty_bulk(_item_ids)
+
         for line_no, row in enumerate(items, start=1):
 
             order_item_id = row.get("orderItemId")
@@ -1071,7 +1111,7 @@ def edit_grn(grn_id, data, user_id, files=None):
                 )
 
             # pre_received excludes current GRN (already wiped above)
-            pre_qty = _pre_received_qty(order_item_id)
+            pre_qty = pre_qty_map.get(order_item_id, Decimal("0"))
             balance = Decimal(str(order_item.qty or 0)) - pre_qty
 
             ref_code = order_item.asset_code if order_item.is_asset else order_item.item_code

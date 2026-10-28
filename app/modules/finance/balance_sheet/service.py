@@ -82,6 +82,69 @@ def _journal_debit_sum(cc_codes, project_code=None, from_date=None, to_date=None
     return float(q.scalar() or 0)
 
 
+def _bulk_journal_balance(cc_codes, project_code=None, from_date=None, to_date=None):
+    """Net balance (credit − debit) for many cc_codes in ONE grouped query."""
+    if not cc_codes:
+        return {}
+    codes_upper = [c.upper() for c in cc_codes]
+    q = (
+        db.session.query(
+            db.func.upper(CCCode.cc_code).label("code"),
+            db.func.coalesce(db.func.sum(JournalEntryLine.credit_amount), 0).label("cr"),
+            db.func.coalesce(db.func.sum(JournalEntryLine.debit_amount),  0).label("dr"),
+        )
+        .join(CCCode, JournalEntryLine.cc_id == CCCode.id)
+        .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
+        .filter(
+            db.func.upper(CCCode.cc_code).in_(codes_upper),
+            JournalEntryMaster.workflow_status == "Approved",
+            JournalEntryMaster.status == "Active",
+        )
+        .group_by(db.func.upper(CCCode.cc_code))
+    )
+    if project_code:
+        q = q.filter(JournalEntryMaster.project_code == project_code)
+    if from_date:
+        q = q.filter(JournalEntryMaster.entry_date >= from_date)
+    if to_date:
+        q = q.filter(JournalEntryMaster.entry_date <= to_date)
+    result = {c: 0.0 for c in codes_upper}
+    for row in q.all():
+        result[row.code] = float(row.cr or 0) - float(row.dr or 0)
+    return result
+
+
+def _bulk_journal_debit_sum(cc_codes, project_code=None, from_date=None, to_date=None):
+    """Debit sum for many cc_codes in ONE grouped query."""
+    if not cc_codes:
+        return {}
+    codes_upper = [c.upper() for c in cc_codes]
+    q = (
+        db.session.query(
+            db.func.upper(CCCode.cc_code).label("code"),
+            db.func.coalesce(db.func.sum(JournalEntryLine.debit_amount), 0).label("dr"),
+        )
+        .join(CCCode, JournalEntryLine.cc_id == CCCode.id)
+        .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
+        .filter(
+            db.func.upper(CCCode.cc_code).in_(codes_upper),
+            JournalEntryMaster.workflow_status == "Approved",
+            JournalEntryMaster.status == "Active",
+        )
+        .group_by(db.func.upper(CCCode.cc_code))
+    )
+    if project_code:
+        q = q.filter(JournalEntryMaster.project_code == project_code)
+    if from_date:
+        q = q.filter(JournalEntryMaster.entry_date >= from_date)
+    if to_date:
+        q = q.filter(JournalEntryMaster.entry_date <= to_date)
+    result = {c: 0.0 for c in codes_upper}
+    for row in q.all():
+        result[row.code] = float(row.dr or 0)
+    return result
+
+
 def _bank_balance_by_code(bank_code):
     """
     Closing balance for a specific BankCash account by its bank_code.
@@ -118,47 +181,64 @@ def _bank_balance_by_code(bank_code):
 
 def _all_bank_balances(project_code=None, from_date=None, to_date=None):
     """Return list of {code, name, balance} for every active BankCash bank account."""
+    from app.models.paymentVoucher import PaymentVoucherMaster
     banks = BankCash.query.filter_by(type="Bank", status="Active").all()
-    rows = []
-    for bank in banks:
-        from app.models.paymentVoucher import PaymentVoucherMaster
-        qout = db.session.query(
-            db.func.coalesce(db.func.sum(PaymentVoucherMaster.total_invoice_amount), 0)
-        ).filter(
-            PaymentVoucherMaster.bank_ac_id == bank.id,
+    if not banks:
+        return []
+    bank_ids = [b.id for b in banks]
+
+    # One grouped query for all paid-out amounts
+    q_out = (
+        db.session.query(
+            PaymentVoucherMaster.bank_ac_id,
+            db.func.coalesce(db.func.sum(PaymentVoucherMaster.total_invoice_amount), 0).label("total"),
+        )
+        .filter(
+            PaymentVoucherMaster.bank_ac_id.in_(bank_ids),
             PaymentVoucherMaster.payment_mode == "Bank",
             PaymentVoucherMaster.workflow_status == "Approved",
             PaymentVoucherMaster.status == "Active",
         )
-        if project_code:
-            qout = qout.filter(PaymentVoucherMaster.project_code == project_code)
-        if from_date:
-            qout = qout.filter(PaymentVoucherMaster.payment_date >= from_date)
-        if to_date:
-            qout = qout.filter(PaymentVoucherMaster.payment_date <= to_date)
+        .group_by(PaymentVoucherMaster.bank_ac_id)
+    )
+    if project_code:
+        q_out = q_out.filter(PaymentVoucherMaster.project_code == project_code)
+    if from_date:
+        q_out = q_out.filter(PaymentVoucherMaster.payment_date >= from_date)
+    if to_date:
+        q_out = q_out.filter(PaymentVoucherMaster.payment_date <= to_date)
+    out_map = {row.bank_ac_id: float(row.total or 0) for row in q_out.all()}
 
-        qin = db.session.query(
-            db.func.coalesce(db.func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0)
-        ).filter(
-            BillPaymentReceiptMaster.bank_ac_id == bank.id,
+    # One grouped query for all received-in amounts
+    q_in = (
+        db.session.query(
+            BillPaymentReceiptMaster.bank_ac_id,
+            db.func.coalesce(db.func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0).label("total"),
+        )
+        .filter(
+            BillPaymentReceiptMaster.bank_ac_id.in_(bank_ids),
             BillPaymentReceiptMaster.payment_mode == "Bank",
             BillPaymentReceiptMaster.workflow_status == "Approved",
             BillPaymentReceiptMaster.status == "Active",
         )
-        if project_code:
-            qin = qin.filter(BillPaymentReceiptMaster.project_code == project_code)
-        if from_date:
-            qin = qin.filter(BillPaymentReceiptMaster.payment_date >= from_date)
-        if to_date:
-            qin = qin.filter(BillPaymentReceiptMaster.payment_date <= to_date)
+        .group_by(BillPaymentReceiptMaster.bank_ac_id)
+    )
+    if project_code:
+        q_in = q_in.filter(BillPaymentReceiptMaster.project_code == project_code)
+    if from_date:
+        q_in = q_in.filter(BillPaymentReceiptMaster.payment_date >= from_date)
+    if to_date:
+        q_in = q_in.filter(BillPaymentReceiptMaster.payment_date <= to_date)
+    in_map = {row.bank_ac_id: float(row.total or 0) for row in q_in.all()}
 
-        balance = float(qin.scalar() or 0) - float(qout.scalar() or 0)
-        rows.append({
-            "code":    bank.bank_code,
-            "name":    bank.bank_name or bank.bank_code,
-            "balance": balance,
-        })
-    return rows
+    return [
+        {
+            "code":    b.bank_code,
+            "name":    b.bank_name or b.bank_code,
+            "balance": in_map.get(b.id, 0.0) - out_map.get(b.id, 0.0),
+        }
+        for b in banks
+    ]
 
 
 def _cash_balance(project_code=None, from_date=None, to_date=None):
@@ -384,26 +464,41 @@ def get_balance_sheet(args):
         cash   = _cash_balance(**kw)
         casd   = _sundry_debtors(**kw)
         caav   = _advance_to_vendors(**kw)
-        grn    = _grn_value(**kw)
 
         bank_total = sum(b["balance"] for b in banks)
 
+        # Two bulk queries replace ~30 individual _journal_balance / _journal_debit_sum calls
+        jb = _bulk_journal_balance(
+            ["DIR1", "DIR2", "LON3", "LON1", "LON2", "USLO", "NBFC",
+             "NCDT", "NCTL", "NCTP",
+             "CLDT", "CLSC", "CLTB", "CLTP", "CLFP", "CLCP", "CLOP", "CLCM"],
+            **kw,
+        )
+        jd = _bulk_journal_debit_sum(
+            ["CARM", "CAHL", "CAAP", "CAUM", "CAWP", "CART", "CAAE", "CAOP",
+             "CACI", "CATS", "CAOA",
+             "APNM", "ASRV", "AOFG", "AELE", "AMEG", "ALGH",
+             "AINF", "ASCF", "ASHT", "AEIT", "AETT", "ACAB",
+             "NCIV", "NCTA", "LTLA", "NCCA"],
+            **kw,
+        )
+
         # ── EQUITY & LIABILITIES ────────────────────────────────
 
-        dir1 = _journal_balance(["DIR1"], **kw)
-        dir2 = _journal_balance(["DIR2"], **kw)
+        dir1 = jb["DIR1"]
+        dir2 = jb["DIR2"]
         shareholders_fund = dir1 + dir2
         crsf = pl_net
         capital_total = shareholders_fund + crsf
 
         # Non-current liabilities
-        lon3_kotak_jcb     = _journal_balance(["LON3"], **kw)
+        lon3_kotak_jcb     = jb["LON3"]
         lon3_kotak_venus   = 0.0  # same code, separate tracking via journal remarks — not distinguishable without sub-code
-        lon1_bajaj         = _journal_balance(["LON1"], **kw)
-        lon2_lt            = _journal_balance(["LON2"], **kw)
+        lon1_bajaj         = jb["LON1"]
+        lon2_lt            = jb["LON2"]
         lon3_icici_od      = 0.0  # LON3 shared; split tracked separately
-        uslo               = _journal_balance(["USLO"], **kw)
-        nbfc               = _journal_balance(["NBFC"], **kw)
+        uslo               = jb["USLO"]
+        nbfc               = jb["NBFC"]
 
         secured_banking     = lon3_kotak_jcb + lon3_kotak_venus
         secured_nonbanking  = lon1_bajaj + lon2_lt
@@ -411,20 +506,20 @@ def get_balance_sheet(args):
         unsecured_nonbanking = nbfc
         nctb_total = secured_banking + secured_nonbanking + unsecured_banking + unsecured_nonbanking
 
-        ncdt = _journal_balance(["NCDT"], **kw)
-        nctl = _journal_balance(["NCTL"], **kw)
-        nctp = _journal_balance(["NCTP"], **kw)
+        ncdt = jb["NCDT"]
+        nctl = jb["NCTL"]
+        nctp = jb["NCTP"]
         non_current_liability_total = nctb_total + ncdt + nctl + nctp
 
         # Current liabilities
-        cldt = _journal_balance(["CLDT"], **kw)
-        clsc = _journal_balance(["CLSC"], **kw)
-        cltb = _journal_balance(["CLTB"], **kw)
-        cltp = _journal_balance(["CLTP"], **kw)
-        clfp = _journal_balance(["CLFP"], **kw)
-        clcp = _journal_balance(["CLCP"], **kw)
-        clop = _journal_balance(["CLOP"], **kw)
-        clcm = _journal_balance(["CLCM"], **kw)
+        cldt = jb["CLDT"]
+        clsc = jb["CLSC"]
+        cltb = jb["CLTB"]
+        cltp = jb["CLTP"]
+        clfp = jb["CLFP"]
+        clcp = jb["CLCP"]
+        clop = jb["CLOP"]
+        clcm = jb["CLCM"]
         clot_total = clfp + clcp + clop + clcm
         clgp = gst["net_gst_payable"]
         current_liability_total = cldt + clsc + cltb + cltp + clot_total + clgp
@@ -436,34 +531,32 @@ def get_balance_sheet(args):
         # Fixed assets (Non-current)
         asset_codes = ["APNM", "ASRV", "AOFG", "AELE", "AMEG", "ALGH",
                        "AINF", "ASCF", "ASHT", "AEIT", "AETT", "ACAB"]
-        fixed_assets_map = {}
-        for code in asset_codes:
-            fixed_assets_map[code] = _journal_debit_sum([code], **kw)
+        fixed_assets_map = {code: jd[code] for code in asset_codes}
         fixed_assets_total = sum(fixed_assets_map.values())
 
-        nciv = _journal_debit_sum(["NCIV"], **kw)
-        ncta = _journal_debit_sum(["NCTA"], **kw)
-        ltla = _journal_debit_sum(["LTLA"], **kw)
-        ncca = _journal_debit_sum(["NCCA"], **kw)
+        nciv = jd["NCIV"]
+        ncta = jd["NCTA"]
+        ltla = jd["LTLA"]
+        ncca = jd["NCCA"]
         non_current_assets_total = fixed_assets_total + nciv + ncta + ltla + ncca
 
         # Current assets
-        carm = grn          # CARM = GRN value (raw materials received)
-        cahl = _journal_debit_sum(["CAHL"], **kw)
-        caap = _journal_debit_sum(["CAAP"], **kw)
-        caum = _journal_debit_sum(["CAUM"], **kw)
-        cawp = _journal_debit_sum(["CAWP"], **kw)
+        carm = jd["CARM"]   # CARM = GRN value (raw materials received)
+        cahl = jd["CAHL"]
+        caap = jd["CAAP"]
+        caum = jd["CAUM"]
+        cawp = jd["CAWP"]
         cacs_total = carm + cahl + caap + caum + cawp
 
-        cart = _journal_debit_sum(["CART"], **kw)
+        cart = jd["CART"]
 
-        caae = _journal_debit_sum(["CAAE"], **kw)
-        caop = _journal_debit_sum(["CAOP"], **kw)
+        caae = jd["CAAE"]
+        caop = jd["CAOP"]
         cala_total = caav + caae + caop
 
-        caci = _journal_debit_sum(["CACI"], **kw)
-        cats = _journal_debit_sum(["CATS"], **kw)
-        caoa = _journal_debit_sum(["CAOA"], **kw)
+        caci = jd["CACI"]
+        cats = jd["CATS"]
+        caoa = jd["CAOA"]
 
         gst_excess_input = max(0.0, -gst["net_gst_payable"])  # when input > output
 
