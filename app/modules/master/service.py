@@ -648,17 +648,22 @@ def get_all_cc_codes(data):
 
 
     elif key == "item":
-
-        query = (
-            query
-            .join(GroupMaster)
-            .filter(
-                GroupMaster.group_name.in_([
-                    "Direct Expenses",
-                    "Indirect Expenses"
-                ])
+        # When a categoryId is already supplied the category scopes the result;
+        # no additional group filter is needed and the old hardcoded group-name
+        # list excluded valid groups (Project Overhead, Employee Overhead, etc.)
+        if not categoryCode:
+            query = (
+                query
+                .join(GroupMaster)
+                .filter(
+                    GroupMaster.group_name.in_([
+                        "Direct Expenses",
+                        "Indirect Expenses",
+                        "Project Overhead",
+                        "Employee Overhead",
+                    ])
+                )
             )
-        )
 
 
     # -------------------------
