@@ -232,7 +232,8 @@ class ProjectWorkOrderMaster(db.Model):
     items = db.relationship(
         "ProjectWorkOrderItem",
         backref="order",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="ProjectWorkOrderItem.id",
     )
 
     creator = db.relationship(

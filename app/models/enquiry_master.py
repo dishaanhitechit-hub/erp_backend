@@ -142,14 +142,16 @@ class EnquiryMaster(db.Model):
         "EnquiryItem",
         backref="enquiry_master",
         lazy=True,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by="EnquiryItem.id",
     )
 
     enquiry_terms = db.relationship(
         "EnquiryTerm",
         backref="enquiry_master",
         lazy=True,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by="EnquiryTerm.id",
     )
 
     indent = db.relationship(

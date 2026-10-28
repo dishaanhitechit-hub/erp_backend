@@ -222,7 +222,8 @@ class OrderMaster(db.Model):
     items=db.relationship(
         "OrderItem",
         backref="order",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="OrderItem.id",
     )
 
     creator = db.relationship(

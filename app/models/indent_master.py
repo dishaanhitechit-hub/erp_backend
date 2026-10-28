@@ -208,7 +208,8 @@ class IndentMaster(db.Model):
         "IndentItem",
         backref="indent",
         lazy=True,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by="IndentItem.id",
     )
 
     # ==================================

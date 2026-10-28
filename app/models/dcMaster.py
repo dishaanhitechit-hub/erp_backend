@@ -97,7 +97,8 @@ class DcMaster(db.Model):
     items = db.relationship(
         "DcItem",
         backref="dc",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="DcItem.id",
     )
 
     creator = db.relationship("User", foreign_keys=[created_by])

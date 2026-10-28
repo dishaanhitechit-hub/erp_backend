@@ -43,8 +43,8 @@ class PMMaster(db.Model):
     creator = db.relationship("User", foreign_keys=[created_by])
     updater = db.relationship("User", foreign_keys=[updated_by])
 
-    service_histories = db.relationship("PMServiceHistory", backref="pm", cascade="all,delete-orphan")
-    service_schedules = db.relationship("PMServiceSchedule", backref="pm", cascade="all,delete-orphan")
+    service_histories = db.relationship("PMServiceHistory", backref="pm", cascade="all,delete-orphan", order_by="PMServiceHistory.id")
+    service_schedules = db.relationship("PMServiceSchedule", backref="pm", cascade="all,delete-orphan", order_by="PMServiceSchedule.id")
 
 
 class PMServiceHistory(db.Model):

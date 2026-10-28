@@ -70,7 +70,8 @@ class MachineryLogBook(db.Model):
     entries = db.relationship(
         "LogBookEntry",
         backref="log_book",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="LogBookEntry.id",
     )
 
     creator   = db.relationship("User", foreign_keys=[created_by])

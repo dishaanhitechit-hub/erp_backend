@@ -88,7 +88,8 @@ class BrgMaster(db.Model):
     items = db.relationship(
         "BrgItem",
         backref="brg",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="BrgItem.id",
     )
 
     creator   = db.relationship("User", foreign_keys=[created_by])

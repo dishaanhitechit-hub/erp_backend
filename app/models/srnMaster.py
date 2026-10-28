@@ -87,7 +87,8 @@ class SrnMaster(db.Model):
     items = db.relationship(
         "SrnItem",
         backref="srn",
-        cascade="all,delete-orphan"
+        cascade="all,delete-orphan",
+        order_by="SrnItem.id",
     )
 
     creator   = db.relationship("User", foreign_keys=[created_by])
