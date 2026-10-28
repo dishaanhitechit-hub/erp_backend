@@ -13,6 +13,7 @@ from .service import (
     reject_ua,
     get_ua_history,
     get_ua_my_approval_status,
+    get_ua_by_uuid,
 )
 
 ua_bp = Blueprint("uncertain_allocation", __name__)
@@ -108,3 +109,9 @@ def api_history(ua_id):
 def api_my_approval_status(ua_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_ua_my_approval_status(ua_id, user_id)
+
+
+# ── 12. GET BY UUID (no auth — for print/share) ───────────────────
+@ua_bp.route("/uuid/<string:ua_uuid>", methods=["GET"])
+def api_get_by_uuid(ua_uuid):
+    return get_ua_by_uuid(ua_uuid)

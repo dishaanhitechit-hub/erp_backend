@@ -625,3 +625,39 @@ def get_ua_my_approval_status(ua_id, user_id):
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 12. GET BY UUID  (no-auth, for print page)
+# ══════════════════════════════════════════════════════════════════
+
+def get_ua_by_uuid(ua_uuid):
+    try:
+        ua = UncertainAllocationMaster.query.filter_by(ua_uuid=ua_uuid).first()
+        if not ua:
+            return res("Uncertain allocation not found", [], 404)
+
+        data = {
+            "id":              ua.id,
+            "uaNo":            ua.ua_no,
+            "uaDate":          _fmt_date(ua.ua_date),
+            "uaUuid":          ua.ua_uuid,
+            "projectCode":     ua.project_code,
+            "remarks":         ua.remarks,
+            "totalClaim":      float(ua.total_claim      or 0),
+            "totalCertified":  float(ua.total_certified  or 0),
+            "totalDifference": float(ua.total_difference or 0),
+            "workflowStatus":  ua.workflow_status,
+            "createdBy":       ua.creator.username  if ua.creator  else None,
+            "createdAt":       _fmt_date(ua.created_at),
+            "submittedBy":     ua.submitter.username if ua.submitter else None,
+            "submittedAt":     _fmt_date(ua.submitted_at),
+            "approvedBy":      ua.approver.username  if ua.approver  else None,
+            "finalApprovedAt": _fmt_date(ua.final_approved_at),
+            "lines":           [_line_payload(ln) for ln in ua.lines],
+        }
+
+        return res("Uncertain allocation details fetched", data, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
