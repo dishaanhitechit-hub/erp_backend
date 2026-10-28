@@ -227,6 +227,7 @@ def get_all_vendors():
 
         "email": vendor.email,
         "supplierId": vendor.supplier_id,
+        "supplierCode": vendor.linked_supplier.supplier_code if vendor.linked_supplier else None,
         "supplierTypes": vendor.supplier_types or [],
         "natureOfService": vendor.nature_of_service or [],
         "serviceDescription": vendor.service_description,
