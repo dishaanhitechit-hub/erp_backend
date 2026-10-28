@@ -5,8 +5,8 @@ from decimal import Decimal
 import uuid as _uuid_lib
 
 from app.models.uncertainAllocation import UncertainAllocationMaster, UncertainAllocationLine
-from app.models.billingMaster import BillingMaster
-from app.models.ogSaleOrder import OgSaleOrderMaster
+from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
+from app.models.ogSaleOrder import OgSaleOrderMaster, OgSaleOrderItem, OgSaleOrderBoqItem
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -81,25 +81,72 @@ def _fetch_certified_amount(og_sale_order_no, project_code):
     return Decimal(str(result or 0))
 
 
+def _fetch_item_claim_amount(og_sale_order_id, item_code, item_type):
+    """Sum of BillingItem/BillingBoqItem.amount for approved sale_claim_bill for this SO + item_code."""
+    ItemModel = BillingBoqItem if item_type == "boq_item" else BillingItem
+    result = (
+        db.session.query(func.coalesce(func.sum(ItemModel.amount), 0))
+        .join(BillingMaster, ItemModel.billing_id == BillingMaster.id)
+        .filter(
+            BillingMaster.og_sale_order_id == og_sale_order_id,
+            BillingMaster.mode             == "sale_claim_bill",
+            BillingMaster.workflow_status  == "Approved",
+            ItemModel.item_code            == item_code,
+        )
+        .scalar()
+    )
+    return Decimal(str(result or 0))
+
+
+def _fetch_item_certified_amount(og_sale_order_id, item_code, item_type):
+    """Sum of BillingItem/BillingBoqItem.amount for approved sale_certified_bill for this SO + item_code."""
+    ItemModel = BillingBoqItem if item_type == "boq_item" else BillingItem
+    result = (
+        db.session.query(func.coalesce(func.sum(ItemModel.amount), 0))
+        .join(BillingMaster, ItemModel.billing_id == BillingMaster.id)
+        .filter(
+            BillingMaster.og_sale_order_id == og_sale_order_id,
+            BillingMaster.mode             == "sale_certified_bill",
+            BillingMaster.workflow_status  == "Approved",
+            ItemModel.item_code            == item_code,
+        )
+        .scalar()
+    )
+    return Decimal(str(result or 0))
+
+
 def _line_payload(line):
     og = line.og_sale_order
     return {
-        "id":                             line.id,
-        "slNo":                           line.sl_no,
-        "ogSaleOrderId":                  line.og_sale_order_id,
-        "ogSaleOrderNo":                  line.og_sale_order_no,
-        "orderTitle":                     line.order_title,
-        "orderNo":                        line.order_no,
-        "orderDate":                      _fmt_date(line.order_date),
-        "ogSaleOrderDate":                _fmt_date(og.og_sale_order_date) if og else None,
-        "claimAmount":                    float(line.claim_amount     or 0),
-        "certifiedAmount":                float(line.certified_amount or 0),
-        "difference":                     float(line.difference       or 0),
-        "overBillingCalculationMistake":  float(line.over_billing_calculation_mistake or 0),
-        "certifiedHoldAmendmentPending":  float(line.certified_hold_amendment_pending or 0),
-        "nonBoqItemsRate":                float(line.non_boq_items_rate               or 0),
-        "holdWork":                       float(line.hold_work                        or 0),
-        "remarks":                        line.remarks,
+        "id":                              line.id,
+        "slNo":                            line.sl_no,
+        "ogSaleOrderId":                   line.og_sale_order_id,
+        "ogSaleOrderNo":                   line.og_sale_order_no,
+        "orderTitle":                      line.order_title,
+        "orderNo":                         line.order_no,
+        "orderDate":                       _fmt_date(line.order_date),
+        "ogSaleOrderDate":                 _fmt_date(og.og_sale_order_date) if og else None,
+        # Item-level fields
+        "ogSaleOrderItemId":               line.og_sale_order_item_id,
+        "itemType":                        line.item_type,
+        "boqSlNo":                         line.boq_sl_no,
+        "itemCode":                        line.item_code,
+        "itemName":                        line.item_name,
+        "itemNameDesc":                    line.item_name_desc,
+        "unit":                            line.unit,
+        "boqQty":                          float(line.boq_qty  or 0),
+        "unitRate":                        float(line.unit_rate or 0),
+        # Computed amounts
+        "claimAmount":                     float(line.claim_amount     or 0),
+        "certifiedAmount":                 float(line.certified_amount or 0),
+        "difference":                      float(line.difference       or 0),
+        # Justification fields
+        "overBillingCalculationMistake":   float(line.over_billing_calculation_mistake    or 0),
+        "certifiedHoldAmendmentPending":   float(line.certified_hold_amendment_pending    or 0),
+        "nonBoqItemsRate":                 float(line.non_boq_items_rate                  or 0),
+        "holdWork":                        float(line.hold_work                           or 0),
+        "holdForFullWorkNotCompleted":     float(line.hold_for_full_work_not_completed     or 0),
+        "remarks":                         line.remarks,
     }
 
 
@@ -154,6 +201,69 @@ def get_sale_orders_for_lookup(data):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 1b. SALE ORDER ITEMS LOOKUP (item-level, for table population)
+# ══════════════════════════════════════════════════════════════════
+
+def get_sale_order_items_for_ua(og_sale_order_id, project_code):
+    try:
+        og_so = OgSaleOrderMaster.query.get(og_sale_order_id)
+        if not og_so:
+            return res("Sale order not found", [], 404)
+
+        result = []
+
+        # Regular items
+        for item in og_so.items:
+            claim_amt = _fetch_item_claim_amount(og_sale_order_id, item.item_code, "item")
+            cert_amt  = _fetch_item_certified_amount(og_sale_order_id, item.item_code, "item")
+            result.append({
+                "ogSaleOrderItemId": item.id,
+                "itemType":          "item",
+                "boqSlNo":           item.sl_no,
+                "itemCode":          item.item_code,
+                "itemName":          item.item_name,
+                "itemNameDesc":      item.item_name_desc,
+                "unit":              item.unit,
+                "boqQty":            float(item.order_qty or 0),
+                "unitRate":          float(item.rate      or 0),
+                "claimAmount":       float(claim_amt),
+                "certifiedAmount":   float(cert_amt),
+                "difference":        float(claim_amt - cert_amt),
+            })
+
+        # BOQ items
+        for item in og_so.boq_items:
+            claim_amt = _fetch_item_claim_amount(og_sale_order_id, item.item_code, "boq_item")
+            cert_amt  = _fetch_item_certified_amount(og_sale_order_id, item.item_code, "boq_item")
+            result.append({
+                "ogSaleOrderItemId": item.id,
+                "itemType":          "boq_item",
+                "boqSlNo":           item.sl_no,
+                "itemCode":          item.item_code,
+                "itemName":          item.item_name,
+                "itemNameDesc":      item.item_name_desc,
+                "unit":              item.unit,
+                "boqQty":            float(item.order_qty or 0),
+                "unitRate":          float(item.rate      or 0),
+                "claimAmount":       float(claim_amt),
+                "certifiedAmount":   float(cert_amt),
+                "difference":        float(claim_amt - cert_amt),
+            })
+
+        return res("Sale order items fetched", {
+            "ogSaleOrderId":   og_so.id,
+            "ogSaleOrderNo":   og_so.og_sale_order_no,
+            "orderTitle":      og_so.order_title,
+            "orderNo":         og_so.order_no,
+            "orderDate":       _fmt_date(og_so.order_validity),
+            "items":           result,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 2. CREATE
 # ══════════════════════════════════════════════════════════════════
 
@@ -190,28 +300,44 @@ def create_ua(data, user_id):
         for idx, row in enumerate(lines_data, start=1):
             og_so_id = row.get("ogSaleOrderId")
             og_so    = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
+            og_so_no = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
 
-            og_so_no = (og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo"))
+            item_type = row.get("itemType")
+            item_code = row.get("itemCode")
 
-            claim_amt = _fetch_claim_amount(og_so_no, project_code)
-            cert_amt  = _fetch_certified_amount(og_so_no, project_code)
-            diff      = claim_amt - cert_amt
+            if og_so_id and item_code:
+                claim_amt = _fetch_item_claim_amount(og_so_id, item_code, item_type)
+                cert_amt  = _fetch_item_certified_amount(og_so_id, item_code, item_type)
+            else:
+                claim_amt = Decimal(str(row.get("claimAmount") or 0))
+                cert_amt  = Decimal(str(row.get("certifiedAmount") or 0))
+            diff = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
-                ua_id            = ua.id,
-                sl_no            = idx,
-                og_sale_order_id = og_so_id,
-                og_sale_order_no = og_so_no,
-                order_title      = og_so.order_title      if og_so else row.get("orderTitle"),
-                order_no         = og_so.order_no         if og_so else row.get("orderNo"),
-                order_date       = og_so.og_sale_order_date if og_so else None,
-                claim_amount     = claim_amt,
-                certified_amount = cert_amt,
-                difference       = diff,
-                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake") or 0)),
-                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending") or 0)),
-                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")               or 0)),
-                hold_work                        = Decimal(str(row.get("holdWork")                       or 0)),
+                ua_id                 = ua.id,
+                sl_no                 = idx,
+                og_sale_order_id      = og_so_id,
+                og_sale_order_no      = og_so_no,
+                order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
+                order_no              = og_so.order_no           if og_so else row.get("orderNo"),
+                order_date            = og_so.og_sale_order_date if og_so else None,
+                og_sale_order_item_id = row.get("ogSaleOrderItemId"),
+                item_type             = item_type,
+                boq_sl_no             = row.get("boqSlNo"),
+                item_code             = item_code,
+                item_name             = row.get("itemName"),
+                item_name_desc        = row.get("itemNameDesc"),
+                unit                  = row.get("unit"),
+                boq_qty               = Decimal(str(row.get("boqQty")   or 0)),
+                unit_rate             = Decimal(str(row.get("unitRate")  or 0)),
+                claim_amount          = claim_amt,
+                certified_amount      = cert_amt,
+                difference            = diff,
+                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake")    or 0)),
+                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending")    or 0)),
+                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")                  or 0)),
+                hold_work                        = Decimal(str(row.get("holdWork")                         or 0)),
+                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")       or 0)),
                 remarks                          = row.get("remarks"),
             )
             db.session.add(line)
@@ -356,25 +482,42 @@ def edit_ua(ua_id, data, user_id):
             og_so    = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
             og_so_no = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
 
-            claim_amt = _fetch_claim_amount(og_so_no, ua.project_code)
-            cert_amt  = _fetch_certified_amount(og_so_no, ua.project_code)
-            diff      = claim_amt - cert_amt
+            item_type = row.get("itemType")
+            item_code = row.get("itemCode")
+
+            if og_so_id and item_code:
+                claim_amt = _fetch_item_claim_amount(og_so_id, item_code, item_type)
+                cert_amt  = _fetch_item_certified_amount(og_so_id, item_code, item_type)
+            else:
+                claim_amt = Decimal(str(row.get("claimAmount") or 0))
+                cert_amt  = Decimal(str(row.get("certifiedAmount") or 0))
+            diff = claim_amt - cert_amt
 
             line = UncertainAllocationLine(
-                ua_id            = ua.id,
-                sl_no            = idx,
-                og_sale_order_id = og_so_id,
-                og_sale_order_no = og_so_no,
-                order_title      = og_so.order_title        if og_so else row.get("orderTitle"),
-                order_no         = og_so.order_no           if og_so else row.get("orderNo"),
-                order_date       = og_so.og_sale_order_date if og_so else None,
-                claim_amount     = claim_amt,
-                certified_amount = cert_amt,
-                difference       = diff,
-                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake") or 0)),
-                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending") or 0)),
-                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")               or 0)),
-                hold_work                        = Decimal(str(row.get("holdWork")                       or 0)),
+                ua_id                 = ua.id,
+                sl_no                 = idx,
+                og_sale_order_id      = og_so_id,
+                og_sale_order_no      = og_so_no,
+                order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
+                order_no              = og_so.order_no           if og_so else row.get("orderNo"),
+                order_date            = og_so.og_sale_order_date if og_so else None,
+                og_sale_order_item_id = row.get("ogSaleOrderItemId"),
+                item_type             = item_type,
+                boq_sl_no             = row.get("boqSlNo"),
+                item_code             = item_code,
+                item_name             = row.get("itemName"),
+                item_name_desc        = row.get("itemNameDesc"),
+                unit                  = row.get("unit"),
+                boq_qty               = Decimal(str(row.get("boqQty")   or 0)),
+                unit_rate             = Decimal(str(row.get("unitRate")  or 0)),
+                claim_amount          = claim_amt,
+                certified_amount      = cert_amt,
+                difference            = diff,
+                over_billing_calculation_mistake = Decimal(str(row.get("overBillingCalculationMistake")    or 0)),
+                certified_hold_amendment_pending = Decimal(str(row.get("certifiedHoldAmendmentPending")    or 0)),
+                non_boq_items_rate               = Decimal(str(row.get("nonBoqItemsRate")                  or 0)),
+                hold_work                        = Decimal(str(row.get("holdWork")                         or 0)),
+                hold_for_full_work_not_completed = Decimal(str(row.get("holdForFullWorkNotCompleted")       or 0)),
                 remarks                          = row.get("remarks"),
             )
             db.session.add(line)
