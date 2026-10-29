@@ -13,6 +13,7 @@ from app.models.item import Item
 from app.models.cc_code import CCCode
 from app.response import res
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -198,6 +199,9 @@ def get_certified_bills_for_order(data):
 
         return res("Certified bills fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -344,6 +348,9 @@ def get_receipt_items(data):
             "gstLines":        result_gst,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -383,6 +390,9 @@ def get_invoices_by_sale_order(data):
 
         return res("Invoices fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -541,6 +551,9 @@ def get_details_by_invoice_no(data):
             "gstLines":         result_gst,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -613,11 +626,11 @@ def create_srb(data, user_id):
             certified_bill_no  = cert_bill.billing_no,
             project_code       = project_code,
             invoice_no         = data.get("invoiceNo"),
-            invoice_date       = data.get("invoiceDate"),
+            invoice_date       = parse_date(data.get("invoiceDate"), "invoiceDate"),
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),
             bill_abstract_no   = data.get("billAbstractNo"),
-            bill_abstract_date = data.get("billAbstractDate"),
+            bill_abstract_date = parse_date(data.get("billAbstractDate"), "billAbstractDate"),
             basic_amount         = basic_total,
             gst_amount           = gst_total,
             discount             = discount,
@@ -665,6 +678,9 @@ def create_srb(data, user_id):
             "srbUuid": srb.srb_uuid,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -714,6 +730,9 @@ def get_srb_list(data):
 
         return res("Sale receipt billing list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -728,6 +747,9 @@ def get_srb_details(srb_id):
         if not srb:
             return res("Sale receipt billing not found", [], 404)
         return res("Sale receipt billing details fetched", _build_srb_payload(srb), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -821,6 +843,9 @@ def edit_srb(srb_id, data, user_id):
         db.session.commit()
         return res("Sale receipt billing updated", {"id": srb.id, "srbNo": srb.srb_no}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -880,6 +905,9 @@ def submit_srb(srb_id, user_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -939,6 +967,9 @@ def approve_srb(srb_id, approved_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -984,6 +1015,9 @@ def reback_srb(srb_id, reback_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1031,6 +1065,9 @@ def reject_srb(srb_id, rejected_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1072,6 +1109,9 @@ def get_srb_history(srb_id):
             "history":        history,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1087,6 +1127,9 @@ def get_srb_my_approval_status(srb_id, user_id):
             return res("Sale receipt billing not found", [], 404)
         data = get_my_approval_status(srb.project_code, _MODULE, srb, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1101,5 +1144,8 @@ def get_srb_by_uuid(srb_uuid):
         if not srb:
             return res("Sale receipt billing not found", [], 404)
         return res("Sale receipt billing details fetched", _build_srb_payload(srb), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

@@ -24,6 +24,7 @@ from app.modules.work_flow import (
 )
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 _MODULE      = "sale"
 VALID_MODES  = ("Sale Invoice", "Proforma Invoice")
@@ -227,6 +228,9 @@ def get_certified_bills_for_order(data):
 
         return res("Certified bills fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -268,6 +272,9 @@ def get_certified_bill_items_grouped(data):
             "gstLines":        gst_lines,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -336,9 +343,9 @@ def create_sale_bill(data, user_id):
             sale_bill_no       = sale_bill_no,
             sale_bill_uuid     = sale_bill_uuid,
             mode               = mode,
-            invoice_date       = data.get("invoiceDate"),
+            invoice_date       = parse_date(data.get("invoiceDate"), "invoiceDate"),
             reference_no       = data.get("referenceNo"),
-            reference_date     = data.get("referenceDate"),
+            reference_date     = parse_date(data.get("referenceDate"), "referenceDate"),
             sale_order_no      = cert_bill.og_sale_order_no,
             sale_order_id      = cert_bill.og_sale_order_id,
             certified_bill_id  = cert_bill.id,
@@ -347,7 +354,7 @@ def create_sale_bill(data, user_id):
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),
             bill_abstract_no   = data.get("billAbstractNo"),
-            bill_abstract_date = data.get("billAbstractDate"),
+            bill_abstract_date = parse_date(data.get("billAbstractDate"), "billAbstractDate"),
             bank_ac            = data.get("bankAc"),
             bank_ac_id         = data.get("bankAcId"),
             payment_terms      = data.get("paymentTerms"),
@@ -397,6 +404,9 @@ def create_sale_bill(data, user_id):
             "mode":         bill.mode,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -456,6 +466,9 @@ def get_sale_bill_list(data):
 
         return res("Sale bill list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -470,6 +483,9 @@ def get_sale_bill_details(bill_id):
         if not bill:
             return res("Sale bill not found", [], 404)
         return res("Sale bill details fetched", _build_detail_payload(bill), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -502,11 +518,11 @@ def edit_sale_bill(bill_id, data, user_id):
         if data.get("mode") and data.get("mode") in VALID_MODES:
             bill.mode = data.get("mode")
         if data.get("invoiceDate"):
-            bill.invoice_date = data.get("invoiceDate")
+            bill.invoice_date = parse_date(data.get("invoiceDate"), "invoiceDate")
         if data.get("referenceNo") is not None:
             bill.reference_no = data.get("referenceNo")
         if data.get("referenceDate") is not None:
-            bill.reference_date = data.get("referenceDate")
+            bill.reference_date = parse_date(data.get("referenceDate"), "referenceDate")
         if data.get("billToAddress") is not None:
             bill.bill_to_address = data.get("billToAddress")
         if data.get("shipToAddress") is not None:
@@ -514,7 +530,7 @@ def edit_sale_bill(bill_id, data, user_id):
         if data.get("billAbstractNo") is not None:
             bill.bill_abstract_no = data.get("billAbstractNo")
         if data.get("billAbstractDate") is not None:
-            bill.bill_abstract_date = data.get("billAbstractDate")
+            bill.bill_abstract_date = parse_date(data.get("billAbstractDate"), "billAbstractDate")
         if data.get("bankAc") is not None:
             bill.bank_ac = data.get("bankAc")
         if data.get("bankAcId") is not None:
@@ -576,6 +592,9 @@ def edit_sale_bill(bill_id, data, user_id):
 
         return res("Sale bill updated", {"id": bill.id, "saleBillNo": bill.sale_bill_no}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -652,6 +671,9 @@ def submit_sale_bill(bill_id, user_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -740,6 +762,9 @@ def approve_sale_bill(bill_id, approved_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -802,6 +827,9 @@ def reback_sale_bill(bill_id, reback_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -866,6 +894,9 @@ def reject_sale_bill(bill_id, rejected_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -907,6 +938,9 @@ def get_sale_bill_history(bill_id):
             "history":        history,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -922,6 +956,9 @@ def get_sale_bill_my_approval_status(bill_id, user_id):
             return res("Sale bill not found", [], 404)
         data = get_my_approval_status(bill.project_code, _MODULE, bill, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -936,5 +973,8 @@ def get_sale_bill_by_uuid(sale_bill_uuid):
         if not bill:
             return res("Sale bill not found", [], 404)
         return res("Sale bill details fetched", _build_detail_payload(bill), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

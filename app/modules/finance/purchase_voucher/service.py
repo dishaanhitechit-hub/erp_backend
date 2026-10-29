@@ -20,6 +20,7 @@ from app.modules.work_flow import (
 )
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 _MODULE = "purchases"
 
@@ -147,8 +148,8 @@ def create_purchase_voucher(data, user_id):
         v = PurchaseVoucherMaster(
             voucher_no        = voucher_no,
             voucher_uuid      = voucher_uuid,
-            processing_date   = data.get("processingDate") or date.today(),
-            voucher_date      = data.get("voucherDate"),
+            processing_date   = parse_date(data.get("processingDate"), "processingDate") or date.today(),
+            voucher_date      = parse_date(data.get("voucherDate"), "voucherDate"),
             vendor_voucher_no = data.get("vendorVoucherNo"),
             project_code      = project_code,
             vendor_id         = int(vendor_id),
@@ -195,6 +196,9 @@ def create_purchase_voucher(data, user_id):
             "voucherUuid": v.voucher_uuid,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -250,6 +254,9 @@ def get_purchase_voucher_list(data):
 
         return res("Purchase voucher list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -264,6 +271,9 @@ def get_purchase_voucher_details(voucher_id):
         if not v:
             return res("Purchase voucher not found", [], 404)
         return res("Purchase voucher details fetched", _build_detail_payload(v), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -278,6 +288,9 @@ def get_purchase_voucher_by_uuid(voucher_uuid):
         if not v:
             return res("Purchase voucher not found", [], 404)
         return res("Purchase voucher details fetched", _build_detail_payload(v), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -307,7 +320,7 @@ def edit_purchase_voucher(voucher_id, data, user_id):
         gst_lines = data.get("gstLines", [])
 
         if data.get("voucherDate") is not None:
-            v.voucher_date = data.get("voucherDate")
+            v.voucher_date = parse_date(data.get("voucherDate"), "voucherDate")
         if data.get("vendorVoucherNo") is not None:
             v.vendor_voucher_no = data.get("vendorVoucherNo")
         if data.get("remarks") is not None:
@@ -362,6 +375,9 @@ def edit_purchase_voucher(voucher_id, data, user_id):
 
         return res("Purchase voucher updated", {"id": v.id, "voucherNo": v.voucher_no}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -438,6 +454,9 @@ def submit_purchase_voucher(voucher_id, user_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -526,6 +545,9 @@ def approve_purchase_voucher(voucher_id, approved_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -588,6 +610,9 @@ def reback_purchase_voucher(voucher_id, reback_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -652,6 +677,9 @@ def reject_purchase_voucher(voucher_id, rejected_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -693,6 +721,9 @@ def get_purchase_voucher_history(voucher_id):
             "history":        history,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -708,5 +739,8 @@ def get_purchase_voucher_my_approval_status(voucher_id, user_id):
             return res("Purchase voucher not found", [], 404)
         data = get_my_approval_status(v.project_code, _MODULE, v, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

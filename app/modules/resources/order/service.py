@@ -29,6 +29,7 @@ from app.models.project import Project
 from app.models.companies import Company
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 CUSTOMER_SUPPLY_CATEGORY = "Customer_Supply_Order"
 SITE_TRANSFER_CATEGORY   = "Site_Transfer_Order"
@@ -465,6 +466,9 @@ files=None,
         )
 
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -606,6 +610,9 @@ def get_indent_pending_qty_list(
         )
 
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         return res(
@@ -811,6 +818,9 @@ def get_order_details(
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         return res(
@@ -981,6 +991,9 @@ def get_order_list(
         )
 
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         return res(
@@ -1145,6 +1158,9 @@ def submit_order(
 
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -1344,6 +1360,9 @@ def approve_order(
 
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -1484,6 +1503,9 @@ def reback_order(
 
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -1628,6 +1650,9 @@ def reject_order(
 
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -1726,6 +1751,9 @@ def delete_order(
             500
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         db.session.rollback()
@@ -1816,6 +1844,9 @@ def get_order_history(
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
 
         return res(
@@ -2117,6 +2148,9 @@ def get_order_by_uuid(order_uuid):
 
         return res("Order details fetched successfully", response, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -2146,8 +2180,8 @@ def edit_order(order_id, data, user_id, files=None):
 
         # ── header fields ─────────────────────────────────────
         _apply_party_logic(order, data)
-        order.order_date = data.get("orderDate", order.order_date)
-        order.validity_date = data.get("validityDate", order.validity_date)
+        order.order_date = parse_date(data.get("orderDate", order.order_date), "orderDate")
+        order.validity_date = parse_date(data.get("validityDate", order.validity_date), "validityDate")
         order.billing_address = data.get("billingAddress", order.billing_address)
         order.shipping_address = data.get("shippingAddress", order.shipping_address)
         order.order_message = data.get("orderMessage",order.order_message)
@@ -2308,6 +2342,9 @@ def edit_order(order_id, data, user_id, files=None):
             200,
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -2320,5 +2357,8 @@ def get_order_my_approval_status(order_id, user_id):
             return res("Order not found", [], 404)
         data = get_my_approval_status(order.project_code, "order", order, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

@@ -10,6 +10,7 @@ from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.models.brbMaster import BrbMaster
 from app.modules.billing.constants import get_billing_type
 from app.response import res
+from app.utils.date_utils import parse_date
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
@@ -31,9 +32,13 @@ _MODULE = "bill_receive_register"
 def _fmt_date(d):
     if d is None:
         return None
-    if isinstance(d, datetime):
-        return d.strftime("%Y-%m-%d %H:%M")
-    return d.strftime("%Y-%m-%d")
+    try:
+        if isinstance(d, datetime):
+            return d.strftime("%Y-%m-%d %H:%M")
+        return d.strftime("%Y-%m-%d")
+    except (ValueError, OverflowError):
+        return None
+
 
 
 def generate_brr_no():
@@ -158,6 +163,9 @@ def get_orders_by_vendor(data):
 
         return res("Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -204,10 +212,10 @@ def create_brr(data, user_id, files=None):
             order_id           = order_id_val if billing_type == "GRN" else None,
             pw_order_id        = order_id_val if billing_type == "SRN" else None,
             party_bill_no      = data.get("partyBillNo"),
-            party_date         = data.get("partyDate") or None,
+            party_date         = parse_date(data.get("partyDate"),      "partyDate"),
             received_category  = data.get("receivedCategory"),
             submitted_by_name  = data.get("submittedByName"),
-            submission_date    = data.get("submissionDate") or None,
+            submission_date    = parse_date(data.get("submissionDate"), "submissionDate"),
             received_through   = data.get("receivedThrough"),
             received_reference = data.get("receivedReference"),
             basic_amount       = basic,
@@ -230,6 +238,12 @@ def create_brr(data, user_id, files=None):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -318,6 +332,9 @@ def get_brr_list(data):
 
         return res("BRR list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -372,6 +389,9 @@ def get_brr_details(brr_id):
 
         return res("BRR details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -437,6 +457,9 @@ def get_brr_by_uuid(brr_uuid):
 
         return res("BRR fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -460,6 +483,12 @@ def edit_brr(brr_id, data, user_id, files=None):
         allowed = is_creator(brr.project_code, _MODULE, user_id)
         if not allowed:
             return res("You are not BRR creator", [], 403)
+
+        # Validate and parse date fields before the generic update loop
+        if data.get("partyDate") is not None:
+            data["partyDate"] = parse_date(data["partyDate"], "partyDate")
+        if data.get("submissionDate") is not None:
+            data["submissionDate"] = parse_date(data["submissionDate"], "submissionDate")
 
         fields = [
             ("vendorId",          "vendor_id"),
@@ -522,6 +551,12 @@ def edit_brr(brr_id, data, user_id, files=None):
 
         return res("BRR updated", {"brrId": brr.id, "brrNo": brr.brr_no, "attachedDoc": brr.attached_doc}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -598,6 +633,9 @@ def submit_brr(brr_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -696,6 +734,9 @@ def approve_brr(brr_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -765,6 +806,9 @@ def reback_brr(brr_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -836,6 +880,9 @@ def reject_brr(brr_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -882,6 +929,9 @@ def get_brr_history(brr_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -893,5 +943,8 @@ def get_brr_my_approval_status(brr_id, user_id):
             return res("BRR not found", [], 404)
         data = get_my_approval_status(brr.project_code, _MODULE, brr, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

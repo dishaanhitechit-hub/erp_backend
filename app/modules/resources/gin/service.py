@@ -26,6 +26,7 @@ from app.modules.work_flow import (
 import json
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -169,6 +170,9 @@ def get_orders_by_vendor(data):
 
         return res("Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -242,6 +246,9 @@ def get_order_items_for_gin(order_id):
 
         return res("Order items fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -358,6 +365,9 @@ def create_gin(data, user_id, files=None):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -412,6 +422,9 @@ def get_gin_list(data):
 
         return res("GIN list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -489,6 +502,9 @@ def get_gin_details(gin_id):
 
         return res("GIN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -574,6 +590,9 @@ def submit_gin(gin_id, submitted_by=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -689,6 +708,9 @@ def approve_gin(gin_id, approved_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -767,6 +789,9 @@ def reback_gin(gin_id, reback_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -847,6 +872,9 @@ def reject_gin(gin_id, rejected_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -883,7 +911,7 @@ def edit_gin(gin_id, data, user_id, files=None):
 
         # update header
         if data.get("ginDate"):
-            gin.gin_date = data.get("ginDate")
+            gin.gin_date = parse_date(data.get("ginDate"), "ginDate")
         if data.get("issueCategory"):
             gin.issue_category = data.get("issueCategory")
         if data.get("itemCategory"):
@@ -979,6 +1007,9 @@ def edit_gin(gin_id, data, user_id, files=None):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1026,6 +1057,9 @@ def get_gin_history(gin_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1192,6 +1226,9 @@ def get_gin_by_uuid(gin_uuid):
 
         return res("GIN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1203,5 +1240,8 @@ def get_gin_my_approval_status(gin_id, user_id):
             return res("GIN not found", [], 404)
         data = get_my_approval_status(gin.project_code, "goods_issue_note", gin, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

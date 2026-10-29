@@ -16,6 +16,7 @@ from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -225,6 +226,9 @@ def get_srns_by_brr(brr_id):
 
         return res("SRNs fetched for BRR", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -275,7 +279,7 @@ def create_brs(data, user_id):
 
         brs = BrsMaster(
             brs_no            = brs_no,
-            brs_date          = data.get("brsDate"),
+            brs_date          = parse_date(data.get("brsDate"), "brsDate"),
             project_code      = data.get("projectCode"),
             brr_id            = brr_id,
             order_id          = order.id,
@@ -284,7 +288,7 @@ def create_brs(data, user_id):
             item_category     = json.dumps(sub_codes_list) if sub_codes_list else None,
             cost_head         = data.get("costHead"),
             party_bill_no     = data.get("partyBillNo"),
-            party_date        = data.get("partyDate") or None,
+            party_date        = parse_date(data.get("partyDate"), "partyDate") or None,
             site              = order.project_code,
             billing_address   = order.billing_address,
             shipping_address  = order.shipping_address,
@@ -371,6 +375,9 @@ def create_brs(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -435,6 +442,9 @@ def get_brs_list(data):
 
         return res("BRS list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -535,6 +545,9 @@ def get_brs_details(brs_id):
 
         return res("BRS details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -674,6 +687,9 @@ def edit_brs(brs_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -754,6 +770,9 @@ def submit_brs(brs_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -855,6 +874,9 @@ def approve_brs(brs_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -927,6 +949,9 @@ def reback_brs(brs_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1001,6 +1026,9 @@ def reject_brs(brs_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1035,5 +1063,8 @@ def get_brs_history(brs_id):
 
         return res("BRS history fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

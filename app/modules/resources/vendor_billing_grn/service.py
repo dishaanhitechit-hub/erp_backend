@@ -15,6 +15,7 @@ from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -222,6 +223,9 @@ def get_orders_by_vendor(data):
 
         return res("Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -309,6 +313,9 @@ def get_grns_by_order(order_id):
 
         return res("GRNs fetched for order", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -339,7 +346,7 @@ def create_bvs(data, user_id):
 
         bvs = BvsMaster(
             bvs_no          = bvs_no,
-            bvs_date        = data.get("bvsDate"),
+            bvs_date        = parse_date(data.get("bvsDate"), "bvsDate"),
             project_code    = data.get("projectCode"),
             vendor_id       = data.get("vendorId"),
             party_bill_no   = data.get("partyBillNo"),
@@ -347,7 +354,7 @@ def create_bvs(data, user_id):
             item_category = data.get("itemCategory"),
             cost_head = data.get("costHead"),
 
-            party_date      = data.get("partyDate") or None,
+            party_date      = parse_date(data.get("partyDate"), "partyDate") or None,
             order_id        = data.get("orderId"),
             site            = data.get("site"),
             billing_address  = data.get("billingAddress"),
@@ -429,6 +436,9 @@ def create_bvs(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -486,6 +496,9 @@ def get_bvs_list(data):
 
         return res("BVS list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -570,6 +583,9 @@ def get_bvs_details(bvs_id):
 
         return res("BVS details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -604,13 +620,13 @@ def edit_bvs(bvs_id, data, user_id):
 
         # update header
         if data.get("bvsDate"):
-            bvs.bvs_date = data.get("bvsDate")
+            bvs.bvs_date = parse_date(data.get("bvsDate"), "bvsDate")
         if data.get("vendorId"):
             bvs.vendor_id = data.get("vendorId")
         if data.get("partyBillNo"):
             bvs.party_bill_no = data.get("partyBillNo")
         if data.get("partyDate"):
-            bvs.party_date = data.get("partyDate") or None
+            bvs.party_date = parse_date(data.get("partyDate"), "partyDate") or None
         if data.get("orderId"):
             bvs.order_id = data.get("orderId")
         if data.get("site"):
@@ -698,6 +714,9 @@ def edit_bvs(bvs_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -782,6 +801,9 @@ def submit_bvs(bvs_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -889,6 +911,9 @@ def approve_bvs(bvs_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -961,6 +986,9 @@ def reback_bvs(bvs_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1035,6 +1063,9 @@ def reject_bvs(bvs_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1081,6 +1112,9 @@ def get_bvs_history(bvs_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1092,5 +1126,8 @@ def get_bvs_my_approval_status(bvs_id, user_id):
             return res("BVS not found", [], 404)
         data = get_my_approval_status(bvs.project_code, _MODULE, bvs, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

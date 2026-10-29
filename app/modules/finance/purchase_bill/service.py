@@ -20,6 +20,7 @@ from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -279,6 +280,9 @@ def get_vendor_orders(data):
 
         return res("Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -337,6 +341,9 @@ def get_brr_list_for_order(data):
 
         return res("BRR list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -430,6 +437,9 @@ def get_brr_items_grouped(data):
             "gstLines":       gst_lines,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -485,7 +495,7 @@ def create_purchase_bill(data, user_id):
             purchase_bill_no   = purchase_bill_no,
             purchase_bill_uuid = purchase_bill_uuid,
             mode               = mode,
-            processing_date    = data.get("processingDate") or date.today(),
+            processing_date    = parse_date(data.get("processingDate"), "processingDate") or date.today(),
             project_code       = project_code,
             vendor_id          = brr.vendor_id,
             order_type         = brr.order_type,
@@ -542,6 +552,9 @@ def create_purchase_bill(data, user_id):
             "mode":             bill.mode,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -601,6 +614,9 @@ def get_purchase_bill_list(data):
 
         return res("Purchase bill list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -615,6 +631,9 @@ def get_purchase_bill_details(bill_id):
         if not bill:
             return res("Purchase bill not found", [], 404)
         return res("Purchase bill details fetched", _build_detail_payload(bill), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -702,6 +721,9 @@ def edit_purchase_bill(bill_id, data, user_id):
             "purchaseBillNo": bill.purchase_bill_no,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -778,6 +800,9 @@ def submit_purchase_bill(bill_id, user_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -866,6 +891,9 @@ def approve_purchase_bill(bill_id, approved_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -928,6 +956,9 @@ def reback_purchase_bill(bill_id, reback_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -992,6 +1023,9 @@ def reject_purchase_bill(bill_id, rejected_by, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1033,6 +1067,9 @@ def get_purchase_bill_history(bill_id):
             "history":        history,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1048,5 +1085,8 @@ def get_purchase_bill_my_approval_status(bill_id, user_id):
             return res("Purchase bill not found", [], 404)
         data = get_my_approval_status(bill.project_code, _MODULE, bill, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

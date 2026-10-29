@@ -6,6 +6,7 @@ from app.models.machineryLogBook import MachineryLogBook, LogBookEntry
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.response import res
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -83,7 +84,7 @@ def create_log_book(data, user_id):
 
         log_book = MachineryLogBook(
             log_book_no               = generate_log_book_no(),
-            create_date               = data.get("createDate"),
+            create_date               = parse_date(data.get("createDate"), "createDate"),
             project_code              = data.get("projectCode"),
             party_order_id            = data.get("partyOrderId") or None,
             machinery_name            = data.get("machineryName"),
@@ -105,6 +106,9 @@ def create_log_book(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -153,6 +157,9 @@ def get_log_book_list(data):
 
         return res("Log Book list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -188,6 +195,9 @@ def get_log_book_details(log_book_id):
 
         return res("Log Book details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -214,7 +224,7 @@ def edit_log_book(log_book_id, data, user_id):
             return res("You are not Log Book creator", [], 403)
 
         if data.get("createDate"):
-            lb.create_date = data.get("createDate")
+            lb.create_date = parse_date(data.get("createDate"), "createDate")
         if data.get("partyOrderId"):
             lb.party_order_id = data.get("partyOrderId")
         if data.get("machineryName"):
@@ -240,6 +250,9 @@ def edit_log_book(log_book_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -300,6 +313,9 @@ def submit_log_book(log_book_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -370,6 +386,9 @@ def approve_log_book(log_book_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -423,6 +442,9 @@ def reback_log_book(log_book_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -478,6 +500,9 @@ def reject_log_book(log_book_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -521,6 +546,9 @@ def get_log_book_history(log_book_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -553,6 +581,9 @@ def get_pw_orders_for_log_book(data):
 
         return res("PW Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -580,7 +611,7 @@ def create_log_entry(data, user_id):
             log_uid              = generate_log_uid(),
             log_book_id          = log_book_id,
             project_code         = data.get("projectCode"),
-            running_date         = data.get("runningDate") or None,
+            running_date         = parse_date(data.get("runningDate"), "runningDate") or None,
             running_start_time   = data.get("runningStartTime") or None,
             running_finish_time  = data.get("runningFinishTime") or None,
             project_sub_location = data.get("projectSubLocation"),
@@ -602,6 +633,9 @@ def create_log_entry(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -650,6 +684,9 @@ def get_log_entry_list(data):
 
         return res("Log Entry list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -692,6 +729,9 @@ def get_log_entry_details(entry_id):
 
         return res("Log Entry details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -718,7 +758,7 @@ def edit_log_entry(entry_id, data, user_id):
             return res("You are not Log Entry creator", [], 403)
 
         if data.get("runningDate"):
-            entry.running_date = data.get("runningDate")
+            entry.running_date = parse_date(data.get("runningDate"), "runningDate")
         if data.get("runningStartTime"):
             entry.running_start_time = data.get("runningStartTime")
         if data.get("runningFinishTime"):
@@ -746,6 +786,9 @@ def edit_log_entry(entry_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -806,6 +849,9 @@ def submit_log_entry(entry_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -876,6 +922,9 @@ def approve_log_entry(entry_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -929,6 +978,9 @@ def reback_log_entry(entry_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -984,6 +1036,9 @@ def reject_log_entry(entry_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1027,6 +1082,9 @@ def get_log_entry_history(entry_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1038,6 +1096,9 @@ def get_log_book_my_approval_status(log_book_id, user_id):
             return res("Log Book not found", [], 404)
         data = get_my_approval_status(lb.project_code, _MODULE, lb, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1049,5 +1110,8 @@ def get_log_entry_my_approval_status(entry_id, user_id):
             return res("Log Entry not found", [], 404)
         data = get_my_approval_status(entry.project_code, _MODULE, entry, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

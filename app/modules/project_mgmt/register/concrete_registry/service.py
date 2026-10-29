@@ -10,6 +10,7 @@ from app.models.concrete_registry import ConcreteRegistry
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -125,6 +126,9 @@ def create_resigistry(request, user_id=None):
 
         return res("Concrete Registry created", [_registry_dict(registry)], 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -139,6 +143,9 @@ def get_registry_list(request):
         registries = query.order_by(ConcreteRegistry.id.desc()).all()
         data = [_registry_dict(r) for r in registries]
         return res("Concrete Registry list", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -149,6 +156,9 @@ def get_registry_by_id(registry_id):
         if not registry:
             return res("Concrete Registry not found", [], 404)
         return res("Concrete Registry details", [_registry_dict(registry)], 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -176,11 +186,11 @@ def update_registry(registry_id, request, user_id=None):
         if data.get("segment"):
             registry.segment = data.get("segment")
         if data.get("pouringDate"):
-            registry.pouring_date = data.get("pouringDate")
+            registry.pouring_date = parse_date(data.get("pouringDate"), "pouringDate")
         if data.get("pouringStartDate"):
-            registry.pouring_start_date = data.get("pouringStartDate")
+            registry.pouring_start_date = parse_date(data.get("pouringStartDate"), "pouringStartDate")
         if data.get("pouringEndDate"):
-            registry.pouring_end_date = data.get("pouringEndDate")
+            registry.pouring_end_date = parse_date(data.get("pouringEndDate"), "pouringEndDate")
         if data.get("gradeConcrete"):
             registry.grade_concrete = data.get("gradeConcrete")
         if data.get("concreteVolume"):
@@ -216,6 +226,9 @@ def update_registry(registry_id, request, user_id=None):
         db.session.commit()
         return res("Concrete Registry updated", [_registry_dict(registry)], 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -297,6 +310,9 @@ def submit_registry(registry_id, submitted_by=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -410,6 +426,9 @@ def approve_registry(registry_id, approved_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -486,6 +505,9 @@ def reback_registry(registry_id, reback_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -564,6 +586,9 @@ def reject_registry(registry_id, rejected_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -609,6 +634,9 @@ def get_registry_history(registry_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -620,5 +648,8 @@ def get_registry_my_approval_status(registry_id, user_id):
             return res("Concrete Registry not found", [], 404)
         data = get_my_approval_status(registry.project_code, "concrete_register", registry, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

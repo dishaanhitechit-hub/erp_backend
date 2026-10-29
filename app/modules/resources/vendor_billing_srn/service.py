@@ -14,6 +14,7 @@ from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -184,6 +185,9 @@ def get_pw_orders_by_vendor(data):
 
         return res("PW Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -276,6 +280,9 @@ def get_srns_by_order(order_id):
 
         return res("SRNs fetched for order", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -323,11 +330,11 @@ def create_bss(data, user_id):
 
         bss = BssMaster(
             bss_no            = bss_no,
-            bss_date          = data.get("bssDate"),
+            bss_date          = parse_date(data.get("bssDate"), "bssDate"),
             project_code      = data.get("projectCode"),
             vendor_id         = data.get("vendorId"),
             party_bill_no     = data.get("partyBillNo"),
-            party_date        = data.get("partyDate") or None,
+            party_date        = parse_date(data.get("partyDate"), "partyDate") or None,
             received_category = data.get("receivedCategory"),
             item_category     = json.dumps(sub_codes_list),
             cost_head         = data.get("costHead"),
@@ -412,6 +419,9 @@ def create_bss(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -469,6 +479,9 @@ def get_bss_list(data):
 
         return res("BSS list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -559,6 +572,9 @@ def get_bss_details(bss_id):
 
         return res("BSS details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -593,13 +609,13 @@ def edit_bss(bss_id, data, user_id):
 
         # update header
         if data.get("bssDate"):
-            bss.bss_date = data.get("bssDate")
+            bss.bss_date = parse_date(data.get("bssDate"), "bssDate")
         if data.get("vendorId"):
             bss.vendor_id = data.get("vendorId")
         if data.get("partyBillNo"):
             bss.party_bill_no = data.get("partyBillNo")
         if data.get("partyDate"):
-            bss.party_date = data.get("partyDate") or None
+            bss.party_date = parse_date(data.get("partyDate"), "partyDate") or None
         if data.get("orderId"):
             bss.order_id = data.get("orderId")
         if data.get("site"):
@@ -687,6 +703,9 @@ def edit_bss(bss_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -771,6 +790,9 @@ def submit_bss(bss_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -876,6 +898,9 @@ def approve_bss(bss_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -948,6 +973,9 @@ def reback_bss(bss_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1022,6 +1050,9 @@ def reject_bss(bss_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1068,6 +1099,9 @@ def get_bss_history(bss_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1079,5 +1113,8 @@ def get_bss_my_approval_status(bss_id, user_id):
             return res("BSS not found", [], 404)
         data = get_my_approval_status(bss.project_code, _MODULE, bss, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

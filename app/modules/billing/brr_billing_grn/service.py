@@ -17,6 +17,7 @@ from app.response import res
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -256,6 +257,9 @@ def get_grns_by_brr(brr_id):
 
         return res("GRNs fetched for BRR", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -295,7 +299,7 @@ def create_brg(data, user_id):
 
         brg = BrgMaster(
             brg_no            = brg_no,
-            brg_date          = data.get("brgDate"),
+            brg_date          = parse_date(data.get("brgDate"), "brgDate"),
             project_code      = data.get("projectCode"),
             brr_id            = brr_id,
             order_id          = order.id,
@@ -304,7 +308,7 @@ def create_brg(data, user_id):
             item_category     = data.get("itemCategory"),
             cost_head         = data.get("costHead"),
             party_bill_no     = data.get("partyBillNo"),
-            party_date        = data.get("partyDate") or None,
+            party_date        = parse_date(data.get("partyDate"), "partyDate") or None,
             site              = order.project_code,
             billing_address   = order.billing_address,
             shipping_address  = order.shipping_address,
@@ -391,6 +395,9 @@ def create_brg(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -451,6 +458,9 @@ def get_brg_list(data):
 
         return res("BRG list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -541,6 +551,9 @@ def get_brg_details(brg_id):
 
         return res("BRG details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -668,6 +681,9 @@ def edit_brg(brg_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -748,6 +764,9 @@ def submit_brg(brg_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -849,6 +868,9 @@ def approve_brg(brg_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -921,6 +943,9 @@ def reback_brg(brg_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -995,6 +1020,9 @@ def reject_brg(brg_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1029,5 +1057,8 @@ def get_brg_history(brg_id):
 
         return res("BRG history fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

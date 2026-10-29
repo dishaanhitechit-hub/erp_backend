@@ -1,6 +1,47 @@
 from datetime import datetime, date
 import calendar
 
+def parse_date(value, field_name="date"):
+    """Parse and validate a date value before writing to the DB.
+
+    Rules:
+      - None / empty string → returns None (safe for optional fields)
+      - date/datetime object → validates year is 4 digits, returns as-is
+      - string → must match YYYY-MM-DD strictly with a 4-digit year and be
+        a real calendar date (e.g. 2024-02-30 is rejected)
+
+    Raises ValueError with a clear message so callers can return a 400
+    before any corrupt value reaches the database.
+    """
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, (date, datetime)):
+        if not (1000 <= value.year <= 9999):
+            raise ValueError(
+                f"{field_name}: year must be 4 digits (got {value.year})"
+            )
+        return value
+
+    raw = str(value).strip()
+    # Enforce strict YYYY-MM-DD format — rejects partial strings like "62026-1-1"
+    import re as _re
+    if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        raise ValueError(
+            f"{field_name}: '{raw}' is not a valid date — expected YYYY-MM-DD"
+        )
+    try:
+        parsed = datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(
+            f"{field_name}: '{raw}' is not a real calendar date (e.g. month/day out of range)"
+        )
+    if parsed.year < 1000:
+        raise ValueError(
+            f"{field_name}: year must be 4 digits (got {parsed.year})"
+        )
+    return parsed
+
 
 def last_month_range() -> tuple[datetime, datetime]:
     """Return (start, end) datetime for the previous calendar month (UTC-midnight boundaries)."""

@@ -9,6 +9,7 @@ from app.models.journalAccounting import PettyCashJournalAccounting, PettyCashJo
 from app.models.journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
 from app.response import res
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -152,6 +153,9 @@ def get_approved_vouchers(params):
             })
 
         return res("Approved journal vouchers fetched", {"vouchers": vouchers}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -164,7 +168,7 @@ def create_journal_accounting(data, user_id):
     try:
         project_code       = data.get("projectCode")
         journal_voucher_id = _parse_int(data.get("journalVoucherId"))
-        voucher_date       = data.get("voucherDate") or date.today().isoformat()
+        voucher_date       = parse_date(data.get("voucherDate"), "voucherDate") or date.today().isoformat()
         lines_data         = _parse_lines(data)
 
         if not project_code:
@@ -229,6 +233,9 @@ def create_journal_accounting(data, user_id):
         db.session.commit()
 
         return res("Journal accounting created", {"id": ja.id, "voucherNo": ja.voucher_no, "voucherUuid": ja.voucher_uuid}, 201)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -283,6 +290,9 @@ def get_journal_accounting_list(params):
                 "totalPages": math.ceil(total / page_size) if page_size else 1,
             },
         }, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -297,6 +307,9 @@ def get_journal_accounting_detail(accounting_id):
         if not ja:
             return res("Journal accounting not found", [], 404)
         return res("Journal accounting fetched", _build_payload(ja), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -311,6 +324,9 @@ def get_journal_accounting_by_uuid(voucher_uuid):
         if not ja:
             return res("Journal accounting not found", [], 404)
         return res("Journal accounting fetched", _build_payload(ja), 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -330,7 +346,7 @@ def edit_journal_accounting(accounting_id, data, user_id):
             return res("Not authorized", [], 403)
 
         lines_data   = _parse_lines(data)
-        voucher_date = data.get("voucherDate") or ja.voucher_date
+        voucher_date = parse_date(data.get("voucherDate"), "voucherDate") or ja.voucher_date
 
         if not lines_data:
             return res("At least one line required", [], 400)
@@ -364,6 +380,9 @@ def edit_journal_accounting(accounting_id, data, user_id):
         db.session.commit()
 
         return res("Journal accounting updated", {"id": ja.id}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -395,6 +414,9 @@ def submit_journal_accounting(accounting_id, user_id):
         db.session.commit()
 
         return res("Submitted", {}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -429,6 +451,9 @@ def approve_journal_accounting(accounting_id, user_id, comments=None):
 
         db.session.commit()
         return res("Approved", {}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -456,6 +481,9 @@ def reback_journal_accounting(accounting_id, user_id, comments=None):
         create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=level, action="REBACK", action_by=user_id, comments=comments)
         db.session.commit()
         return res("Sent back for correction", {}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -484,6 +512,9 @@ def reject_journal_accounting(accounting_id, user_id, comments=None):
         create_history(project_code=ja.project_code, module_code=_MODULE, record_id=ja.id, level_no=level, action="REJECT", action_by=user_id, comments=comments)
         db.session.commit()
         return res("Rejected", {}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -508,6 +539,9 @@ def get_journal_accounting_history(accounting_id):
             "approvalSteps":  steps,
             "history":        history,
         }, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -524,5 +558,8 @@ def get_journal_accounting_my_status(accounting_id, user_id):
 
         status = get_my_approval_status(ja.project_code, _MODULE, ja, user_id)
         return res("My status fetched", status, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

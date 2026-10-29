@@ -8,6 +8,7 @@ from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_stora
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -122,6 +123,9 @@ def create_drawing_register(data, user_id, files=None):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -172,6 +176,9 @@ def get_drawing_register_list(data):
 
         return res("Drawing Register list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -219,6 +226,9 @@ def get_drawing_register_details(dr_id):
 
         return res("Drawing Register details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -263,7 +273,7 @@ def edit_drawing_register(dr_id, data, user_id, files=None):
 
         # Received Details
         if data.get("receivedDate") is not None:
-            dr.received_date = data.get("receivedDate") or None
+            dr.received_date = parse_date(data.get("receivedDate"), "receivedDate") or None
         if data.get("receivedTime") is not None:
             dr.received_time = data.get("receivedTime") or None
         if data.get("receivedBy") is not None:
@@ -303,6 +313,9 @@ def edit_drawing_register(dr_id, data, user_id, files=None):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -386,6 +399,9 @@ def submit_drawing_register(dr_id, submitted_by=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -501,6 +517,9 @@ def approve_drawing_register(dr_id, approved_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -579,6 +598,9 @@ def reback_drawing_register(dr_id, reback_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -659,6 +681,9 @@ def reject_drawing_register(dr_id, rejected_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -706,6 +731,9 @@ def get_drawing_register_history(dr_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -717,5 +745,8 @@ def get_drawing_register_my_approval_status(dr_id, user_id):
             return res("Drawing Register not found", [], 404)
         data = get_my_approval_status(dr.project_code, "drawing_register", dr, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

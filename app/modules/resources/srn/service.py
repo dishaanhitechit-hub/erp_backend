@@ -16,6 +16,7 @@ from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 # from app.alias_helper import get_approval_module
 from app.modules.work_flow import (
+from app.utils.date_utils import parse_date
     is_creator,
     is_current_approver,
     get_first_approver,
@@ -150,6 +151,9 @@ def get_pw_orders_by_vendor(data):
 
         return res("PW Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -222,6 +226,9 @@ def get_pw_order_items_for_srn(order_id):
 
         return res("PW Order items fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -281,7 +288,7 @@ def create_srn(data, user_id, files=None):
         srn = SrnMaster(
             srn_no                = srn_no,
             srn_uuid              = new_uuid,
-            srn_date              = data.get("srnDate"),
+            srn_date              = parse_date(data.get("srnDate"), "srnDate"),
             project_code          = data.get("projectCode"),
             received_category     = data.get("receivedCategory"),
             item_category         = json.dumps(sub_codes_list),
@@ -292,10 +299,10 @@ def create_srn(data, user_id, files=None):
             shipping_address      = data.get("shippingAddress"),
             challan_no            = data.get("challanNo"),
             party_bill_no         = data.get("partyBillNo"),
-            party_bill_date       = data.get("partyBillDate"),
+            party_bill_date       = parse_date(data.get("partyBillDate"), "partyBillDate"),
             deliver_vehicle_no    = data.get("deliverVehicleNo"),
             delivered_concern     = data.get("deliveredConcern"),
-            unloading_datetime    = data.get("unloadingDatetime"),
+            unloading_datetime    = parse_date(data.get("unloadingDatetime"), "unloadingDatetime"),
             physically_verified_by = data.get("physicallyVerifiedBy"),
             attached_doc          = attached_doc,
             workflow_status       = "Draft",
@@ -354,6 +361,9 @@ def create_srn(data, user_id, files=None):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -408,6 +418,9 @@ def get_srn_list(data):
 
         return res("SRN list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -491,6 +504,9 @@ def get_srn_details(srn_id):
 
         return res("SRN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -578,6 +594,9 @@ def submit_srn(srn_id, submitted_by=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -691,6 +710,9 @@ def approve_srn(srn_id, approved_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -767,6 +789,9 @@ def reback_srn(srn_id, reback_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -845,6 +870,9 @@ def reject_srn(srn_id, rejected_by=None, comments=None):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -885,7 +913,7 @@ def edit_srn(srn_id, data, user_id, files=None):
 
         # update header
         if data.get("srnDate"):
-            srn.srn_date = data.get("srnDate")
+            srn.srn_date = parse_date(data.get("srnDate"), "srnDate")
         if data.get("receivedCategory"):
             srn.received_category = data.get("receivedCategory")
         if data.get("itemCategory"):
@@ -905,13 +933,13 @@ def edit_srn(srn_id, data, user_id, files=None):
         if data.get("partyBillNo"):
             srn.party_bill_no = data.get("partyBillNo")
         if data.get("partyBillDate"):
-            srn.party_bill_date = data.get("partyBillDate")
+            srn.party_bill_date = parse_date(data.get("partyBillDate"), "partyBillDate")
         if data.get("deliverVehicleNo"):
             srn.deliver_vehicle_no = data.get("deliverVehicleNo")
         if data.get("deliveredConcern"):
             srn.delivered_concern = data.get("deliveredConcern")
         if data.get("unloadingDatetime"):
-            srn.unloading_datetime = data.get("unloadingDatetime")
+            srn.unloading_datetime = parse_date(data.get("unloadingDatetime"), "unloadingDatetime")
         if data.get("physicallyVerifiedBy"):
             srn.physically_verified_by = data.get("physicallyVerifiedBy")
 
@@ -985,6 +1013,9 @@ def edit_srn(srn_id, data, user_id, files=None):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1032,6 +1063,9 @@ def get_srn_history(srn_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1213,6 +1247,9 @@ def get_srn_by_uuid(srn_uuid):
 
         return res("SRN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1224,5 +1261,8 @@ def get_srn_my_approval_status(srn_id, user_id):
             return res("SRN not found", [], 404)
         data = get_my_approval_status(srn.project_code, "service_received_note", srn, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

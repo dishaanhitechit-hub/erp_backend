@@ -20,6 +20,7 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 from app.alias_helper import get_approval_module
+from app.utils.date_utils import parse_date
 
 MODULE = "sale_claim_bill"
 
@@ -216,6 +217,9 @@ def get_sale_orders_for_lookup(data):
 
         return res("Sale orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -279,6 +283,9 @@ def get_sale_order_items_for_ua(og_sale_order_id, project_code):
             "items":           result,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -310,6 +317,9 @@ def get_claim_bills_for_so(og_sale_order_id):
             for b in bills
         ]
         return res("Claim bills fetched", result, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -395,6 +405,9 @@ def get_claim_bill_items_for_ua(billing_id):
             "items":         result,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -418,7 +431,7 @@ def create_ua(data, user_id):
 
         ua = UncertainAllocationMaster(
             ua_no        = _generate_ua_no(),
-            ua_date      = data.get("uaDate"),
+            ua_date      = parse_date(data.get("uaDate"), "uaDate"),
             ua_uuid      = str(_uuid_lib.uuid4()),
             project_code = project_code,
             remarks      = data.get("remarks"),
@@ -504,6 +517,9 @@ def create_ua(data, user_id):
             "uaUuid": ua.ua_uuid,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -548,6 +564,9 @@ def get_ua_list(data):
 
         return res("Uncertain allocation list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -586,6 +605,9 @@ def get_ua_details(ua_id):
 
         return res("Uncertain allocation details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -614,7 +636,7 @@ def edit_ua(ua_id, data, user_id):
             return res("At least one line is required", [], 400)
 
         if data.get("uaDate") is not None:
-            ua.ua_date = data.get("uaDate")
+            ua.ua_date = parse_date(data.get("uaDate"), "uaDate")
         if data.get("remarks") is not None:
             ua.remarks = data.get("remarks")
 
@@ -696,6 +718,9 @@ def edit_ua(ua_id, data, user_id):
 
         return res("Uncertain allocation updated", {"uaId": ua.id, "uaNo": ua.ua_no}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -748,6 +773,9 @@ def submit_ua(ua_id, submitted_by=None):
             "uaId": ua.id, "uaNo": ua.ua_no, "workflowStatus": ua.workflow_status,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -797,6 +825,9 @@ def approve_ua(ua_id, approved_by=None, comments=None):
             "uaId": ua.id, "workflowStatus": ua.workflow_status, "currentLevel": ua.current_level,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -833,6 +864,9 @@ def reback_ua(ua_id, reback_by=None, comments=None):
 
         return res("Sent for correction", {"uaId": ua.id, "workflowStatus": ua.workflow_status}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -871,6 +905,9 @@ def reject_ua(ua_id, rejected_by=None, comments=None):
 
         return res("Rejected", {"uaId": ua.id, "workflowStatus": ua.workflow_status}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -909,6 +946,9 @@ def get_ua_history(ua_id):
             "history":        history,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -924,6 +964,9 @@ def get_ua_my_approval_status(ua_id, user_id):
             return res("Uncertain allocation not found", [], 404)
         data = get_my_approval_status(ua.project_code, MODULE, ua, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -960,5 +1003,8 @@ def get_ua_by_uuid(ua_uuid):
 
         return res("Uncertain allocation details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

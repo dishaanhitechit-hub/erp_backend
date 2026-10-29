@@ -28,6 +28,7 @@ from app.modules.work_flow import (
 import json
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -217,6 +218,9 @@ def get_orders_by_vendor(data):
 
         return res("Orders fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -312,6 +316,9 @@ def get_order_items_for_grn(order_id):
 
         return res("Order items fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -457,6 +464,9 @@ def create_grn(data, user_id, files=None):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -521,6 +531,9 @@ def get_grn_list(data):
 
         return res("GRN list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -620,6 +633,9 @@ def get_grn_details(grn_id):
 
         return res("GRN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -712,6 +728,9 @@ def submit_grn(grn_id, submitted_by=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -832,6 +851,9 @@ def approve_grn(grn_id, approved_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -913,6 +935,9 @@ def reback_grn(grn_id, reback_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -996,6 +1021,9 @@ def reject_grn(grn_id, rejected_by=None, comments=None):
         db.session.rollback()
         return res(str(e), [], 500)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1036,7 +1064,7 @@ def edit_grn(grn_id, data, user_id, files=None):
 
         # ── update header fields ───────────────────────────────
         if data.get("grnDate"):
-            grn.grn_date = data.get("grnDate")
+            grn.grn_date = parse_date(data.get("grnDate"), "grnDate")
         if data.get("receivedCategory"):
             grn.received_category = data.get("receivedCategory")
         if data.get("itemCategory"):
@@ -1056,7 +1084,7 @@ def edit_grn(grn_id, data, user_id, files=None):
         if data.get("partyBillNo"):
             grn.party_bill_no = data.get("partyBillNo")
         if data.get("partyBillDate"):
-            grn.party_bill_date = data.get("partyBillDate")
+            grn.party_bill_date = parse_date(data.get("partyBillDate"), "partyBillDate")
         if data.get("deliverVehicleNo"):
             grn.deliver_vehicle_no = data.get("deliverVehicleNo")
         if data.get("deliveredConcern"):
@@ -1162,6 +1190,9 @@ def edit_grn(grn_id, data, user_id, files=None):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1211,6 +1242,9 @@ def get_grn_history(grn_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1435,6 +1469,9 @@ def get_grn_by_uuid(grn_uuid):
 
         return res("GRN details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1446,5 +1483,8 @@ def get_grn_my_approval_status(grn_id, user_id):
             return res("GRN not found", [], 404)
         data = get_my_approval_status(grn.project_code, "goods_received_note", grn, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)

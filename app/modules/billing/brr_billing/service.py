@@ -34,6 +34,7 @@ from app.modules.billing.constants import (
 from app.alias_helper import get_approval_module
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
+from app.utils.date_utils import parse_date
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -324,6 +325,9 @@ def get_items_by_brr(brr_id):
 
         return res("Items fetched for BRR", base, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -371,7 +375,7 @@ def create_brb(data, user_id):
 
         brb = BrbMaster(
             brb_no        = _generate_brb_no(),
-            brb_date      = data.get("brbDate"),
+            brb_date      = parse_date(data.get("brbDate"), "brbDate"),
             brb_uuid      = str(_uuid_lib.uuid4()),
             project_code  = data.get("projectCode"),
             brr_id        = brr_id,
@@ -505,6 +509,9 @@ def create_brb(data, user_id):
             201
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -561,6 +568,9 @@ def get_brb_list(data):
 
         return res("Billing list fetched", result, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -703,6 +713,9 @@ def get_brb_details(brb_id):
 
         return res("Billing details fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -815,6 +828,9 @@ def get_brb_by_uuid(brb_uuid):
 
         return res("Billing fetched", data, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -970,6 +986,9 @@ def edit_brb(brb_id, data, user_id):
             200
         )
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1053,6 +1072,9 @@ def submit_brb(brb_id, submitted_by=None):
 
         return res("Billing submitted", {"brbId": brb.id, "brbNo": brb.brb_no, "workflowStatus": brb.workflow_status}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1129,6 +1151,9 @@ def approve_brb(brb_id, approved_by=None, comments=None):
 
         return res("Billing approved", {"brbId": brb.id, "workflowStatus": brb.workflow_status, "currentLevel": brb.current_level}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1183,6 +1208,9 @@ def reback_brb(brb_id, reback_by=None, comments=None):
 
         return res("Billing sent for correction", {"brbId": brb.id, "workflowStatus": brb.workflow_status}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1239,6 +1267,9 @@ def reject_brb(brb_id, rejected_by=None, comments=None):
 
         return res("Billing rejected", {"brbId": brb.id, "workflowStatus": brb.workflow_status}, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -1283,6 +1314,9 @@ def get_brb_history(brb_id):
             "history":        data,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 
@@ -1295,5 +1329,8 @@ def get_brb_my_approval_status(brb_id, user_id):
         module = get_module_code(brb.billing_type)
         data = get_my_approval_status(brb.project_code, module, brb, user_id)
         return res("Approval status", data, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
