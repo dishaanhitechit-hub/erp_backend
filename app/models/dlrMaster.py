@@ -96,6 +96,7 @@ class DlrItem(db.Model):
     bonus_hour = db.Column(db.Numeric(5, 2), default=0)
     total_working_hr = db.Column(db.Numeric(5, 2), default=0)
 
-    job_location = db.Column(db.String(200), nullable=True)
+    mes = db.Column(db.Numeric(5, 2), default=0)
+    supl = db.Column(db.Numeric(5, 2), default=0)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
