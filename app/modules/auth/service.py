@@ -24,25 +24,43 @@ def logout_user():
         return res("Logout failed", [], code=500)
 
 
-def _find_user_by_identifier(identifier: str):
-    """Find user by login_username or mobile number."""
+def _find_user_by_identifier(identifier: str, password: str = None):
+    """Find user by login_username or mobile/wp_mobile number."""
+    from sqlalchemy import or_
     clean = identifier.strip().replace(" ", "").replace("-", "")
-    # detect mobile: 10 digits, or 12 digits starting with 91, or +91...
     is_mobile = (
         (clean.isdigit() and len(clean) in (10, 12))
         or (clean.startswith("+91") and clean[3:].isdigit() and len(clean[3:]) == 10)
     )
     if is_mobile:
         if clean.startswith("+91"):
-            clean = clean[3:]
+            digits = clean[3:]
         elif clean.startswith("91") and len(clean) == 12:
-            clean = clean[2:]
-        return User.query.filter(User.mobile.like(f"%{clean}")).first()
+            digits = clean[2:]
+        else:
+            digits = clean
+        candidates = User.query.filter(
+            or_(
+                User.mobile == digits,
+                User.mobile == "+91" + digits,
+                User.wp_mobile == digits,
+                User.wp_mobile == "+91" + digits,
+            )
+        ).all()
+        if not candidates:
+            return None
+        # if multiple users share the same mobile, match by password
+        if password:
+            for u in candidates:
+                if u.check_password(password):
+                    return u
+            return None
+        return candidates[0]
     return User.query.filter_by(login_username=identifier.strip()).first()
 
 
 def login_user(loginUserName, password):
-    user = _find_user_by_identifier(loginUserName)
+    user = _find_user_by_identifier(loginUserName, password)
 
     if not user or not user.check_password(password):
         return res ("Invalid Credential", code = 401)
