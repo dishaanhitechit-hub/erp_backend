@@ -21,7 +21,7 @@ from app.modules.work_flow import (
 )
 from app.alias_helper import get_approval_module
 
-MODULE = "uncertain_allocation"
+MODULE = "sale_claim_bill"
 
 
 # ══════════════════════════════════════════════════════════════════
