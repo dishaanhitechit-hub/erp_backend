@@ -32,7 +32,8 @@ def suggest_sale_bill():
                 sbi.cc_code,
                 sbi.cc_name,
                 sbi.description,
-                sbi.basic_amount
+                sbi.basic_amount,
+                sbm.og_sale_order_no
             FROM sale_bill_master sbm
             JOIN sale_bill_items sbi ON sbi.sale_bill_id = sbm.id
             WHERE sbm.project_code = :pc
@@ -56,6 +57,7 @@ def suggest_sale_bill():
             "cc_name": r[5],
             "description": r[6],
             "basic_amount": float(r[7] or 0),
+            "og_sale_order_no": r[8] or "",
         }
         for r in rows
     ]
@@ -74,19 +76,25 @@ def suggest_sale_bill():
 
     suggestion = ask_claude(system_prompt, user_message)
 
-    # Derive auto-fill fields from the most-used cc_code in recent bills
+    # Derive auto-fill fields from billing history
     from collections import Counter
     cc_counts = Counter(r["cc_code"] for r in history if r["cc_code"])
     top_cc = cc_counts.most_common(1)[0][0] if cc_counts else None
     if top_cc:
         same_cc = [r for r in history if r["cc_code"] == top_cc]
-        avg_amount = sum(r["basic_amount"] for r in same_cc) / len(same_cc)
+        recent_amounts = [r["basic_amount"] for r in same_cc[:10]]
+        avg_amount = sum(recent_amounts) / len(recent_amounts)
         top_cc_name = same_cc[0]["cc_name"] or top_cc
     else:
         avg_amount = 0
         top_cc_name = ""
 
+    # Most recently used sale order number
+    order_counts = Counter(r["og_sale_order_no"] for r in history if r["og_sale_order_no"])
+    top_order = order_counts.most_common(1)[0][0] if order_counts else ""
+
     fields = {
+        "og_sale_order_no": top_order,
         "cc_code": top_cc or "",
         "cc_name": top_cc_name,
         "basic_amount": round(avg_amount, 2),
