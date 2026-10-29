@@ -93,7 +93,8 @@ def _serialize_item(item):
         "workingHour": float(item.working_hour or 0),
         "bonusHour": float(item.bonus_hour or 0),
         "totalWorkingHr": float(item.total_working_hr or 0),
-        "jobLocation": item.job_location,
+        "mes": float(item.mes or 0),
+        "supl": float(item.supl or 0),
     }
 
 
@@ -153,6 +154,9 @@ def _build_items(rows):
         working_hour = _calc_working_hour(start_time, finish_time, lunch_hour)
         total_working_hr = round(working_hour + bonus_hour, 2)
 
+        mes = round(float(row.get("mes") or 0), 2)
+        supl = round(max(total_working_hr - mes, 0), 2)
+
         items.append(DlrItem(
             sl_no=idx,
             man_id=man_id_str or None,
@@ -164,7 +168,8 @@ def _build_items(rows):
             working_hour=working_hour,
             bonus_hour=bonus_hour,
             total_working_hr=total_working_hr,
-            job_location=str(row.get("jobLocation") or "").strip() or None,
+            mes=mes,
+            supl=supl,
         ))
     return items
 
@@ -662,38 +667,10 @@ def get_dlr_summary(dlr_id):
             "amount": amount,
         })
 
-    # Area wise summary grouped by job_location
-    loc_map = defaultdict(float)
-    for item in d.items:
-        if item.job_location:
-            loc_map[item.job_location] += float(item.total_working_hr or 0)
-
-    cat_rate_map = {}
-    for entry in mandays_summary:
-        cat_rate_map[entry["category"]] = entry["rate"]
-
-    area_summary = []
-    for idx, (loc, total_hrs) in enumerate(loc_map.items(), start=1):
-        loc_items = [i for i in d.items if i.job_location == loc]
-        amount = sum(
-            round((float(i.total_working_hr or 0) / 8) * cat_rate_map.get(i.category, 0), 2)
-            for i in loc_items
-        )
-        area_summary.append({
-            "slNo": idx,
-            "location": loc,
-            "totalWorkingHr": round(total_hrs, 2),
-            "amount": round(amount, 2),
-        })
-
     total_mandays_hrs = round(sum(e["totalWorkingHr"] for e in mandays_summary), 2)
     total_mandays_amt = round(sum(e["amount"] for e in mandays_summary), 2)
-    total_area_hrs = round(sum(e["totalWorkingHr"] for e in area_summary), 2)
-    total_area_amt = round(sum(e["amount"] for e in area_summary), 2)
 
     return res("DLR summary fetched", [{
         "mandaysSummary": mandays_summary,
         "mandaysTotal": {"totalWorkingHr": total_mandays_hrs, "amount": total_mandays_amt},
-        "areaSummary": area_summary,
-        "areaTotal": {"totalWorkingHr": total_area_hrs, "amount": total_area_amt},
     }], 200)
