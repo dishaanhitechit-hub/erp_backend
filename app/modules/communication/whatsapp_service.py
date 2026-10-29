@@ -135,6 +135,46 @@ def send_template(phone: str, template_name: str, body_params: dict,
         pass
 
 
+def send_otp(phone: str, otp: str):
+    """Send authentication OTP via WhatsApp. Never raises."""
+    try:
+        normalized = normalize_phone(phone)
+        if not normalized:
+            return
+        token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
+        phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+        version = os.getenv("WHATSAPP_API_VERSION", "v21.0")
+        url = f"{_GRAPH_BASE}/{version}/{phone_number_id}/messages"
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": normalized,
+            "type": "template",
+            "template": {
+                "name": "otp_forgot_password",
+                "language": {"code": "en"},
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [{"type": "text", "text": otp}],
+                    },
+                    {
+                        "type": "button",
+                        "sub_type": "url",
+                        "index": "0",
+                        "parameters": [{"type": "text", "text": otp}],
+                    },
+                ],
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        requests.post(url, json=payload, headers=headers, timeout=10)
+    except Exception:
+        pass
+
+
 def send_text_reply(phone: str, message: str):
     """
     Free-text reply — only valid within 24h after user initiates.
