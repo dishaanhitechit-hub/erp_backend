@@ -24,8 +24,25 @@ def logout_user():
         return res("Logout failed", [], code=500)
 
 
+def _find_user_by_identifier(identifier: str):
+    """Find user by login_username or mobile number."""
+    clean = identifier.strip().replace(" ", "").replace("-", "")
+    # detect mobile: 10 digits, or 12 digits starting with 91, or +91...
+    is_mobile = (
+        (clean.isdigit() and len(clean) in (10, 12))
+        or (clean.startswith("+91") and clean[3:].isdigit() and len(clean[3:]) == 10)
+    )
+    if is_mobile:
+        if clean.startswith("+91"):
+            clean = clean[3:]
+        elif clean.startswith("91") and len(clean) == 12:
+            clean = clean[2:]
+        return User.query.filter(User.mobile.like(f"%{clean}")).first()
+    return User.query.filter_by(login_username=identifier.strip()).first()
+
+
 def login_user(loginUserName, password):
-    user = User.query.filter_by(login_username =  loginUserName).first()
+    user = _find_user_by_identifier(loginUserName)
 
     if not user or not user.check_password(password):
         return res ("Invalid Credential", code = 401)
