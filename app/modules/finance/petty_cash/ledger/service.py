@@ -54,14 +54,16 @@ def get_project_linked_accounts(params):
         if not project:
             return res("Project not found", [], 404)
 
-        rows = (
-            BankCashProject.query
-            .filter_by(project_id=project.id)
-            .join(BankCash, BankCash.id == BankCashProject.bank_cash_id)
+        # Load the BankCash rows directly in one query (avoids a lazy load per link row)
+        banks = (
+            BankCash.query
+            .join(BankCashProject, BankCash.id == BankCashProject.bank_cash_id)
+            .filter(BankCashProject.project_id == project.id)
+            .order_by(BankCashProject.id)
             .all()
         )
 
-        accounts = [_account_payload(r.bank_cash) for r in rows if r.bank_cash]
+        accounts = [_account_payload(bc) for bc in banks]
         return res("Project accounts fetched", {"accounts": accounts}, 200)
 
     except Exception as e:
@@ -97,6 +99,15 @@ def get_petty_cash_account_ledger(params):
                 return res("No accounts linked to this project", [], 404)
             account_info = None  # multiple accounts
 
+        # Load every account once; entries below look them up from this map
+        if bank_cash_id:
+            bc_map = {bc.id: bc}
+        else:
+            bc_map = {
+                b.id: b
+                for b in BankCash.query.filter(BankCash.id.in_(account_ids)).all()
+            }
+
         # ── CR entries: contra lines where this account is credited ──
         contra_q = (
             db.session.query(ContraEntryLine, ContraEntryMaster)
@@ -115,7 +126,7 @@ def get_petty_cash_account_ledger(params):
 
         cr_entries = []
         for line, master in contra_q.all():
-            bc = BankCash.query.get(line.account_id)
+            bc = bc_map.get(line.account_id)
             cr_entries.append({
                 "date":        master.entry_date,
                 "type":        "Contra",
@@ -140,7 +151,7 @@ def get_petty_cash_account_ledger(params):
 
         dr_entries = []
         for v in docket_q.all():
-            bc = v.bank_cash
+            bc = bc_map.get(v.bank_cash_id)
             dr_entries.append({
                 "date":        v.voucher_date,
                 "type":        "Docket",
@@ -176,7 +187,7 @@ def get_petty_cash_account_ledger(params):
 
         pending_entries = []
         for v in pending_vouchers:
-            bc = v.bank_cash
+            bc = bc_map.get(v.bank_cash_id)
             pending_entries.append({
                 "date":           _fmt(v.voucher_date),
                 "type":           "Docket",
