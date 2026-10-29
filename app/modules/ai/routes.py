@@ -73,7 +73,27 @@ def suggest_sale_bill():
     )
 
     suggestion = ask_claude(system_prompt, user_message)
-    return jsonify({"suggestion": suggestion}), 200
+
+    # Derive auto-fill fields from the most-used cc_code in recent bills
+    from collections import Counter
+    cc_counts = Counter(r["cc_code"] for r in history if r["cc_code"])
+    top_cc = cc_counts.most_common(1)[0][0] if cc_counts else None
+    if top_cc:
+        same_cc = [r for r in history if r["cc_code"] == top_cc]
+        avg_amount = sum(r["basic_amount"] for r in same_cc) / len(same_cc)
+        top_cc_name = same_cc[0]["cc_name"] or top_cc
+    else:
+        avg_amount = 0
+        top_cc_name = ""
+
+    fields = {
+        "cc_code": top_cc or "",
+        "cc_name": top_cc_name,
+        "basic_amount": round(avg_amount, 2),
+        "gst_type": "IGST",
+    }
+
+    return jsonify({"suggestion": suggestion, "fields": fields}), 200
 
 
 # ── General Business Chat ─────────────────────────────────────────────────────
