@@ -20,6 +20,7 @@ jobs:
             cd /srv/backend
             git pull origin master
             source venv/bin/activate
+            find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
             pip install -r requirements.txt
             flask db upgrade || python3 /opt/alerts/migration_alert.py "flask db upgrade failed during deploy"
             sudo systemctl restart backend.service
