@@ -33,3 +33,4 @@ itsdangerous
 python-docx
 lxml
 APScheduler>=3.10.4
+anthropic==0.40.0
