@@ -8,7 +8,7 @@ class BillingMaster(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    billing_no   = db.Column(db.String(50), nullable=False)
+    billing_no   = db.Column(db.String(50),unique=True, nullable=False)
     billing_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
     billing_date = db.Column(db.Date, nullable=False)
 

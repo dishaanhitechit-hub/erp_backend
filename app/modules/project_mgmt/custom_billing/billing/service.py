@@ -1,6 +1,6 @@
 from decimal import Decimal
-from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.extensions import db
 from datetime import datetime
 import uuid as _uuid
@@ -158,6 +158,20 @@ def _get_order_financials(og_sale_order_no, project_code):
         "gstAmount":       float(og_so.gst_amount   or 0),
         "totalAmount":     float(og_so.total_amount  or 0),
     }
+
+
+def _assert_billing_no_unique(billing_no, exclude_id=None):
+    """Advisory-lock on billing_no then check uniqueness.
+    Raises ValueError if a duplicate is found.
+    The advisory lock is transaction-scoped, so concurrent requests for the
+    same billing_no are serialised rather than both slipping through."""
+    lock_key = hash(billing_no.strip().upper()) & 0x7FFFFFFFFFFFFFFF
+    db.session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key})
+    q = BillingMaster.query.filter(BillingMaster.billing_no == billing_no)
+    if exclude_id:
+        q = q.filter(BillingMaster.id != exclude_id)
+    if q.first():
+        raise ValueError(f"Billing No '{billing_no}' already exists")
 
 
 def generate_billing_no(mode):
@@ -689,6 +703,7 @@ def create_billing(req, user_id):
             billing_no    = req.form.get("billingNo") or claim_bill.billing_no
             if not billing_no:
                 return res("billingNo (Bill No) is required", [], 400)
+            _assert_billing_no_unique(billing_no)
             billing_uuid  = str(_uuid.uuid4())
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_no, project_code, mode
@@ -760,6 +775,7 @@ def create_billing(req, user_id):
         billing_no     = req.form.get("billingNo", "").strip()
         if not billing_no:
             return res("billingNo (Bill No) is required", [], 400)
+        _assert_billing_no_unique(billing_no)
         billing_uuid   = str(_uuid.uuid4())
         pre_certified  = _get_pre_certified(og_sale_order_no, project_code, mode)
         attachment_url = _upload_billing_attachment(
@@ -811,6 +827,12 @@ def create_billing(req, user_id):
             "mode":        bill.mode,
         }, 201)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 409)
+    except IntegrityError:
+        db.session.rollback()
+        return res("Billing No already exists — please use a different number", [], 409)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -927,8 +949,12 @@ def edit_billing(bill_id, req, user_id):
         if not items_raw and not boq_raw:
             return res("At least one BOQ item required", [], 400)
 
-        if req.form.get("billingNo", "").strip():
-            bill.billing_no = req.form.get("billingNo").strip()
+        new_billing_no = req.form.get("billingNo", "").strip()
+        if new_billing_no and new_billing_no != bill.billing_no:
+            _assert_billing_no_unique(new_billing_no, exclude_id=bill.id)
+            bill.billing_no = new_billing_no
+        elif new_billing_no:
+            bill.billing_no = new_billing_no
         if req.form.get("billingDate"):
             bill.billing_date = req.form.get("billingDate")
         if req.form.get("note") is not None:
@@ -989,6 +1015,12 @@ def edit_billing(bill_id, req, user_id):
             "billingNo": bill.billing_no,
         }, 200)
 
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 409)
+    except IntegrityError:
+        db.session.rollback()
+        return res("Billing No already exists — please use a different number", [], 409)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
