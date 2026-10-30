@@ -160,18 +160,24 @@ def _get_order_financials(og_sale_order_no, project_code):
     }
 
 
+def _normalize_billing_no(billing_no):
+    """Remove all spaces and uppercase — 'RF 1', 'rf1', 'RF1' all become 'RF1'."""
+    return billing_no.replace(" ", "").upper()
+
+
 def _assert_billing_no_unique(billing_no, exclude_id=None):
-    """Advisory-lock on billing_no then check uniqueness.
-    Raises ValueError if a duplicate is found.
-    The advisory lock is transaction-scoped, so concurrent requests for the
-    same billing_no are serialised rather than both slipping through."""
-    lock_key = hash(billing_no.strip().upper()) & 0x7FFFFFFFFFFFFFFF
+    """Advisory-lock on the normalised billing_no then check uniqueness.
+    Raises ValueError if a duplicate exists.
+    The advisory lock is transaction-scoped so concurrent requests for the
+    same value are serialised instead of both slipping through."""
+    normalised = _normalize_billing_no(billing_no)
+    lock_key   = hash(normalised) & 0x7FFFFFFFFFFFFFFF
     db.session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key})
-    q = BillingMaster.query.filter(BillingMaster.billing_no == billing_no)
+    q = BillingMaster.query.filter(BillingMaster.billing_no == normalised)
     if exclude_id:
         q = q.filter(BillingMaster.id != exclude_id)
     if q.first():
-        raise ValueError(f"Billing No '{billing_no}' already exists")
+        raise ValueError(f"Billing No '{normalised}' already exists")
 
 
 def generate_billing_no(mode):
@@ -700,7 +706,7 @@ def create_billing(req, user_id):
                     [], 400,
                 )
 
-            billing_no    = req.form.get("billingNo") or claim_bill.billing_no
+            billing_no    = _normalize_billing_no(req.form.get("billingNo") or claim_bill.billing_no or "")
             if not billing_no:
                 return res("billingNo (Bill No) is required", [], 400)
             _assert_billing_no_unique(billing_no)
@@ -772,7 +778,7 @@ def create_billing(req, user_id):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
-        billing_no     = req.form.get("billingNo", "").strip()
+        billing_no     = _normalize_billing_no(req.form.get("billingNo", ""))
         if not billing_no:
             return res("billingNo (Bill No) is required", [], 400)
         _assert_billing_no_unique(billing_no)
@@ -949,11 +955,9 @@ def edit_billing(bill_id, req, user_id):
         if not items_raw and not boq_raw:
             return res("At least one BOQ item required", [], 400)
 
-        new_billing_no = req.form.get("billingNo", "").strip()
+        new_billing_no = _normalize_billing_no(req.form.get("billingNo", ""))
         if new_billing_no and new_billing_no != bill.billing_no:
             _assert_billing_no_unique(new_billing_no, exclude_id=bill.id)
-            bill.billing_no = new_billing_no
-        elif new_billing_no:
             bill.billing_no = new_billing_no
         if req.form.get("billingDate"):
             bill.billing_date = req.form.get("billingDate")
