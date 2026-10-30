@@ -310,7 +310,7 @@ def get_claim_bills_for_so(og_sale_order_id):
             {
                 "billingId":     b.id,
                 "billingNo":     b.billing_no,
-                "title":         b.title or "",
+                "note":          b.note or "",
                 "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }
