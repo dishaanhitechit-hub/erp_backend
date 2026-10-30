@@ -83,7 +83,7 @@ def _get_certified_by_item_for_order(og_sale_order_no, project_code):
 
 def _get_pre_certified_by_item(claim_bill_id, exclude_id=None):
     """Return (items_map, boq_map) where each map is {sl_no: {'amount': Decimal, 'qty': Decimal}}
-    of Approved certified bills under the same claim_bill_id."""
+    of Approved certified bills un the same claim_bill_id."""
     def _query_model(model_class):
         q = (
             db.session.query(
