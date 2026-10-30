@@ -42,20 +42,22 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
-def generate_sale_bill_no():
-    last = (
-        db.session.query(SaleBillMaster.sale_bill_no)
-        .order_by(SaleBillMaster.id.desc())
-        .with_for_update()
-        .first()
-    )
-    num = 0
-    if last:
-        try:
-            num = int(last[0])
-        except Exception:
-            num = 0
-    return str(num + 1).zfill(3)
+def _fy_prefix(invoice_date):
+    """Return e.g. '2627DH' for a date in FY 2026-27 (Apr 2026 – Mar 2027)."""
+    y, m = invoice_date.year, invoice_date.month
+    fy_start = y if m >= 4 else y - 1
+    fy_end   = fy_start + 1
+    return f"{str(fy_start)[-2:]}{str(fy_end)[-2:]}DH"
+
+
+def generate_sale_bill_no(project_code, invoice_date):
+    prefix = _fy_prefix(invoice_date)
+    count = (
+        db.session.query(func.count(SaleBillMaster.id))
+        .filter(SaleBillMaster.project_code == project_code)
+        .scalar()
+    ) or 0
+    return f"{prefix}{str(count + 1).zfill(3)}{project_code}"
 
 
 def _group_by_cc(billing_items):
@@ -336,14 +338,15 @@ def create_sale_bill(data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
         total     = basic_total + gst_total - discount + round_off
 
-        sale_bill_no   = generate_sale_bill_no()
+        invoice_date_val = parse_date(data.get("invoiceDate"), "invoiceDate")
+        sale_bill_no     = generate_sale_bill_no(project_code, invoice_date_val)
         sale_bill_uuid = str(_uuid.uuid4())
 
         bill = SaleBillMaster(
             sale_bill_no       = sale_bill_no,
             sale_bill_uuid     = sale_bill_uuid,
             mode               = mode,
-            invoice_date       = parse_date(data.get("invoiceDate"), "invoiceDate"),
+            invoice_date       = invoice_date_val,
             reference_no       = data.get("referenceNo"),
             reference_date     = parse_date(data.get("referenceDate"), "referenceDate"),
             sale_order_no      = cert_bill.og_sale_order_no,

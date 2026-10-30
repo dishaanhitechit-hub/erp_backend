@@ -161,6 +161,32 @@ def notifications_list():
     return res("Notifications fetched.", data, 200)
 
 
+@delete_manager_bp.route("/delete-manager/recheck", methods=["POST"])
+@login_required
+def recheck_all():
+    """
+    Re-evaluates ALL PENDING delete requests.
+    Useful after manual deletions or stuck requests.
+    Any parent whose children are now gone gets auto-deleted and marked COMPLETED.
+    """
+    from .service import auto_complete_check
+    from app.models.delete_request import DeleteRequest
+    pending = DeleteRequest.query.filter_by(status="PENDING").all()
+    resolved = []
+    for dr in pending:
+        auto_complete_check(dr.module_code, dr.record_id)
+        # Check if it got completed
+        from app.extensions import db
+        db.session.refresh(dr)
+        if dr.status == "COMPLETED":
+            resolved.append(f"{dr.module_code} #{dr.record_id}")
+    return res(
+        f"Recheck done. {len(resolved)} request(s) auto-completed.",
+        {"resolved": resolved, "total_checked": len(pending)},
+        200,
+    )
+
+
 @delete_manager_bp.route("/delete-manager/my-requests", methods=["GET"])
 @login_required
 def my_requests():
