@@ -79,10 +79,8 @@ def _build_line_payload(line):
         "vendorName":     vendor_name,
         "accountCode":    account_code,
         "accountName":    account_name,
-        "openingBalance": float(line.opening_balance or 0),
-        "debitAmount":    float(line.debit_amount    or 0),
-        "creditAmount":   float(line.credit_amount   or 0),
-        "closingBalance": float(line.closing_balance or 0),
+        "debitAmount":  float(line.debit_amount  or 0),
+        "creditAmount": float(line.credit_amount or 0),
     }
 
 
@@ -151,24 +149,20 @@ def create_journal_entry(data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            opening = Decimal(str(row.get("openingBalance") or 0))
-            debit   = Decimal(str(row.get("debitAmount")    or 0))
-            credit  = Decimal(str(row.get("creditAmount")   or 0))
-            closing = opening + credit - debit
+            debit     = Decimal(str(row.get("debitAmount")  or 0))
+            credit    = Decimal(str(row.get("creditAmount") or 0))
             cc_id     = row.get("ccId")
             vendor_id = row.get("vendorId")
             acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
             db.session.add(JournalEntryLine(
-                journal_id      = entry.id,
-                sl_no           = row.get("slNo") or idx,
-                account_type    = acc_type,
-                dr_cr           = row.get("drCr"),
-                cc_id           = cc_id,
-                vendor_id       = vendor_id,
-                opening_balance = opening,
-                debit_amount    = debit,
-                credit_amount   = credit,
-                closing_balance = closing,
+                journal_id    = entry.id,
+                sl_no         = row.get("slNo") or idx,
+                account_type  = acc_type,
+                dr_cr         = row.get("drCr"),
+                cc_id         = cc_id,
+                vendor_id     = vendor_id,
+                debit_amount  = debit,
+                credit_amount = credit,
             ))
 
         db.session.commit()
@@ -295,24 +289,20 @@ def edit_journal_entry(entry_id, data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            opening = Decimal(str(row.get("openingBalance") or 0))
-            debit   = Decimal(str(row.get("debitAmount")    or 0))
-            credit  = Decimal(str(row.get("creditAmount")   or 0))
-            closing = opening + credit - debit
+            debit     = Decimal(str(row.get("debitAmount")  or 0))
+            credit    = Decimal(str(row.get("creditAmount") or 0))
             cc_id     = row.get("ccId")
             vendor_id = row.get("vendorId")
             acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
             db.session.add(JournalEntryLine(
-                journal_id      = entry.id,
-                sl_no           = row.get("slNo") or idx,
-                account_type    = acc_type,
-                dr_cr           = row.get("drCr"),
-                cc_id           = cc_id,
-                vendor_id       = vendor_id,
-                opening_balance = opening,
-                debit_amount    = debit,
-                credit_amount   = credit,
-                closing_balance = closing,
+                journal_id   = entry.id,
+                sl_no        = row.get("slNo") or idx,
+                account_type = acc_type,
+                dr_cr        = row.get("drCr"),
+                cc_id        = cc_id,
+                vendor_id    = vendor_id,
+                debit_amount  = debit,
+                credit_amount = credit,
             ))
 
         entry.total_debit  = total_debit
@@ -594,5 +584,101 @@ def get_journal_entry_my_approval_status(entry_id, user_id):
             return res("Journal entry not found", [], 404)
         data = get_my_approval_status(entry.project_code, _MODULE, entry, user_id)
         return res("Approval status", data, 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 12. DR LINES BY CC CODE
+# ══════════════════════════════════════════════════════════════════
+
+def get_dr_lines_by_cc(cc_id, params):
+    try:
+        project_code = params.get("projectCode")
+        query = (
+            db.session.query(JournalEntryLine, JournalEntryMaster)
+            .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
+            .filter(
+                JournalEntryLine.cc_id == cc_id,
+                JournalEntryLine.dr_cr == "Dr",
+            )
+        )
+        if project_code:
+            query = query.filter(JournalEntryMaster.project_code == project_code)
+        if params.get("fromDate"):
+            query = query.filter(JournalEntryMaster.entry_date >= params["fromDate"])
+        if params.get("toDate"):
+            query = query.filter(JournalEntryMaster.entry_date <= params["toDate"])
+        if params.get("workflowStatus"):
+            query = query.filter(JournalEntryMaster.workflow_status == params["workflowStatus"])
+
+        rows = query.order_by(JournalEntryMaster.entry_date.desc()).all()
+
+        result = [
+            {
+                "lineId":          line.id,
+                "slNo":            line.sl_no,
+                "journalId":       master.id,
+                "voucherNo":       master.voucher_no,
+                "entryDate":       _fmt_date(master.entry_date),
+                "projectCode":     master.project_code,
+                "workflowStatus":  master.workflow_status,
+                "debitAmount":     float(line.debit_amount    or 0),
+                "remarks":         master.remarks,
+            }
+            for line, master in rows
+        ]
+
+        total_debit = sum(r["debitAmount"] for r in result)
+        return res("Dr lines fetched by CC", {"list": result, "totalDebit": total_debit}, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 13. DR LINES BY VENDOR
+# ══════════════════════════════════════════════════════════════════
+
+def get_dr_lines_by_vendor(vendor_id, params):
+    try:
+        project_code = params.get("projectCode")
+        query = (
+            db.session.query(JournalEntryLine, JournalEntryMaster)
+            .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
+            .filter(
+                JournalEntryLine.vendor_id == vendor_id,
+                JournalEntryLine.dr_cr == "Dr",
+            )
+        )
+        if project_code:
+            query = query.filter(JournalEntryMaster.project_code == project_code)
+        if params.get("fromDate"):
+            query = query.filter(JournalEntryMaster.entry_date >= params["fromDate"])
+        if params.get("toDate"):
+            query = query.filter(JournalEntryMaster.entry_date <= params["toDate"])
+        if params.get("workflowStatus"):
+            query = query.filter(JournalEntryMaster.workflow_status == params["workflowStatus"])
+
+        rows = query.order_by(JournalEntryMaster.entry_date.desc()).all()
+
+        result = [
+            {
+                "lineId":          line.id,
+                "slNo":            line.sl_no,
+                "journalId":       master.id,
+                "voucherNo":       master.voucher_no,
+                "entryDate":       _fmt_date(master.entry_date),
+                "projectCode":     master.project_code,
+                "workflowStatus":  master.workflow_status,
+                "debitAmount":     float(line.debit_amount    or 0),
+                "remarks":         master.remarks,
+            }
+            for line, master in rows
+        ]
+
+        total_debit = sum(r["debitAmount"] for r in result)
+        return res("Dr lines fetched by Vendor", {"list": result, "totalDebit": total_debit}, 200)
+
     except Exception as e:
         return res(str(e), [], 500)

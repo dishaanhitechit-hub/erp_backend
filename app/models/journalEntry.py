@@ -67,10 +67,8 @@ class JournalEntryLine(db.Model):
     cc_id     = db.Column(db.Integer, db.ForeignKey("cc_codes.id"), nullable=True)
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendors.id"),  nullable=True)
 
-    opening_balance = db.Column(db.Numeric(14, 2), default=0)
-    debit_amount    = db.Column(db.Numeric(14, 2), default=0)
-    credit_amount   = db.Column(db.Numeric(14, 2), default=0)
-    closing_balance = db.Column(db.Numeric(14, 2), default=0)
+    debit_amount  = db.Column(db.Numeric(14, 2), default=0)
+    credit_amount = db.Column(db.Numeric(14, 2), default=0)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
