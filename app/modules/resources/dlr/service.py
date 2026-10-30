@@ -674,3 +674,24 @@ def get_dlr_summary(dlr_id):
         "mandaysSummary": mandays_summary,
         "mandaysTotal": {"totalWorkingHr": total_mandays_hrs, "amount": total_mandays_amt},
     }], 200)
+
+
+def delete_dlr(dlr_id):
+    try:
+        dlr = DlrMaster.query.get(dlr_id)
+        if not dlr:
+            return res("DLR not found", [], 404)
+        if dlr.locked:
+            return res("Only draft DLR can be deleted", [], 400)
+        DlrItem.query.filter_by(dlr_id=dlr.id).delete()
+        db.session.delete(dlr)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("DLR", dlr_id)
+        return res("DLR deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

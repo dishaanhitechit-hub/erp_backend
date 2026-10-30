@@ -288,6 +288,13 @@ def api_grn_by_uuid(grn_uuid):
     return get_grn_by_uuid(grn_uuid)
 
 
+@grn_bp.route("/<int:grn_id>", methods=["DELETE"])
+@login_required
+def api_delete_grn(grn_id):
+    from .service import delete_grn
+    return delete_grn(grn_id)
+
+
 @grn_bp.route("/my-approval-status/<int:grn_id>", methods=["GET"])
 @login_required
 def api_grn_my_approval_status(grn_id):

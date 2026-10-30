@@ -162,3 +162,10 @@ def api_brr_my_approval_status(brr_id):
 @brr_bp.route("/uuid/<string:brr_uuid>", methods=["GET"])
 def api_brr_by_uuid(brr_uuid):
     return get_brr_by_uuid(brr_uuid)
+
+
+@brr_bp.route("/<int:brr_id>", methods=["DELETE"])
+@jwt_required()
+def api_delete_brr(brr_id):
+    from .service import delete_brr
+    return delete_brr(brr_id)

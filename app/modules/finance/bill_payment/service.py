@@ -908,3 +908,25 @@ def get_bill_payment_my_approval_status(receipt_id, user_id):
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_bill_payment(receipt_id):
+    try:
+        receipt = BillPaymentReceiptMaster.query.get(receipt_id)
+        if not receipt:
+            return res("Bill Payment not found", [], 404)
+        if receipt.locked:
+            return res("Only draft Bill Payment can be deleted", [], 400)
+        BillPaymentReceiptGst.query.filter_by(receipt_id=receipt.id).delete()
+        BillPaymentReceiptItem.query.filter_by(receipt_id=receipt.id).delete()
+        db.session.delete(receipt)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BILL_PAYMENT", receipt_id)
+        return res("Bill Payment deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

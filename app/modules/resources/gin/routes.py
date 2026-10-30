@@ -224,3 +224,10 @@ def api_gin_by_uuid(gin_uuid):
 def api_gin_my_approval_status(gin_id):
     user = g.current_user
     return get_gin_my_approval_status(gin_id, user["id"])
+
+
+@gin_bp.route("/<int:gin_id>", methods=["DELETE"])
+@login_required
+def api_delete_gin(gin_id):
+    from .service import delete_gin
+    return delete_gin(gin_id)

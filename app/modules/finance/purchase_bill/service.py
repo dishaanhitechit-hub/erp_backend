@@ -1090,3 +1090,25 @@ def get_purchase_bill_my_approval_status(bill_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_purchase_bill(bill_id):
+    try:
+        bill = PurchaseBillMaster.query.get(bill_id)
+        if not bill:
+            return res("Purchase Bill not found", [], 404)
+        if bill.locked:
+            return res("Only draft Purchase Bill can be deleted", [], 400)
+        PurchaseBillGst.query.filter_by(purchase_bill_id=bill.id).delete()
+        PurchaseBillItem.query.filter_by(purchase_bill_id=bill.id).delete()
+        db.session.delete(bill)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("PURCHASE_BILL", bill_id)
+        return res("Purchase Bill deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

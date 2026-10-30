@@ -619,6 +619,9 @@ def delete_bbs_register(bbs_id):
         db.session.delete(bbs)
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BBS_REGISTER", bbs_id)
+
         return res("BBS Register deleted", [], 200)
 
     except SQLAlchemyError as e:

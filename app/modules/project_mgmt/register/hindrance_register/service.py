@@ -633,6 +633,9 @@ def delete_hindrance_register(hr_id):
         db.session.delete(hr)
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("HINDRANCE_REGISTER", hr_id)
+
         return res("Hindrance Register deleted", [], 200)
 
     except SQLAlchemyError as e:

@@ -121,3 +121,10 @@ def api_dc_history(dc_id):
 def api_dc_my_approval_status(dc_id):
     user = g.current_user
     return get_dc_my_approval_status(dc_id, user["id"])
+
+
+@dc_bp.route("/<int:dc_id>", methods=["DELETE"])
+@login_required
+def api_delete_dc(dc_id):
+    from .service import delete_dc
+    return delete_dc(dc_id)

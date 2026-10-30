@@ -1149,3 +1149,25 @@ def get_srb_by_uuid(srb_uuid):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_sale_receipt_billing(srb_id):
+    try:
+        srb = SaleReceiptBillingMaster.query.get(srb_id)
+        if not srb:
+            return res("Sale Receipt Billing not found", [], 404)
+        if srb.locked:
+            return res("Only draft Sale Receipt Billing can be deleted", [], 400)
+        SaleReceiptGst.query.filter_by(receipt_id=srb.id).delete()
+        SaleReceiptItem.query.filter_by(receipt_id=srb.id).delete()
+        db.session.delete(srb)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("SALE_RECEIPT_BILLING", srb_id)
+        return res("Sale Receipt Billing deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

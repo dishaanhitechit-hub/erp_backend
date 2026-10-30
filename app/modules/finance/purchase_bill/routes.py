@@ -120,3 +120,10 @@ def api_purchase_bill_history(bill_id):
 def api_purchase_bill_my_approval_status(bill_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_purchase_bill_my_approval_status(bill_id, user_id)
+
+
+@purchase_bill_bp.route("/<int:bill_id>", methods=["DELETE"])
+@login_required
+def api_delete_purchase_bill(bill_id):
+    from .service import delete_purchase_bill
+    return delete_purchase_bill(bill_id)

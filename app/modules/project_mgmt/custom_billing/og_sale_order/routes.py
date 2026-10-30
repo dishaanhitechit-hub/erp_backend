@@ -96,3 +96,10 @@ def my_approval_status(so_id):
 @og_sale_order_bp.route("/uuid/<so_uuid>", methods=["GET"])
 def get_by_uuid(so_uuid):
     return get_og_sale_order_by_uuid(so_uuid)
+
+
+@og_sale_order_bp.route("/<int:order_id>", methods=["DELETE"])
+@jwt_required()
+def api_delete_og_sale_order(order_id):
+    from .service import delete_og_sale_order
+    return delete_og_sale_order(order_id)

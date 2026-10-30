@@ -1266,3 +1266,24 @@ def get_srn_my_approval_status(srn_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_srn(srn_id):
+    try:
+        srn = SrnMaster.query.get(srn_id)
+        if not srn:
+            return res("SRN not found", [], 404)
+        if srn.locked:
+            return res("Only draft SRN can be deleted", [], 400)
+        SrnItem.query.filter_by(srn_id=srn.id).delete()
+        db.session.delete(srn)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("SRN", srn_id)
+        return res("SRN deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

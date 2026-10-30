@@ -620,3 +620,25 @@ def get_debit_note_by_uuid(dn_uuid):
         return res("Debit note details fetched", _build_dn_payload(dn), 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_debit_note(dn_id):
+    try:
+        dn = DebitNoteMaster.query.get(dn_id)
+        if not dn:
+            return res("Debit Note not found", [], 404)
+        if dn.locked:
+            return res("Only draft Debit Note can be deleted", [], 400)
+        DebitNoteGst.query.filter_by(debit_note_id=dn.id).delete()
+        DebitNoteItem.query.filter_by(debit_note_id=dn.id).delete()
+        db.session.delete(dn)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("DEBIT_NOTE", dn_id)
+        return res("Debit Note deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

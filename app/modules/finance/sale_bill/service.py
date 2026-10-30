@@ -978,3 +978,25 @@ def get_sale_bill_by_uuid(sale_bill_uuid):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_sale_bill(bill_id):
+    try:
+        bill = SaleBillMaster.query.get(bill_id)
+        if not bill:
+            return res("Sale Bill not found", [], 404)
+        if bill.locked:
+            return res("Only draft Sale Bill can be deleted", [], 400)
+        SaleBillGst.query.filter_by(sale_bill_id=bill.id).delete()
+        SaleBillItem.query.filter_by(sale_bill_id=bill.id).delete()
+        db.session.delete(bill)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("SALE_BILL", bill_id)
+        return res("Sale Bill deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

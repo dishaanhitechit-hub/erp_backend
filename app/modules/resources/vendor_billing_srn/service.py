@@ -1118,3 +1118,24 @@ def get_bss_my_approval_status(bss_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_bss(bss_id):
+    try:
+        bss = BssMaster.query.get(bss_id)
+        if not bss:
+            return res("BSS not found", [], 404)
+        if bss.locked:
+            return res("Only draft BSS can be deleted", [], 400)
+        BssItem.query.filter_by(bss_id=bss.id).delete()
+        db.session.delete(bss)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BSS", bss_id)
+        return res("BSS deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

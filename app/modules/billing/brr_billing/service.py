@@ -1334,3 +1334,24 @@ def get_brb_my_approval_status(brb_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_brb(brb_id):
+    try:
+        brb = BrbMaster.query.get(brb_id)
+        if not brb:
+            return res("BRB not found", [], 404)
+        if brb.locked:
+            return res("Only draft BRB can be deleted", [], 400)
+        BrbItem.query.filter_by(brb_id=brb.id).delete()
+        db.session.delete(brb)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BRB", brb_id)
+        return res("BRB deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

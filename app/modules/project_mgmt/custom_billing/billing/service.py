@@ -1356,3 +1356,25 @@ def get_billing_by_uuid(billing_uuid):
         return res("Billing details fetched", _build_detail_payload(bill), 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_billing(billing_id):
+    try:
+        billing = BillingMaster.query.get(billing_id)
+        if not billing:
+            return res("Billing not found", [], 404)
+        if billing.locked:
+            return res("Only draft Billing can be deleted", [], 400)
+        BillingBoqItem.query.filter_by(billing_id=billing.id).delete()
+        BillingItem.query.filter_by(billing_id=billing.id).delete()
+        db.session.delete(billing)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BILLING", billing_id)
+        return res("Billing deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

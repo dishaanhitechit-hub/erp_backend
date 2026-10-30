@@ -103,3 +103,10 @@ def api_contra_entry_my_approval_status(entry_id):
 @contra_entry_bp.route("/uuid/<string:entry_uuid>", methods=["GET"])
 def api_contra_entry_by_uuid(entry_uuid):
     return get_contra_entry_by_uuid(entry_uuid)
+
+
+@contra_entry_bp.route("/<int:contra_id>", methods=["DELETE"])
+@login_required
+def api_delete_contra_entry(contra_id):
+    from .service import delete_contra_entry
+    return delete_contra_entry(contra_id)

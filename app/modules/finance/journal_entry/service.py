@@ -126,16 +126,12 @@ def create_journal_entry(data, user_id):
             return res("You are not authorized to create journal entries", [], 403)
 
         lines_data = data.get("lines", [])
-        dr_lines = [l for l in lines_data if l.get("drCr") == "Dr"]
-        cr_lines = [l for l in lines_data if l.get("drCr") == "Cr"]
-        if not dr_lines:
-            return res("At least one Dr line required", [], 400)
-        if len(cr_lines) != 1:
-            return res("Exactly one Cr line required", [], 400)
+        if len(lines_data) < 2:
+            return res("At least one Dr and one Cr line required", [], 400)
 
         total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
         total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
-        if abs(total_debit - total_credit) > Decimal("0.01"):
+        if total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         entry = JournalEntryMaster(
@@ -284,16 +280,12 @@ def edit_journal_entry(entry_id, data, user_id):
             return res("You are not authorized to edit this journal entry", [], 403)
 
         lines_data = data.get("lines", [])
-        dr_lines = [l for l in lines_data if l.get("drCr") == "Dr"]
-        cr_lines = [l for l in lines_data if l.get("drCr") == "Cr"]
-        if not dr_lines:
-            return res("At least one Dr line required", [], 400)
-        if len(cr_lines) != 1:
-            return res("Exactly one Cr line required", [], 400)
+        if len(lines_data) < 2:
+            return res("At least one Dr and one Cr line required", [], 400)
 
         total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
         total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
-        if abs(total_debit - total_credit) > Decimal("0.01"):
+        if total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         if data.get("remarks") is not None:
@@ -602,105 +594,5 @@ def get_journal_entry_my_approval_status(entry_id, user_id):
             return res("Journal entry not found", [], 404)
         data = get_my_approval_status(entry.project_code, _MODULE, entry, user_id)
         return res("Approval status", data, 200)
-    except Exception as e:
-        return res(str(e), [], 500)
-
-
-# ══════════════════════════════════════════════════════════════════
-# 12. DR LINES BY CC CODE
-# ══════════════════════════════════════════════════════════════════
-
-def get_dr_lines_by_cc(cc_id, params):
-    try:
-        project_code = params.get("projectCode")
-        query = (
-            db.session.query(JournalEntryLine, JournalEntryMaster)
-            .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
-            .filter(
-                JournalEntryLine.cc_id == cc_id,
-                JournalEntryLine.dr_cr == "Dr",
-            )
-        )
-        if project_code:
-            query = query.filter(JournalEntryMaster.project_code == project_code)
-        if params.get("fromDate"):
-            query = query.filter(JournalEntryMaster.entry_date >= params["fromDate"])
-        if params.get("toDate"):
-            query = query.filter(JournalEntryMaster.entry_date <= params["toDate"])
-        if params.get("workflowStatus"):
-            query = query.filter(JournalEntryMaster.workflow_status == params["workflowStatus"])
-
-        rows = query.order_by(JournalEntryMaster.entry_date.desc()).all()
-
-        result = [
-            {
-                "lineId":          line.id,
-                "slNo":            line.sl_no,
-                "journalId":       master.id,
-                "voucherNo":       master.voucher_no,
-                "entryDate":       _fmt_date(master.entry_date),
-                "projectCode":     master.project_code,
-                "workflowStatus":  master.workflow_status,
-                "openingBalance":  float(line.opening_balance or 0),
-                "debitAmount":     float(line.debit_amount    or 0),
-                "closingBalance":  float(line.closing_balance or 0),
-                "remarks":         master.remarks,
-            }
-            for line, master in rows
-        ]
-
-        total_debit = sum(r["debitAmount"] for r in result)
-        return res("Dr lines fetched by CC", {"list": result, "totalDebit": total_debit}, 200)
-
-    except Exception as e:
-        return res(str(e), [], 500)
-
-
-# ══════════════════════════════════════════════════════════════════
-# 13. DR LINES BY VENDOR
-# ══════════════════════════════════════════════════════════════════
-
-def get_dr_lines_by_vendor(vendor_id, params):
-    try:
-        project_code = params.get("projectCode")
-        query = (
-            db.session.query(JournalEntryLine, JournalEntryMaster)
-            .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
-            .filter(
-                JournalEntryLine.vendor_id == vendor_id,
-                JournalEntryLine.dr_cr == "Dr",
-            )
-        )
-        if project_code:
-            query = query.filter(JournalEntryMaster.project_code == project_code)
-        if params.get("fromDate"):
-            query = query.filter(JournalEntryMaster.entry_date >= params["fromDate"])
-        if params.get("toDate"):
-            query = query.filter(JournalEntryMaster.entry_date <= params["toDate"])
-        if params.get("workflowStatus"):
-            query = query.filter(JournalEntryMaster.workflow_status == params["workflowStatus"])
-
-        rows = query.order_by(JournalEntryMaster.entry_date.desc()).all()
-
-        result = [
-            {
-                "lineId":          line.id,
-                "slNo":            line.sl_no,
-                "journalId":       master.id,
-                "voucherNo":       master.voucher_no,
-                "entryDate":       _fmt_date(master.entry_date),
-                "projectCode":     master.project_code,
-                "workflowStatus":  master.workflow_status,
-                "openingBalance":  float(line.opening_balance or 0),
-                "debitAmount":     float(line.debit_amount    or 0),
-                "closingBalance":  float(line.closing_balance or 0),
-                "remarks":         master.remarks,
-            }
-            for line, master in rows
-        ]
-
-        total_debit = sum(r["debitAmount"] for r in result)
-        return res("Dr lines fetched by Vendor", {"list": result, "totalDebit": total_debit}, 200)
-
     except Exception as e:
         return res(str(e), [], 500)

@@ -649,6 +649,9 @@ def delete_batching_plant(bp_id):
         db.session.delete(bp)
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BATCHING_PLANT", bp_id)
+
         return res("Docket deleted", [], 200)
 
     except SQLAlchemyError as e:

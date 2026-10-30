@@ -118,3 +118,10 @@ def history_route(registry_id):
 def api_registry_my_approval_status(registry_id):
     user = g.current_user
     return get_registry_my_approval_status(registry_id, user["id"])
+
+
+@concrete_registry_bp.route("/<int:cr_id>", methods=["DELETE"])
+@login_required
+def api_delete_concrete_registry(cr_id):
+    from .service import delete_concrete_registry
+    return delete_concrete_registry(cr_id)

@@ -111,3 +111,10 @@ def api_petty_cash_docket_voucher_my_approval_status(voucher_id):
 @login_required
 def api_get_budget_rows_for_voucher(budget_id):
     return get_budget_rows_for_voucher(budget_id)
+
+
+@petty_cash_docket_voucher_bp.route("/<int:voucher_id>", methods=["DELETE"])
+@login_required
+def api_delete_petty_cash_voucher(voucher_id):
+    from .service import delete_petty_cash_voucher
+    return delete_petty_cash_voucher(voucher_id)

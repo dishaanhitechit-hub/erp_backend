@@ -100,3 +100,10 @@ def api_brb_my_approval_status(brb_id):
 @brb_bp.route("/uuid/<string:brb_uuid>", methods=["GET"])
 def api_brb_by_uuid(brb_uuid):
     return get_brb_by_uuid(brb_uuid)
+
+
+@brb_bp.route("/<int:brb_id>", methods=["DELETE"])
+@jwt_required()
+def api_delete_brb(brb_id):
+    from .service import delete_brb
+    return delete_brb(brb_id)

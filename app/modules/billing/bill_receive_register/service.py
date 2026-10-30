@@ -948,3 +948,23 @@ def get_brr_my_approval_status(brr_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_brr(brr_id):
+    try:
+        brr = BrrMaster.query.get(brr_id)
+        if not brr:
+            return res("BRR not found", [], 404)
+        if brr.locked:
+            return res("Only draft BRR can be deleted", [], 400)
+        db.session.delete(brr)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BRR", brr_id)
+        return res("BRR deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

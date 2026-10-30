@@ -135,3 +135,10 @@ def api_srb_my_approval_status(srb_id):
 @sale_receipt_billing_bp.route("/uuid/<string:srb_uuid>", methods=["GET"])
 def api_srb_by_uuid(srb_uuid):
     return get_srb_by_uuid(srb_uuid)
+
+
+@sale_receipt_billing_bp.route("/<int:srb_id>", methods=["DELETE"])
+@login_required
+def api_delete_sale_receipt_billing(srb_id):
+    from .service import delete_sale_receipt_billing
+    return delete_sale_receipt_billing(srb_id)

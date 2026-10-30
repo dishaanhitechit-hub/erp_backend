@@ -1049,6 +1049,9 @@ def delete_indent(indent_id):
 
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("INDENT", indent_id)
+
         return res(
             "Indent deleted successfully",
             [],

@@ -117,3 +117,10 @@ def api_dlr_labour_by_supplier(supplier_id):
 @login_required
 def api_dlr_pw_orders_by_supplier(supplier_id):
     return get_pw_orders_by_supplier(supplier_id, request.args.get("projectCode"))
+
+
+@dlr_bp.route("/<int:dlr_id>", methods=["DELETE"])
+@login_required
+def api_delete_dlr(dlr_id):
+    from .service import delete_dlr
+    return delete_dlr(dlr_id)

@@ -1242,6 +1242,9 @@ def delete_pw_order(order_id: int):
         db.session.delete(order)
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("PW_ORDER", order_id)
+
         return res("Service order deleted successfully", [], 200)
 
     except SQLAlchemyError as e:

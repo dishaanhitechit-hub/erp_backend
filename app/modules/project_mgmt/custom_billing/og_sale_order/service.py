@@ -785,3 +785,25 @@ def get_og_sale_order_by_uuid(so_uuid):
         return res("OG Sale Order details fetched", _build_detail_payload(og_so), 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_og_sale_order(order_id):
+    try:
+        order = OgSaleOrderMaster.query.get(order_id)
+        if not order:
+            return res("OG Sale Order not found", [], 404)
+        if order.locked:
+            return res("Only draft OG Sale Order can be deleted", [], 400)
+        OgSaleOrderBoqItem.query.filter_by(og_sale_order_id=order.id).delete()
+        OgSaleOrderItem.query.filter_by(og_sale_order_id=order.id).delete()
+        db.session.delete(order)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("OG_SALE_ORDER", order_id)
+        return res("OG Sale Order deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

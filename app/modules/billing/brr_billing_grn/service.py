@@ -1062,3 +1062,24 @@ def get_brg_history(brg_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_brg(brg_id):
+    try:
+        brg = BrgMaster.query.get(brg_id)
+        if not brg:
+            return res("BRG not found", [], 404)
+        if brg.locked:
+            return res("Only draft BRG can be deleted", [], 400)
+        BrgItem.query.filter_by(brg_id=brg.id).delete()
+        db.session.delete(brg)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BRG", brg_id)
+        return res("BRG deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

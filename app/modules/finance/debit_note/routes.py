@@ -103,3 +103,10 @@ def api_dn_my_approval_status(dn_id):
 @debit_note_bp.route("/uuid/<string:dn_uuid>", methods=["GET"])
 def api_debit_note_by_uuid(dn_uuid):
     return get_debit_note_by_uuid(dn_uuid)
+
+
+@debit_note_bp.route("/<int:dn_id>", methods=["DELETE"])
+@login_required
+def api_delete_debit_note(dn_id):
+    from .service import delete_debit_note
+    return delete_debit_note(dn_id)

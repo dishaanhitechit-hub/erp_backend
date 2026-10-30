@@ -224,3 +224,10 @@ def api_srn_by_uuid(srn_uuid):
 def api_srn_my_approval_status(srn_id):
     user = g.current_user
     return get_srn_my_approval_status(srn_id, user["id"])
+
+
+@srn_bp.route("/<int:srn_id>", methods=["DELETE"])
+@login_required
+def api_delete_srn(srn_id):
+    from .service import delete_srn
+    return delete_srn(srn_id)

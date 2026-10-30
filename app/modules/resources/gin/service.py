@@ -1245,3 +1245,24 @@ def get_gin_my_approval_status(gin_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_gin(gin_id):
+    try:
+        gin = GinMaster.query.get(gin_id)
+        if not gin:
+            return res("GIN not found", [], 404)
+        if gin.locked:
+            return res("Only draft GIN can be deleted", [], 400)
+        GinItem.query.filter_by(gin_id=gin.id).delete()
+        db.session.delete(gin)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("GIN", gin_id)
+        return res("GIN deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

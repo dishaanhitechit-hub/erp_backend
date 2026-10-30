@@ -249,6 +249,10 @@ def delete_sale_receipt(receipt_id, user_id):
 
         db.session.delete(receipt)
         db.session.commit()
+
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("SALE_RECEIPT", receipt_id)
+
         return res("Sale receipt deleted", {}, 200)
 
     except Exception as e:

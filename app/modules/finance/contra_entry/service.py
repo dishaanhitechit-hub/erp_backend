@@ -590,3 +590,24 @@ def get_contra_entry_by_uuid(entry_uuid):
         return res("Contra entry details fetched", _build_detail_payload(entry), 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_contra_entry(contra_id):
+    try:
+        contra = ContraEntryMaster.query.get(contra_id)
+        if not contra:
+            return res("Contra Entry not found", [], 404)
+        if contra.locked:
+            return res("Only draft Contra Entry can be deleted", [], 400)
+        ContraEntryLine.query.filter_by(contra_id=contra.id).delete()
+        db.session.delete(contra)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("CONTRA_ENTRY", contra_id)
+        return res("Contra Entry deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

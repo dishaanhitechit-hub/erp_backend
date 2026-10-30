@@ -119,3 +119,10 @@ def api_bill_payment_history(receipt_id):
 def api_bill_payment_my_approval_status(receipt_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_bill_payment_my_approval_status(receipt_id, user_id)
+
+
+@bill_payment_bp.route("/<int:receipt_id>", methods=["DELETE"])
+@login_required
+def api_delete_bill_payment(receipt_id):
+    from .service import delete_bill_payment
+    return delete_bill_payment(receipt_id)

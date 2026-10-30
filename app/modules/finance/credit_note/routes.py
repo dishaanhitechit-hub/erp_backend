@@ -103,3 +103,10 @@ def api_cn_my_approval_status(cn_id):
 @credit_note_bp.route("/uuid/<string:cn_uuid>", methods=["GET"])
 def api_credit_note_by_uuid(cn_uuid):
     return get_credit_note_by_uuid(cn_uuid)
+
+
+@credit_note_bp.route("/<int:cn_id>", methods=["DELETE"])
+@login_required
+def api_delete_credit_note(cn_id):
+    from .service import delete_credit_note
+    return delete_credit_note(cn_id)

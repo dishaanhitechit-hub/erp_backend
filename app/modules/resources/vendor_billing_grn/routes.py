@@ -208,3 +208,10 @@ def api_bvs_history(bvs_id):
 def api_bvs_my_approval_status(bvs_id):
     user = g.current_user
     return get_bvs_my_approval_status(bvs_id, user["id"])
+
+
+@bvs_bp.route("/<int:bvs_id>", methods=["DELETE"])
+@login_required
+def api_delete_bvs(bvs_id):
+    from .service import delete_bvs
+    return delete_bvs(bvs_id)

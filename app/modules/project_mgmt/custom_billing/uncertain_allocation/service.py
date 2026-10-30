@@ -1008,3 +1008,25 @@ def get_ua_by_uuid(ua_uuid):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_uncertain_allocation(ua_id):
+    from sqlalchemy.exc import SQLAlchemyError
+    try:
+        ua = UncertainAllocationMaster.query.get(ua_id)
+        if not ua:
+            return res("Uncertain Allocation not found", [], 404)
+        if ua.locked:
+            return res("Only draft Uncertain Allocation can be deleted", [], 400)
+        UncertainAllocationLine.query.filter_by(ua_id=ua.id).delete()
+        db.session.delete(ua)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("UNCERTAIN_ALLOCATION", ua_id)
+        return res("Uncertain Allocation deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

@@ -121,3 +121,10 @@ def api_revise_petty_cash_budget(budget_id):
 @login_required
 def api_petty_cash_budget_revision_history(budget_id):
     return get_petty_cash_budget_revision_history(budget_id)
+
+
+@petty_cash_budget_bp.route("/<int:budget_id>", methods=["DELETE"])
+@login_required
+def api_delete_petty_cash_budget(budget_id):
+    from .service import delete_petty_cash_budget
+    return delete_petty_cash_budget(budget_id)

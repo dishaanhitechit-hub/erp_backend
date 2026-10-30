@@ -166,3 +166,10 @@ def api_drawing_register_history(dr_id):
 def api_drawing_register_my_approval_status(dr_id):
     user = g.current_user
     return get_drawing_register_my_approval_status(dr_id, user["id"])
+
+
+@drawing_register_bp.route("/<int:dr_id>", methods=["DELETE"])
+@login_required
+def api_delete_drawing_register(dr_id):
+    from .service import delete_drawing_register
+    return delete_drawing_register(dr_id)

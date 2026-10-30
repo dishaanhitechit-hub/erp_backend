@@ -680,3 +680,25 @@ def get_petty_cash_budget_revision_history(budget_id):
 
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_petty_cash_budget(budget_id):
+    try:
+        budget = PettyCashBudget.query.get(budget_id)
+        if not budget:
+            return res("Petty Cash Budget not found", [], 404)
+        if budget.locked:
+            return res("Only draft Petty Cash Budget can be deleted", [], 400)
+        PettyCashBudgetRevision.query.filter_by(budget_id=budget.id).delete()
+        PettyCashBudgetDetail.query.filter_by(budget_id=budget.id).delete()
+        db.session.delete(budget)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("PETTY_CASH_BUDGET", budget_id)
+        return res("Petty Cash Budget deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

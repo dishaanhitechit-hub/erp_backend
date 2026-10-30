@@ -620,3 +620,25 @@ def get_credit_note_by_uuid(cn_uuid):
         return res("Credit note details fetched", _build_cn_payload(cn), 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_credit_note(cn_id):
+    try:
+        cn = CreditNoteMaster.query.get(cn_id)
+        if not cn:
+            return res("Credit Note not found", [], 404)
+        if cn.locked:
+            return res("Only draft Credit Note can be deleted", [], 400)
+        CreditNoteGst.query.filter_by(credit_note_id=cn.id).delete()
+        CreditNoteItem.query.filter_by(credit_note_id=cn.id).delete()
+        db.session.delete(cn)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("CREDIT_NOTE", cn_id)
+        return res("Credit Note deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

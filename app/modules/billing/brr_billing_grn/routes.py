@@ -140,3 +140,10 @@ def api_reject_brg(brg_id):
 @jwt_required()
 def api_brg_history(brg_id):
     return get_brg_history(brg_id)
+
+
+@brg_bp.route("/<int:brg_id>", methods=["DELETE"])
+@jwt_required()
+def api_delete_brg(brg_id):
+    from .service import delete_brg
+    return delete_brg(brg_id)

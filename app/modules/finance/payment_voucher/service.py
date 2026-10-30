@@ -899,3 +899,25 @@ def get_payment_voucher_my_approval_status(pvm_id, user_id):
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_payment_voucher(voucher_id):
+    try:
+        voucher = PaymentVoucherMaster.query.get(voucher_id)
+        if not voucher:
+            return res("Payment Voucher not found", [], 404)
+        if voucher.locked:
+            return res("Only draft Payment Voucher can be deleted", [], 400)
+        PaymentVoucherGst.query.filter_by(payment_voucher_id=voucher.id).delete()
+        PaymentVoucherItem.query.filter_by(payment_voucher_id=voucher.id).delete()
+        db.session.delete(voucher)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("PAYMENT_VOUCHER", voucher_id)
+        return res("Payment Voucher deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

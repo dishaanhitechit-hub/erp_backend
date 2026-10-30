@@ -1131,3 +1131,24 @@ def get_bvs_my_approval_status(bvs_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_bvs(bvs_id):
+    try:
+        bvs = BvsMaster.query.get(bvs_id)
+        if not bvs:
+            return res("BVS not found", [], 404)
+        if bvs.locked:
+            return res("Only draft BVS can be deleted", [], 400)
+        BvsItem.query.filter_by(bvs_id=bvs.id).delete()
+        db.session.delete(bvs)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("BVS", bvs_id)
+        return res("BVS deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

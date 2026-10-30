@@ -913,3 +913,24 @@ def get_dc_my_approval_status(dc_id, user_id):
         return res("Approval status", data, 200)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_dc(dc_id):
+    try:
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("DC not found", [], 404)
+        if dc.locked:
+            return res("Only draft DC can be deleted", [], 400)
+        DcItem.query.filter_by(dc_id=dc.id).delete()
+        db.session.delete(dc)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("DC", dc_id)
+        return res("DC deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

@@ -620,6 +620,9 @@ def delete_enquiry(enquiry_id):
         db.session.delete(enquiry)
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("ENQUIRY", enquiry_id)
+
         return res(
             "Enquiry deleted successfully",
             [],

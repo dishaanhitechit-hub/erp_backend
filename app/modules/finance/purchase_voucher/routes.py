@@ -103,3 +103,10 @@ def api_purchase_voucher_history(voucher_id):
 def api_purchase_voucher_my_approval_status(voucher_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_purchase_voucher_my_approval_status(voucher_id, user_id)
+
+
+@purchase_voucher_bp.route("/<int:voucher_id>", methods=["DELETE"])
+@login_required
+def api_delete_purchase_voucher(voucher_id):
+    from .service import delete_purchase_voucher
+    return delete_purchase_voucher(voucher_id)

@@ -12,8 +12,6 @@ from app.modules.finance.journal_entry.service import (
     reject_journal_entry,
     get_journal_entry_history,
     get_journal_entry_my_approval_status,
-    get_dr_lines_by_cc,
-    get_dr_lines_by_vendor,
 )
 
 journal_entry_bp = Blueprint("journal_entry", __name__)
@@ -105,17 +103,3 @@ def api_journal_entry_history(entry_id):
 def api_journal_entry_my_approval_status(entry_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_journal_entry_my_approval_status(entry_id, user_id)
-
-
-# ── 12. DR LINES BY CC CODE ───────────────────────────────────────
-@journal_entry_bp.route("/lines/by-cc/<int:cc_id>", methods=["GET"])
-@login_required
-def api_journal_dr_lines_by_cc(cc_id):
-    return get_dr_lines_by_cc(cc_id, request.args.to_dict())
-
-
-# ── 13. DR LINES BY VENDOR ────────────────────────────────────────
-@journal_entry_bp.route("/lines/by-vendor/<int:vendor_id>", methods=["GET"])
-@login_required
-def api_journal_dr_lines_by_vendor(vendor_id):
-    return get_dr_lines_by_vendor(vendor_id, request.args.to_dict())

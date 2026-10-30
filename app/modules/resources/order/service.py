@@ -1731,6 +1731,8 @@ def delete_order(
 
         db.session.commit()
 
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("ORDER", order_id)
 
         return res(
 

@@ -125,3 +125,10 @@ def api_billing_my_approval_status(bill_id):
 @billing_bp.route("/uuid/<string:billing_uuid>", methods=["GET"])
 def api_billing_by_uuid(billing_uuid):
     return get_billing_by_uuid(billing_uuid)
+
+
+@billing_bp.route("/<int:billing_id>", methods=["DELETE"])
+@login_required
+def api_delete_billing(billing_id):
+    from .service import delete_billing
+    return delete_billing(billing_id)

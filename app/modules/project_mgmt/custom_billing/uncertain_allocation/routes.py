@@ -140,3 +140,10 @@ def api_my_approval_status(ua_id):
 @ua_bp.route("/uuid/<string:ua_uuid>", methods=["GET"])
 def api_get_by_uuid(ua_uuid):
     return get_ua_by_uuid(ua_uuid)
+
+
+@ua_bp.route("/<int:ua_id>", methods=["DELETE"])
+@login_required
+def api_delete_uncertain_allocation(ua_id):
+    from .service import delete_uncertain_allocation
+    return delete_uncertain_allocation(ua_id)

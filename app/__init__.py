@@ -27,6 +27,7 @@ def create_app():
     from .models import dlrMaster  # noqa — registers DlrMaster, DlrItem with Alembic
     from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
     from .models import whatsapp_log  # noqa — registers WhatsappLog with Alembic
+    from .models import delete_request  # noqa — registers DeleteRequest with Alembic
 
     # maintenance middleware
     register_maintenance_middleware(app)
@@ -285,5 +286,8 @@ def create_app():
     # Monthly email reports scheduler
     from .scheduler import init_scheduler
     init_scheduler(app)
+
+    from .modules.delete_manager.routes import delete_manager_bp
+    app.register_blueprint(delete_manager_bp, url_prefix="")
 
     return app

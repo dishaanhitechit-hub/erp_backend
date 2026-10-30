@@ -750,3 +750,23 @@ def get_drawing_register_my_approval_status(dr_id, user_id):
         return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
+
+
+def delete_drawing_register(dr_id):
+    try:
+        dr = DrawingRegister.query.get(dr_id)
+        if not dr:
+            return res("Drawing Register not found", [], 404)
+        if dr.locked:
+            return res("Only draft Drawing Register can be deleted", [], 400)
+        db.session.delete(dr)
+        db.session.commit()
+        from app.modules.delete_manager.service import auto_complete_check
+        auto_complete_check("DRAWING_REGISTER", dr_id)
+        return res("Drawing Register deleted successfully", [], 200)
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)

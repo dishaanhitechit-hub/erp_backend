@@ -208,3 +208,10 @@ def api_bss_history(bss_id):
 def api_bss_my_approval_status(bss_id):
     user = g.current_user
     return get_bss_my_approval_status(bss_id, user["id"])
+
+
+@bss_bp.route("/<int:bss_id>", methods=["DELETE"])
+@login_required
+def api_delete_bss(bss_id):
+    from .service import delete_bss
+    return delete_bss(bss_id)
