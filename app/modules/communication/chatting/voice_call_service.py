@@ -36,19 +36,19 @@ def start_call(
     db.session.flush()
 
     db.session.add(CommCallParticipant(
-        call_id    = call.id,
-        user_id    = initiator_id,
-        state      = "in_call",
-        joined_at  = _now(),
+        call_id   = call.id,
+        user_id   = initiator_id,
+        status    = "in_call",
+        joined_at = _now(),
     ))
 
     for uid in participant_ids:
         if uid == initiator_id:
             continue
         db.session.add(CommCallParticipant(
-            call_id   = call.id,
-            user_id   = uid,
-            state     = "ringing",
+            call_id = call.id,
+            user_id = uid,
+            status  = "ringing",
         ))
 
     db.session.commit()
@@ -82,7 +82,7 @@ def answer_call(call_id: int, user_id: int) -> bool:
     if not part:
         return False
 
-    part.state    = "in_call"
+    part.status   = "in_call"
     part.joined_at = _now()
     if call.status == "ringing":
         call.status = "active"
@@ -145,8 +145,8 @@ def end_call(call_id: int, user_id: int) -> bool:
         call.duration_seconds = int(delta.total_seconds())
 
     for part in call.participants:
-        if part.state == "in_call":
-            part.state = "ended"
+        if part.status == "in_call":
+            part.status  = "ended"
             part.left_at = now
 
     db.session.commit()
@@ -156,7 +156,7 @@ def end_call(call_id: int, user_id: int) -> bool:
 def get_incoming_calls(user_id: int) -> list:
     ringing = (
         CommCallParticipant.query
-        .filter_by(user_id=user_id, state="ringing")
+        .filter_by(user_id=user_id, status="ringing")
         .all()
     )
     result = []
@@ -180,7 +180,7 @@ def update_participant_state(call_id: int, user_id: int, state: str) -> bool:
     ).first()
     if not part:
         return False
-    part.state = state
+    part.status = state
     db.session.commit()
     return True
 
@@ -205,7 +205,7 @@ def _call_dict(call: CommCall, user_id: int) -> dict:
         participants.append({
             "userId":   p.user_id,
             "userName": u.username if u else None,
-            "state":    p.state,
+            "state":    p.status,
             "joinedAt": p.joined_at.strftime("%Y-%m-%d %H:%M:%S") if p.joined_at else None,
         })
 

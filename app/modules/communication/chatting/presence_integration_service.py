@@ -83,9 +83,9 @@ def set_communication_status(user_id: int, status: str) -> bool:
 def _is_in_call(user_id: int) -> bool:
     try:
         return db.session.query(CommCallParticipant).join(CommCall).filter(
-            CommCallParticipant.user_id == user_id,
-            CommCallParticipant.state   == "in_call",
-            CommCall.status             == "active",
+            CommCallParticipant.user_id  == user_id,
+            CommCallParticipant.status   == "in_call",
+            CommCall.status              == "active",
         ).first() is not None
     except Exception:
         return False
