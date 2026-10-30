@@ -42,20 +42,17 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
-def generate_sale_bill_no():
-    last = (
-        db.session.query(SaleBillMaster.sale_bill_no)
-        .order_by(SaleBillMaster.id.desc())
+PREFIX = "2526DH"
+
+
+def generate_sale_bill_no(project_code):
+    count = (
+        db.session.query(func.count(SaleBillMaster.id))
+        .filter(SaleBillMaster.project_code == project_code)
         .with_for_update()
-        .first()
-    )
-    num = 0
-    if last:
-        try:
-            num = int(last[0])
-        except Exception:
-            num = 0
-    return str(num + 1).zfill(3)
+        .scalar()
+    ) or 0
+    return f"{PREFIX}{str(count + 1).zfill(3)}{project_code}"
 
 
 def _group_by_cc(billing_items):
@@ -336,7 +333,7 @@ def create_sale_bill(data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
         total     = basic_total + gst_total - discount + round_off
 
-        sale_bill_no   = generate_sale_bill_no()
+        sale_bill_no   = generate_sale_bill_no(project_code)
         sale_bill_uuid = str(_uuid.uuid4())
 
         bill = SaleBillMaster(
