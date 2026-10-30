@@ -422,3 +422,93 @@ def cancel_delete_request(delete_request_id: int, cancelled_by: int) -> dict:
     db.session.commit()
 
     return {"status": "cancelled", "message": "Delete request cancelled."}, 200
+
+
+def check_delete_status(module_code: str, record_id: int) -> tuple[dict, int]:
+    """
+    Frontend helper — call before showing the delete button.
+    Returns whether the record can be deleted immediately or is blocked.
+
+    Response shape:
+      {
+        "can_delete_now": bool,
+        "blocked_by": [{"doc_no", "module_code", "label", "record_id"}],
+        "pending_request": {delete_request fields} | null,
+      }
+    """
+    config = DEPENDENCY_MAP.get(module_code)
+    if not config:
+        return {"status": "error", "message": f"Unknown module: {module_code}"}, 400
+
+    model_class = config["model_class"]
+    record = model_class.query.get(record_id)
+    if not record:
+        return {"status": "error", "message": "Record not found"}, 404
+
+    # Check if there is already a PENDING delete request for this record
+    existing_dr = DeleteRequest.query.filter_by(
+        module_code=module_code,
+        record_id=record_id,
+        status="PENDING",
+    ).first()
+
+    blocking = _check_children(module_code, record_id, config)
+
+    return {
+        "can_delete_now":  len(blocking) == 0,
+        "blocked_by":      blocking,
+        "pending_request": existing_dr.to_dict() if existing_dr else None,
+        "module_code":     module_code,
+        "record_id":       record_id,
+        "record_no":       _get_record_no(record, config),
+    }, 200
+
+
+def list_notifications(
+    module_code:  str = None,
+    project_code: str = None,
+    status:       str = None,
+    wa_sent_only: bool = True,
+    page:         int = 1,
+    per_page:     int = 20,
+) -> dict:
+    """
+    Notification centre — returns delete requests where a WhatsApp alert was sent.
+    Each row is enriched with human-readable module name and requester details.
+    """
+    from app.models.user import User
+    from .dependency_map import MODULE_DISPLAY_NAMES
+
+    q = DeleteRequest.query
+
+    if wa_sent_only:
+        q = q.filter(DeleteRequest.wa_sent == True)   # noqa: E712
+    if module_code:
+        q = q.filter_by(module_code=module_code)
+    if project_code:
+        q = q.filter_by(project_code=project_code)
+    if status:
+        q = q.filter_by(status=status)
+
+    q = q.order_by(DeleteRequest.wa_sent_at.desc().nullslast(), DeleteRequest.requested_at.desc())
+    paginated = q.paginate(page=page, per_page=per_page, error_out=False)
+
+    results = []
+    for dr in paginated.items:
+        row = dr.to_dict()
+        # Enrich with display names
+        row["module_display_name"] = MODULE_DISPLAY_NAMES.get(dr.module_code, dr.module_code)
+        # Requester name
+        requester = User.query.get(dr.requested_by) if dr.requested_by else None
+        row["requested_by_name"] = (
+            f"{requester.first_name} {requester.last_name}".strip()
+            if requester else None
+        )
+        results.append(row)
+
+    return {
+        "total":   paginated.total,
+        "page":    page,
+        "pages":   paginated.pages,
+        "results": results,
+    }
