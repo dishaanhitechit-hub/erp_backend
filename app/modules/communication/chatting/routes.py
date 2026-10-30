@@ -329,17 +329,21 @@ def mark_all_notifications_read():
 @jwt_required()
 def start_call():
     user_id = int(get_jwt_identity())
-    data    = request.json
-    pids    = [int(x) for x in data.get("participantIds", [])]
-    call    = voice_call_service.start_call(
-        initiator_id    = user_id,
-        participant_ids = pids,
-        call_type       = data.get("callType", "voice"),
-    )
-    return jsonify({
-        "callId":   call.id,
-        "roomCode": call.room_code,
-    }), 201
+    data    = request.get_json(silent=True) or {}
+    try:
+        pids = [int(x) for x in data.get("participantIds", [])]
+        call = voice_call_service.start_call(
+            initiator_id    = user_id,
+            participant_ids = pids,
+            call_type       = data.get("callType", "voice"),
+        )
+        return jsonify({
+            "callId":   call.id,
+            "roomCode": call.room_code,
+        }), 201
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @comm_bp.route("/calls/<int:call_id>/answer", methods=["POST"])
@@ -552,3 +556,11 @@ def directory():
 @jwt_required()
 def user_presence(target_user_id):
     return jsonify(presence_integration_service.get_rich_status(target_user_id)), 200
+
+
+@comm_bp.route("/heartbeat", methods=["POST"])
+@jwt_required()
+def heartbeat():
+    user_id = int(get_jwt_identity())
+    presence_integration_service.record_heartbeat(user_id)
+    return jsonify({"ok": True}), 200

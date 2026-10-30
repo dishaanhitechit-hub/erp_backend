@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.extensions import db
 from app.models.communication_models import CommCall, CommCallParticipant
 
@@ -8,6 +8,21 @@ try:
 except ImportError:
     _HAS_TRACKING = False
 
+# In-memory heartbeat store — resets on server restart, no migration needed
+_heartbeats: dict = {}   # user_id (int) → datetime (utc)
+ONLINE_THRESHOLD = timedelta(seconds=90)
+
+
+def record_heartbeat(user_id: int) -> None:
+    _heartbeats[user_id] = datetime.now(timezone.utc)
+
+
+def _is_online_via_heartbeat(user_id: int) -> bool:
+    ts = _heartbeats.get(user_id)
+    if not ts:
+        return False
+    return (datetime.now(timezone.utc) - ts) < ONLINE_THRESHOLD
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -15,11 +30,16 @@ def _now():
 
 def get_rich_status(user_id: int) -> dict:
     """Return aggregated presence/status info for a user."""
-    in_call   = _is_in_call(user_id)
-    last_seen = _get_last_seen(user_id)
+    in_call    = _is_in_call(user_id)
+    heartbeat  = _is_online_via_heartbeat(user_id)
+    last_seen  = _get_last_seen(user_id) if _HAS_TRACKING else None
 
-    # Without tracking, active users in the directory are presumed online
-    status = "in_call" if in_call else ("online" if (last_seen or not _HAS_TRACKING) else "offline")
+    if in_call:
+        status = "in_call"
+    elif heartbeat or last_seen:
+        status = "online"
+    else:
+        status = "offline"
 
     return {
         "userId":   user_id,
