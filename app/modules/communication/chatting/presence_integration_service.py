@@ -18,7 +18,8 @@ def get_rich_status(user_id: int) -> dict:
     in_call   = _is_in_call(user_id)
     last_seen = _get_last_seen(user_id)
 
-    status = "in_call" if in_call else ("online" if last_seen else "offline")
+    # Without tracking, active users in the directory are presumed online
+    status = "in_call" if in_call else ("online" if (last_seen or not _HAS_TRACKING) else "offline")
 
     return {
         "userId":   user_id,

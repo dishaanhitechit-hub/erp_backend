@@ -22,7 +22,10 @@ comm_bp = Blueprint("comm", __name__)
 @jwt_required()
 def list_conversations():
     user_id = int(get_jwt_identity())
-    return jsonify(chat_service.get_user_conversations(user_id)), 200
+    try:
+        return jsonify(chat_service.get_user_conversations(user_id)), 200
+    except Exception:
+        return jsonify([]), 200
 
 
 @comm_bp.route("/conversations/direct", methods=["POST"])
@@ -277,7 +280,10 @@ def mark_ping_read(ping_id):
 @jwt_required()
 def unread_ping_count():
     user_id = int(get_jwt_identity())
-    return jsonify({"count": ping_service.get_unread_ping_count(user_id)}), 200
+    try:
+        return jsonify({"count": ping_service.get_unread_ping_count(user_id)}), 200
+    except Exception:
+        return jsonify({"count": 0}), 200
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -291,9 +297,12 @@ def list_notifications():
     unread_only = request.args.get("unreadOnly", "false").lower() == "true"
     limit       = request.args.get("limit", 50, type=int)
     offset      = request.args.get("offset", 0, type=int)
-    if unread_only:
-        return jsonify(notification_service.get_unread_notifications(user_id, limit)), 200
-    return jsonify(notification_service.get_all_notifications(user_id, limit, offset)), 200
+    try:
+        if unread_only:
+            return jsonify(notification_service.get_unread_notifications(user_id, limit)), 200
+        return jsonify(notification_service.get_all_notifications(user_id, limit, offset)), 200
+    except Exception:
+        return jsonify({"unreadCount": 0, "items": [], "total": 0, "limit": limit, "offset": offset}), 200
 
 
 @comm_bp.route("/notifications/<int:notif_id>/read", methods=["POST"])
@@ -375,7 +384,10 @@ def poll_signals(call_id):
 @jwt_required()
 def incoming_calls():
     user_id = int(get_jwt_identity())
-    return jsonify(voice_call_service.get_incoming_calls(user_id)), 200
+    try:
+        return jsonify(voice_call_service.get_incoming_calls(user_id)), 200
+    except Exception:
+        return jsonify([]), 200
 
 
 @comm_bp.route("/calls/<int:call_id>", methods=["GET"])
