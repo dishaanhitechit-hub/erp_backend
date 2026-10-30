@@ -15,6 +15,9 @@ class Config:
     PDF_BASE_URL = os.getenv("PDF_BASE_URL") or "/resource/order/pdf-file"
     PUBLIC_BASE_URL  = os.getenv("PUBLIC_BASE_URL") or None
 
+    # ── Claude AI ───────────────────────────────────────────────────────────
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
     # ── Monthly Email Reports ────────────────────────────────────────────────
     MAIL_SENDER       = os.getenv("MAIL_SENDER", "dishaanhitechit@gmail.com")
     MAIL_APP_PASSWORD = os.getenv("MAIL_APP_PASSWORD", "")

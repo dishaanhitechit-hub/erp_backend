@@ -241,6 +241,9 @@ def create_app():
     from .modules.communication.routes import wa_bp
     app.register_blueprint(wa_bp)
 
+    from .modules.ai import ai_bp
+    app.register_blueprint(ai_bp)
+
     # HR models — register with Alembic
     from .models import employee      # noqa
     from .models import recruitment   # noqa

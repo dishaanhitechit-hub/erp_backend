@@ -3,6 +3,7 @@ from flask import g
 from app.middleware.auth_middleware import login_required
 from app.modules.project_mgmt.custom_billing.billing.service import (
     get_order_lookup,
+    get_cert_bills_for_claim_bill,
     create_billing,
     get_billing_list,
     get_billing_details,
@@ -28,6 +29,15 @@ def api_order_lookup():
         "projectCode":   request.args.get("projectCode"),
         "mode":          request.args.get("mode"),
         "claimBillId":   request.args.get("claimBillId"),
+    })
+
+
+# ── 1b. CERT BILLS FOR CLAIM BILL ───────────────────────────────
+@billing_bp.route("/cert-bills-for-claim", methods=["GET"])
+@login_required
+def api_cert_bills_for_claim():
+    return get_cert_bills_for_claim_bill({
+        "claimBillId": request.args.get("claimBillId"),
     })
 
 

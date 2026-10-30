@@ -54,6 +54,62 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
+def _get_certified_by_item_for_order(og_sale_order_no, project_code):
+    """Return (items_map, boq_map) where each map is {sl_no: {'amount': Decimal, 'qty': Decimal}}
+    summed across all Approved sale_certified_bills for the given order."""
+    def _query_model(model_class):
+        q = (
+            db.session.query(
+                model_class.sl_no,
+                func.sum(model_class.amount),
+                func.sum(model_class.claim_qty),
+            )
+            .join(BillingMaster, BillingMaster.id == model_class.billing_id)
+            .filter(
+                BillingMaster.og_sale_order_no == og_sale_order_no,
+                BillingMaster.project_code     == project_code,
+                BillingMaster.mode             == "sale_certified_bill",
+                BillingMaster.workflow_status  == "Approved",
+            )
+            .group_by(model_class.sl_no)
+        )
+        return {
+            row[0]: {"amount": Decimal(str(row[1] or 0)), "qty": Decimal(str(row[2] or 0))}
+            for row in q.all()
+        }
+
+    return _query_model(BillingItem), _query_model(BillingBoqItem)
+
+
+def _get_pre_certified_by_item(claim_bill_id, exclude_id=None):
+    """Return (items_map, boq_map) where each map is {sl_no: {'amount': Decimal, 'qty': Decimal}}
+    of Approved certified bills under the same claim_bill_id."""
+    def _query_model(model_class):
+        q = (
+            db.session.query(
+                model_class.sl_no,
+                func.sum(model_class.amount),
+                func.sum(model_class.claim_qty),
+            )
+            .join(BillingMaster, BillingMaster.id == model_class.billing_id)
+            .filter(
+                BillingMaster.claim_bill_id    == claim_bill_id,
+                BillingMaster.mode             == "sale_certified_bill",
+                BillingMaster.workflow_status  == "Approved",
+            )
+        )
+        if exclude_id:
+            q = q.filter(BillingMaster.id != exclude_id)
+        return {
+            row[0]: {"amount": Decimal(str(row[1] or 0)), "qty": Decimal(str(row[2] or 0))}
+            for row in q.group_by(model_class.sl_no).all()
+        }
+
+    items_map = _query_model(BillingItem)
+    boq_map   = _query_model(BillingBoqItem)
+    return items_map, boq_map
+
+
 def _get_pre_certified(og_sale_order_no, project_code, mode, exclude_id=None):
     q = (
         db.session.query(
@@ -265,30 +321,77 @@ def _build_detail_payload(bill):
             for it in cb_items + cb_boq:
                 claim_qty_by_slno[it.sl_no] = float(it.claim_qty or 0)
 
-    def _serialize_with_claim_qty(rows):
+    pre_cert_items_map, pre_cert_boq_map = {}, {}
+    if bill.mode == "sale_certified_bill" and bill.claim_bill_id:
+        pre_cert_items_map, pre_cert_boq_map = _get_pre_certified_by_item(
+            bill.claim_bill_id, exclude_id=bill.id
+        )
+
+    def _serialize_with_claim_qty(rows, pre_cert_map=None):
         result = []
         for item in rows:
             row = {
-                "id":              item.id,
-                "slNo":            item.sl_no,
-                "itemCode":        item.item_code,
-                "itemName":        item.item_name,
-                "itemDescription": item.item_name_desc,
-                "unit":            item.unit,
-                "orderQty":        float(item.order_qty   or 0),
-                "claimQty":        claim_qty_by_slno.get(item.sl_no, 0),
-                "certifiedQty":    float(item.claim_qty   or 0),
-                "rate":            float(item.rate         or 0),
-                "amount":          float(item.amount       or 0),
-                "gstPercent":      float(item.gst_percent  or 0),
-                "gstAmount":       float(item.gst_amount   or 0),
+                "id":                  item.id,
+                "slNo":                item.sl_no,
+                "itemCode":            item.item_code,
+                "itemName":            item.item_name,
+                "itemDescription":     item.item_name_desc,
+                "unit":                item.unit,
+                "orderQty":            float(item.order_qty   or 0),
+                "claimQty":            claim_qty_by_slno.get(item.sl_no, 0),
+                "certifiedQty":        float(item.claim_qty   or 0),
+                "rate":                float(item.rate         or 0),
+                "amount":              float(item.amount       or 0),
+                "gstPercent":          float(item.gst_percent  or 0),
+                "gstAmount":           float(item.gst_amount   or 0),
+                "preCertifiedAmount":  float((pre_cert_map or {}).get(item.sl_no, {}).get("amount", 0)),
+                "preCertifiedQty":     float((pre_cert_map or {}).get(item.sl_no, {}).get("qty", 0)),
             }
             result.append(row)
         return result
 
     boq_items = BillingBoqItem.query.filter_by(billing_id=bill.id).all()
 
-    serialize = _serialize_with_claim_qty if bill.claim_bill_id else _serialize_rows
+    if bill.mode == "sale_certified_bill" and bill.claim_bill_id:
+        def serialize(rows, _boq=False):
+            return _serialize_with_claim_qty(
+                rows, pre_cert_boq_map if _boq else pre_cert_items_map
+            )
+        items_serialized     = serialize(bill.items)
+        boq_items_serialized = serialize(boq_items, _boq=True)
+    elif bill.mode == "sale_claim_bill":
+        cert_items_map, cert_boq_map = _get_certified_by_item_for_order(
+            bill.og_sale_order_no, bill.project_code
+        )
+        def _serialize_with_cert(rows, c_map):
+            return [
+                {
+                    "id":              item.id,
+                    "slNo":            item.sl_no,
+                    "itemCode":        item.item_code,
+                    "itemName":        item.item_name,
+                    "itemDescription": item.item_name_desc,
+                    "unit":            item.unit,
+                    "orderQty":        float(item.order_qty   or 0),
+                    "claimQty":        float(item.claim_qty   or 0),
+                    "certifiedQty":    float(item.claim_qty   or 0),
+                    "rate":            float(item.rate         or 0),
+                    "amount":          float(item.amount       or 0),
+                    "gstPercent":      float(item.gst_percent  or 0),
+                    "gstAmount":       float(item.gst_amount   or 0),
+                    "certifiedAmount": float(c_map.get(item.sl_no, {}).get("amount", 0)),
+                    "certifiedQty":    float(c_map.get(item.sl_no, {}).get("qty", 0)),
+                }
+                for item in rows
+            ]
+        items_serialized     = _serialize_with_cert(bill.items, cert_items_map)
+        boq_items_serialized = _serialize_with_cert(boq_items, cert_boq_map)
+    elif bill.claim_bill_id:
+        items_serialized     = _serialize_with_claim_qty(bill.items)
+        boq_items_serialized = _serialize_with_claim_qty(boq_items)
+    else:
+        items_serialized     = _serialize_rows(bill.items)
+        boq_items_serialized = _serialize_rows(boq_items)
 
     return {
         "id":                   bill.id,
@@ -325,10 +428,47 @@ def _build_detail_payload(bill):
         "finalApprovedAt":      _fmt_date(bill.final_approved_at),
         "rejectedBy":           bill.rejector.username  if bill.rejector  else None,
         "rejectedAt":           _fmt_date(bill.rejected_at),
-        "items":                serialize(bill.items),
-        "boqItems":             serialize(boq_items),
+        "items":                items_serialized,
+        "boqItems":             boq_items_serialized,
         "billsUnderOgSo":       bills,
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+# 0. CERT BILLS FOR CLAIM BILL
+# ══════════════════════════════════════════════════════════════════
+
+def get_cert_bills_for_claim_bill(data):
+    try:
+        claim_bill_id = data.get("claimBillId")
+        if not claim_bill_id:
+            return res("claimBillId required", [], 400)
+
+        bills = (
+            BillingMaster.query
+            .filter(
+                BillingMaster.claim_bill_id  == int(claim_bill_id),
+                BillingMaster.mode           == "sale_certified_bill",
+                BillingMaster.workflow_status == "Approved",
+            )
+            .order_by(BillingMaster.id.asc())
+            .all()
+        )
+
+        result = [
+            {
+                "id":             b.id,
+                "billingNo":      b.billing_no,
+                "billingDate":    _fmt_date(b.billing_date),
+                "thisBillClaim":  float(b.this_bill_claim or 0),
+                "workflowStatus": b.workflow_status,
+            }
+            for b in bills
+        ]
+        return res("Cert bills found", result, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -363,31 +503,39 @@ def get_order_lookup(data):
 
             claim_boq = BillingBoqItem.query.filter_by(billing_id=claim_bill.id).all()
 
+            pre_cert_items_map, pre_cert_boq_map = _get_pre_certified_by_item(
+                claim_bill.id
+            )
+
             claim_items = [
                 {
-                    "slNo":            bi.sl_no,
-                    "itemCode":        bi.item_code,
-                    "itemName":        bi.item_name,
-                    "itemDescription": bi.item_name_desc,
-                    "unit":            bi.unit,
-                    "orderQty":        float(bi.order_qty  or 0),
-                    "claimQty":        float(bi.claim_qty  or 0),
-                    "rate":            float(bi.rate        or 0),
-                    "gstPercent":      float(bi.gst_percent or 0),
+                    "slNo":                bi.sl_no,
+                    "itemCode":            bi.item_code,
+                    "itemName":            bi.item_name,
+                    "itemDescription":     bi.item_name_desc,
+                    "unit":                bi.unit,
+                    "orderQty":            float(bi.order_qty  or 0),
+                    "claimQty":            float(bi.claim_qty  or 0),
+                    "rate":                float(bi.rate        or 0),
+                    "gstPercent":          float(bi.gst_percent or 0),
+                    "preCertifiedAmount":  float(pre_cert_items_map.get(bi.sl_no, {}).get("amount", 0)),
+                    "preCertifiedQty":     float(pre_cert_items_map.get(bi.sl_no, {}).get("qty", 0)),
                 }
                 for bi in claim_bill.items
             ]
             claim_boq_items = [
                 {
-                    "slNo":            bi.sl_no,
-                    "itemCode":        bi.item_code,
-                    "itemName":        bi.item_name,
-                    "itemDescription": bi.item_name_desc,
-                    "unit":            bi.unit,
-                    "orderQty":        float(bi.order_qty  or 0),
-                    "claimQty":        float(bi.claim_qty  or 0),
-                    "rate":            float(bi.rate        or 0),
-                    "gstPercent":      float(bi.gst_percent or 0),
+                    "slNo":                bi.sl_no,
+                    "itemCode":            bi.item_code,
+                    "itemName":            bi.item_name,
+                    "itemDescription":     bi.item_name_desc,
+                    "unit":                bi.unit,
+                    "orderQty":            float(bi.order_qty  or 0),
+                    "claimQty":            float(bi.claim_qty  or 0),
+                    "rate":                float(bi.rate        or 0),
+                    "gstPercent":          float(bi.gst_percent or 0),
+                    "preCertifiedAmount":  float(pre_cert_boq_map.get(bi.sl_no, {}).get("amount", 0)),
+                    "preCertifiedQty":     float(pre_cert_boq_map.get(bi.sl_no, {}).get("qty", 0)),
                 }
                 for bi in claim_boq
             ]
@@ -425,6 +573,10 @@ def get_order_lookup(data):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
+        cert_items_map, cert_boq_map = _get_certified_by_item_for_order(
+            og_sale_order_no, project_code
+        )
+
         og_items = [
             {
                 "ogSaleOrderItemId": og_item.id,
@@ -436,6 +588,8 @@ def get_order_lookup(data):
                 "orderQty":          float(og_item.order_qty  or 0),
                 "rate":              float(og_item.rate        or 0),
                 "gstPercent":        float(og_item.gst_percent or 0),
+                "certifiedAmount":   float(cert_items_map.get(og_item.sl_no, {}).get("amount", 0)),
+                "certifiedQty":      float(cert_items_map.get(og_item.sl_no, {}).get("qty", 0)),
             }
             for og_item in og_so.items
         ]
@@ -450,6 +604,8 @@ def get_order_lookup(data):
                 "orderQty":          float(og_item.order_qty  or 0),
                 "rate":              float(og_item.rate        or 0),
                 "gstPercent":        float(og_item.gst_percent or 0),
+                "certifiedAmount":   float(cert_boq_map.get(og_item.sl_no, {}).get("amount", 0)),
+                "certifiedQty":      float(cert_boq_map.get(og_item.sl_no, {}).get("qty", 0)),
             }
             for og_item in og_so.boq_items
         ]

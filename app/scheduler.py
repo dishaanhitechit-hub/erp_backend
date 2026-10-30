@@ -1,5 +1,5 @@
 """
-Monthly report scheduler.
+Monthly report schduler.
 Fires once a month (configurable via ENV) and sends one email per module.
 Start it by calling init_scheduler(app) inside create_app().
 """
