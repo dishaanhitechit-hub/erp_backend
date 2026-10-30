@@ -269,8 +269,8 @@ def create_app():
     from .modules.hr.onboarding.routes import onboarding_bp
     app.register_blueprint(onboarding_bp, url_prefix="/hr/onboarding")
 
-    # from .modules.communication.communication_routes import comm_bp
-    # app.register_blueprint(comm_bp, url_prefix="/comm")
+    from .modules.communication.chatting.routes import comm_bp
+    app.register_blueprint(comm_bp, url_prefix="/comm")
 
     # from .modules.communication.frontend_route import frontend_bp
     # app.register_blueprint(frontend_bp)

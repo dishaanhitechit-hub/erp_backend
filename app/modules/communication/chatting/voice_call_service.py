@@ -1,0 +1,224 @@
+import json
+from datetime import datetime, timezone
+from app.extensions import db
+from app.models.communication_models import (
+    CommCall,
+    CommCallParticipant,
+    CommCallSignal,
+)
+from app.modules.communication.chatting.notification_service import push_notification
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+def start_call(
+    initiator_id:   int,
+    participant_ids: list,
+    call_type:      str = "voice",
+    room_code:      str = None,
+) -> CommCall:
+    from app.models.user import User
+    import secrets
+
+    if not room_code:
+        room_code = secrets.token_urlsafe(12)
+
+    call = CommCall(
+        initiator_id = initiator_id,
+        call_type    = call_type,
+        room_code    = room_code,
+        status       = "ringing",
+        started_at   = _now(),
+    )
+    db.session.add(call)
+    db.session.flush()
+
+    db.session.add(CommCallParticipant(
+        call_id    = call.id,
+        user_id    = initiator_id,
+        state      = "in_call",
+        joined_at  = _now(),
+    ))
+
+    for uid in participant_ids:
+        if uid == initiator_id:
+            continue
+        db.session.add(CommCallParticipant(
+            call_id   = call.id,
+            user_id   = uid,
+            state     = "ringing",
+        ))
+
+    db.session.commit()
+
+    initiator = db.session.get(User, initiator_id)
+    name      = initiator.username if initiator else "Someone"
+    for uid in participant_ids:
+        if uid != initiator_id:
+            push_notification(
+                user_id           = uid,
+                notification_type = "incoming_call",
+                title             = f"Incoming {call_type} call from {name}",
+                data              = {
+                    "callId":   call.id,
+                    "callType": call_type,
+                    "roomCode": room_code,
+                },
+            )
+
+    return call
+
+
+def answer_call(call_id: int, user_id: int) -> bool:
+    call = db.session.get(CommCall, call_id)
+    if not call:
+        return False
+
+    part = CommCallParticipant.query.filter_by(
+        call_id=call_id, user_id=user_id
+    ).first()
+    if not part:
+        return False
+
+    part.state    = "in_call"
+    part.joined_at = _now()
+    if call.status == "ringing":
+        call.status = "active"
+    db.session.commit()
+    return True
+
+
+def send_signal(
+    call_id:     int,
+    sender_id:   int,
+    receiver_id: int,
+    signal_type: str,
+    payload:     dict,
+) -> CommCallSignal:
+    signal = CommCallSignal(
+        call_id     = call_id,
+        sender_id   = sender_id,
+        receiver_id = receiver_id,
+        signal_type = signal_type,
+        payload     = json.dumps(payload),
+        created_at  = _now(),
+    )
+    db.session.add(signal)
+    db.session.commit()
+    return signal
+
+
+def get_pending_signals(call_id: int, user_id: int) -> list:
+    signals = (
+        CommCallSignal.query
+        .filter_by(call_id=call_id, receiver_id=user_id, is_consumed=False)
+        .order_by(CommCallSignal.created_at.asc())
+        .all()
+    )
+    result = []
+    for s in signals:
+        s.is_consumed = True
+        result.append({
+            "signalId":   s.id,
+            "senderId":   s.sender_id,
+            "signalType": s.signal_type,
+            "payload":    json.loads(s.payload) if s.payload else {},
+            "createdAt":  s.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    db.session.commit()
+    return result
+
+
+def end_call(call_id: int, user_id: int) -> bool:
+    call = db.session.get(CommCall, call_id)
+    if not call:
+        return False
+
+    now = _now()
+    call.status   = "ended"
+    call.ended_at = now
+
+    if call.started_at:
+        delta = now - call.started_at
+        call.duration_seconds = int(delta.total_seconds())
+
+    for part in call.participants:
+        if part.state == "in_call":
+            part.state = "ended"
+            part.left_at = now
+
+    db.session.commit()
+    return True
+
+
+def get_incoming_calls(user_id: int) -> list:
+    ringing = (
+        CommCallParticipant.query
+        .filter_by(user_id=user_id, state="ringing")
+        .all()
+    )
+    result = []
+    for part in ringing:
+        call = part.call
+        if call and call.status == "ringing":
+            result.append(_call_dict(call, user_id))
+    return result
+
+
+def get_call_detail(call_id: int, user_id: int) -> dict | None:
+    call = db.session.get(CommCall, call_id)
+    if not call:
+        return None
+    return _call_dict(call, user_id)
+
+
+def update_participant_state(call_id: int, user_id: int, state: str) -> bool:
+    part = CommCallParticipant.query.filter_by(
+        call_id=call_id, user_id=user_id
+    ).first()
+    if not part:
+        return False
+    part.state = state
+    db.session.commit()
+    return True
+
+
+def get_call_history(user_id: int, limit: int = 20) -> list:
+    parts = (
+        CommCallParticipant.query
+        .filter_by(user_id=user_id)
+        .order_by(CommCallParticipant.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_call_dict(p.call, user_id) for p in parts if p.call]
+
+
+def _call_dict(call: CommCall, user_id: int) -> dict:
+    from app.models.user import User
+
+    participants = []
+    for p in call.participants:
+        u = db.session.get(User, p.user_id)
+        participants.append({
+            "userId":   p.user_id,
+            "userName": u.username if u else None,
+            "state":    p.state,
+            "joinedAt": p.joined_at.strftime("%Y-%m-%d %H:%M:%S") if p.joined_at else None,
+        })
+
+    initiator = db.session.get(User, call.initiator_id)
+    return {
+        "callId":          call.id,
+        "callType":        call.call_type,
+        "status":          call.status,
+        "roomCode":        call.room_code,
+        "initiatorId":     call.initiator_id,
+        "initiatorName":   initiator.username if initiator else None,
+        "durationSeconds": call.duration_seconds,
+        "participants":    participants,
+        "startedAt":       call.started_at.strftime("%Y-%m-%d %H:%M:%S") if call.started_at else None,
+        "endedAt":         call.ended_at.strftime("%Y-%m-%d %H:%M:%S") if call.ended_at else None,
+    }
