@@ -32,7 +32,7 @@ def api_order_lookup():
     })
 
 
-# ── 1b. CERT BILLS FOR CLAIM BILL ───────────────────────────────
+# ── 1b. CERT BILLS FOR CLAIM BILL ─────────────────────────────
 @billing_bp.route("/cert-bills-for-claim", methods=["GET"])
 @login_required
 def api_cert_bills_for_claim():
