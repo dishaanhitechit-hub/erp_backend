@@ -327,7 +327,7 @@ def edit_petty_cash_budget(budget_id, data, user_id, files=None):
 
         db.session.commit()
 
-        return res("Petty cash budget updated", {"id": budget.id, "budgetNo": budget.budget_no}, 200)
+        return res("Petty cash budget updated", {"id": budget.id, "budgetNo": budget.budget_no, "attachmentUrl": budget.attachment_url}, 200)
 
     except Exception as e:
         db.session.rollback()

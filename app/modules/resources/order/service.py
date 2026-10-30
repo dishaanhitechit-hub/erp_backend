@@ -2335,7 +2335,7 @@ def edit_order(order_id, data, user_id, files=None):
 
         db.session.commit()
 
-        data=[{"orderId": order.id, "orderNo": order.order_no}]
+        data=[{"orderId": order.id, "orderNo": order.order_no, "orderFile": order.supporting_file}]
         return res(
             "Order updated successfully",
             data,

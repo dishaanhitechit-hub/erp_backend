@@ -795,7 +795,8 @@ def update_indent(indent_id, data, files=None, updated_by=None):
 
         return res("Indent updated successfully", {
             "indentId": indent.id,
-            "indentNo": indent.indent_no
+            "indentNo": indent.indent_no,
+            "indentFile": indent.supporting_file
         }, 200)
 
     except SQLAlchemyError as e:

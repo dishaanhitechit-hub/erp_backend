@@ -472,7 +472,7 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
 
         db.session.commit()
 
-        return res("Docket voucher updated", {"id": voucher.id, "voucherNo": voucher.voucher_no}, 200)
+        return res("Docket voucher updated", {"id": voucher.id, "voucherNo": voucher.voucher_no, "attachmentUrl": voucher.attachment_url}, 200)
 
     except Exception as e:
         db.session.rollback()

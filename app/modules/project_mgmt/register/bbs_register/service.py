@@ -286,7 +286,7 @@ def edit_bbs_register(bbs_id, data, user_id, files=None):
 
         db.session.commit()
 
-        return res("BBS Register updated", {"id": bbs.id, "bbsNo": bbs.bbs_no}, 200)
+        return res("BBS Register updated", {"id": bbs.id, "bbsNo": bbs.bbs_no, "attachment": bbs.attachment}, 200)
 
     except Exception as e:
         db.session.rollback()

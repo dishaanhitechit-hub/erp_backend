@@ -1003,7 +1003,7 @@ def edit_gin(gin_id, data, user_id, files=None):
 
         return res(
             "GIN updated successfully",
-            {"ginId": gin.id, "ginNo": gin.gin_no},
+            {"ginId": gin.id, "ginNo": gin.gin_no, "attachedDoc": gin.attached_doc},
             200
         )
 

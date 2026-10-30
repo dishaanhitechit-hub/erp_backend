@@ -300,7 +300,7 @@ def edit_hindrance_register(hr_id, data, user_id, files=None):
 
         db.session.commit()
 
-        return res("Hindrance Register updated", {"id": hr.id, "hindranceNo": hr.hindrance_no}, 200)
+        return res("Hindrance Register updated", {"id": hr.id, "hindranceNo": hr.hindrance_no, "attachment": hr.attachment}, 200)
 
     except Exception as e:
         db.session.rollback()

@@ -119,7 +119,7 @@ def create_drawing_register(data, user_id, files=None):
 
         return res(
             "Drawing Register created",
-            {"drId": dr.id, "drNo": dr.dr_no},
+            {"drId": dr.id, "drNo": dr.dr_no, "attachment": dr.attachment},
             201
         )
 

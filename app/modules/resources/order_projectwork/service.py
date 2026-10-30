@@ -656,7 +656,7 @@ def edit_pw_order(order_id, data, user_id, files=None):
 
         return res(
             "Service order updated successfully",
-            [{"orderId": order.id, "orderNo": order.order_no}],
+            [{"orderId": order.id, "orderNo": order.order_no, "orderFile": order.supporting_file}],
             200,
         )
 
