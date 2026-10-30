@@ -36,7 +36,6 @@ class BillingMaster(db.Model):
         nullable=False,
     )
 
-    user_bill_no = db.Column(db.String(200), nullable=True)
     note         = db.Column(db.String(500), nullable=True)
     job_location = db.Column(db.String(500), nullable=True)
     attachment   = db.Column(db.Text, nullable=True)
