@@ -144,12 +144,23 @@ def end_call(call_id: int, user_id: int) -> bool:
         delta = now - call.started_at
         call.duration_seconds = int(delta.total_seconds())
 
+    other_ids = []
     for part in call.participants:
         if part.status == "in_call":
             part.status  = "ended"
             part.left_at = now
+        if part.user_id != user_id:
+            other_ids.append(part.user_id)
 
     db.session.commit()
+
+    # Notify other participants immediately via signal so they don't wait for poll
+    for uid in other_ids:
+        try:
+            send_signal(call_id, user_id, uid, "ended", {})
+        except Exception:
+            pass
+
     return True
 
 

@@ -355,12 +355,12 @@ class CommCallSignal(db.Model):
         nullable=False,
         index=True,
     )
-    from_user_id = db.Column(
+    sender_id   = db.Column(
         db.Integer,
         db.ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    to_user_id   = db.Column(
+    receiver_id = db.Column(
         db.Integer,
         db.ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
@@ -371,8 +371,8 @@ class CommCallSignal(db.Model):
     is_consumed = db.Column(db.Boolean, default=False, index=True)
     created_at  = db.Column(db.DateTime(timezone=True), default=_now, index=True)
 
-    from_user = db.relationship("User", foreign_keys=[from_user_id])
-    to_user   = db.relationship("User", foreign_keys=[to_user_id])
+    sender   = db.relationship("User", foreign_keys=[sender_id])
+    receiver = db.relationship("User", foreign_keys=[receiver_id])
 
 
 # ═════════════════════════════════════════════════════════════════════════════
