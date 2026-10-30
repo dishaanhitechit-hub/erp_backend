@@ -49,7 +49,6 @@ def generate_sale_bill_no(project_code):
     count = (
         db.session.query(func.count(SaleBillMaster.id))
         .filter(SaleBillMaster.project_code == project_code)
-        .with_for_update()
         .scalar()
     ) or 0
     return f"{PREFIX}{str(count + 1).zfill(3)}{project_code}"
