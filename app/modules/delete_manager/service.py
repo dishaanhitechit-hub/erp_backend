@@ -263,6 +263,8 @@ def raise_delete_request(
             project_code=project_code,
             requester_user=requester,
         )
+        # Trigger cascade: any parent records waiting for this child to be deleted
+        auto_complete_check(module_code, record_id)
         return {
             "status":  "deleted",
             "message": f"{display_name} {record_no} deleted successfully.",
