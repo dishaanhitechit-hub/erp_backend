@@ -240,7 +240,12 @@ def raise_delete_request(
         record_id=record_id,
         status="PENDING",
     ).first()
-    if existing:
+
+    # Find blocking children
+    blocking = _check_children(module_code, record_id, config)
+
+    if existing and blocking:
+        # Still blocked — return current status
         return {
             "status":            "pending",
             "delete_request_id": existing.id,
@@ -248,12 +253,14 @@ def raise_delete_request(
             "blocked_by":        json.loads(existing.blocked_by_modules or "[]"),
         }, 200
 
-    # Find blocking children
-    blocking = _check_children(module_code, record_id, config)
-
     if not blocking:
         # No downstream records — delete immediately
         _do_delete_record(module_code, record_id, config)
+        # If there was a PENDING request for this record, mark it COMPLETED now
+        if existing:
+            existing.status       = "COMPLETED"
+            existing.completed_at = datetime.utcnow()
+            db.session.commit()
         # Notify requester via WA that delete is done
         from app.models.user import User
         requester = User.query.get(requested_by)
@@ -345,21 +352,17 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
         current_blocking = _check_children(dr.module_code, dr.record_id, config)
 
         if not current_blocking:
-            # All children are gone — delete parent now
-            _do_delete_record(dr.module_code, dr.record_id, config)
-
-            dr.status       = "COMPLETED"
-            dr.completed_at = datetime.utcnow()
+            # All children are gone — notify requester to come and delete manually
+            dr.blocked_by_modules = "[]"
+            dr.blocked_by_docs    = ""
             db.session.commit()
 
-            # Notify requester
             from app.models.user import User
             requester = User.query.get(dr.requested_by)
-            config_map = DEPENDENCY_MAP.get(dr.module_code, {})
             notify_delete_completed(
-                module_code  = dr.module_code,
-                record_no    = dr.record_no,
-                project_code = dr.project_code,
+                module_code    = dr.module_code,
+                record_no      = dr.record_no,
+                project_code   = dr.project_code,
                 requester_user = requester,
             )
         else:
