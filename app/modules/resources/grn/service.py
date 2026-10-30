@@ -1186,7 +1186,7 @@ def edit_grn(grn_id, data, user_id, files=None):
 
         return res(
             "GRN updated successfully",
-            {"grnId": grn.id, "grnNo": grn.grn_no},
+            {"grnId": grn.id, "grnNo": grn.grn_no, "attachedDoc": grn.attached_doc},
             200
         )
 

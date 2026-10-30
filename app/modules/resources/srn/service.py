@@ -1009,7 +1009,7 @@ def edit_srn(srn_id, data, user_id, files=None):
 
         return res(
             "SRN updated successfully",
-            {"srnId": srn.id, "srnNo": srn.srn_no},
+            {"srnId": srn.id, "srnNo": srn.srn_no, "attachedDoc": srn.attached_doc},
             200
         )
 
