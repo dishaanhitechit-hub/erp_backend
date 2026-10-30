@@ -404,7 +404,8 @@ def _build_detail_payload(bill):
         "ogSaleOrderNo":        bill.og_sale_order_no,
         "ogSaleOrderId":        bill.og_sale_order_id,
         "projectCode":          bill.project_code,
-        "title":                bill.title,
+        "userBillNo":           bill.user_bill_no,
+        "note":                 bill.note,
         "jobLocation":          bill.job_location,
         "attachment":           bill.attachment,
         "preCertifiedAmount":   float(bill.pre_certified_amount or 0),
@@ -704,7 +705,8 @@ def create_billing(req, user_id):
                 og_sale_order_no     = claim_bill.og_sale_order_no,
                 og_sale_order_id     = claim_bill.og_sale_order_id,
                 project_code         = project_code,
-                title                = req.form.get("title") or claim_bill.title,
+                user_bill_no         = req.form.get("userBillNo") or claim_bill.user_bill_no,
+                note                 = req.form.get("note") or claim_bill.note,
                 job_location         = req.form.get("jobLocation") or claim_bill.job_location,
                 pre_certified_amount = pre_certified,
                 attachment           = attachment_url,
@@ -770,7 +772,8 @@ def create_billing(req, user_id):
             og_sale_order_no     = og_sale_order_no,
             og_sale_order_id     = og_so.id,
             project_code         = project_code,
-            title                = req.form.get("title"),
+            user_bill_no         = req.form.get("userBillNo"),
+            note                 = req.form.get("note"),
             job_location         = req.form.get("jobLocation"),
             pre_certified_amount = pre_certified,
             attachment           = attachment_url,
@@ -840,7 +843,8 @@ def get_billing_list(data):
                 db.or_(
                     BillingMaster.billing_no.ilike(term),
                     BillingMaster.og_sale_order_no.ilike(term),
-                    BillingMaster.title.ilike(term),
+                    BillingMaster.note.ilike(term),
+                    BillingMaster.user_bill_no.ilike(term),
                 )
             )
 
@@ -862,7 +866,8 @@ def get_billing_list(data):
                 "billingDate":         _fmt_date(row.billing_date),
                 "mode":                row.mode,
                 "ogSaleOrderNo":       row.og_sale_order_no,
-                "title":               row.title,
+                "userBillNo":          row.user_bill_no,
+                "note":                row.note,
                 "jobLocation":         row.job_location,
                 "preCertifiedAmount":  float(row.pre_certified_amount or 0),
                 "thisBillClaim":       float(row.this_bill_claim      or 0),
@@ -925,8 +930,10 @@ def edit_billing(bill_id, req, user_id):
 
         if req.form.get("billingDate"):
             bill.billing_date = req.form.get("billingDate")
-        if req.form.get("title") is not None:
-            bill.title = req.form.get("title")
+        if req.form.get("userBillNo") is not None:
+            bill.user_bill_no = req.form.get("userBillNo")
+        if req.form.get("note") is not None:
+            bill.note = req.form.get("note")
         if req.form.get("jobLocation") is not None:
             bill.job_location = req.form.get("jobLocation")
 
