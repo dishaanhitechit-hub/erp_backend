@@ -309,7 +309,7 @@ def get_claim_bills_for_so(og_sale_order_id):
         result = [
             {
                 "billingId":     b.id,
-                "billingNo":     b.billing_no,
+                "erpNo":         b.erp_no,
                 "note":          b.note or "",
                 "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
@@ -397,9 +397,9 @@ def get_claim_bill_items_for_ua(billing_id):
 
         return res("Claim bill items fetched", {
             "billingId":     bill.id,
-            "billingNo":     bill.billing_no,
+            "erpNo":         bill.erp_no,
             "ogSaleOrderId": og_so.id   if og_so else None,
-            "erpDocNumber": og_so.erp_no if og_so else bill.erp_no,
+            "erpDocNumber":  og_so.erp_no if og_so else None,
             "orderTitle":    og_so.order_title if og_so else None,
             "orderNo":       og_so.order_no    if og_so else None,
             "items":         result,
@@ -408,6 +408,109 @@ def get_claim_bill_items_for_ua(billing_id):
     except ValueError as e:
         db.session.rollback()
         return res(str(e), [], 400)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1e. CERTIFIED BILLS FOR UA LOOKUP
+# ══════════════════════════════════════════════════════════════════
+
+def get_certified_bills_for_so(og_sale_order_id):
+    try:
+        bills = (
+            BillingMaster.query
+            .filter(
+                BillingMaster.og_sale_order_id == og_sale_order_id,
+                BillingMaster.mode             == "sale_certified_bill",
+                BillingMaster.workflow_status  == "Approved",
+            )
+            .order_by(BillingMaster.id.desc())
+            .all()
+        )
+        result = [
+            {
+                "billingId":           b.id,
+                "erpNo":               b.erp_no,
+                "note":                b.note or "",
+                "billingDate":         _fmt_date(b.billing_date),
+                "preCertifiedAmount":  float(b.pre_certified_amount or 0),
+            }
+            for b in bills
+        ]
+        return res("Certified bills fetched", result, 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1f. CERTIFIED BILL ITEMS (item-level, for table population)
+# ══════════════════════════════════════════════════════════════════
+
+def get_certified_bill_items_for_ua(billing_id):
+    try:
+        bill = BillingMaster.query.get(billing_id)
+        if not bill:
+            return res("Certified bill not found", [], 404)
+
+        og_so = bill.og_so
+
+        result = []
+
+        def _cert_qty(cert_amt, rate):
+            r = Decimal(str(rate or 0))
+            return float(cert_amt / r) if r else 0.0
+
+        for item in bill.items:
+            claim_qty  = float(item.claim_qty or 0)
+            order_qty  = float(item.order_qty or 0)
+            unit_rate  = float(item.rate      or 0)
+            cert_amt_f = float(item.amount    or 0)
+            cert_qty   = _cert_qty(item.amount, item.rate)
+            result.append({
+                "billingItemId": item.id,
+                "itemType":      "item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "orderQty":      order_qty,
+                "claimQty":      claim_qty,
+                "certifiedQty":  round(cert_qty, 4),
+                "unitRate":      unit_rate,
+                "certifiedAmount": cert_amt_f,
+            })
+
+        boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
+        for item in boq_items:
+            cert_amt_f = float(item.amount or 0)
+            cert_qty   = _cert_qty(item.amount, item.rate)
+            result.append({
+                "billingItemId": item.id,
+                "itemType":      "boq_item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "orderQty":      float(item.order_qty or 0),
+                "claimQty":      float(item.claim_qty or 0),
+                "certifiedQty":  round(cert_qty, 4),
+                "unitRate":      float(item.rate      or 0),
+                "certifiedAmount": cert_amt_f,
+            })
+
+        return res("Certified bill items fetched", {
+            "billingId":     bill.id,
+            "erpNo":         bill.erp_no,
+            "ogSaleOrderId": og_so.id          if og_so else None,
+            "erpDocNumber":  og_so.erp_no      if og_so else None,
+            "orderTitle":    og_so.order_title if og_so else None,
+            "orderNo":       og_so.order_no    if og_so else None,
+            "items":         result,
+        }, 200)
+
     except Exception as e:
         return res(str(e), [], 500)
 
