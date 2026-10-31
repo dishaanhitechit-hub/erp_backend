@@ -203,8 +203,17 @@ def _do_delete_record(module_code: str, record_id: int, config: dict):
     model_class = config["model_class"]
     record = model_class.query.get(record_id)
     if record:
-        db.session.delete(record)
-        db.session.commit()
+        try:
+            # Owned rows the ORM doesn't cascade (config "delete_first": [(Model, fk_column)])
+            for owned_model, fk_col in config.get("delete_first", []):
+                owned_model.query.filter(
+                    getattr(owned_model, fk_col) == record_id
+                ).delete(synchronize_session=False)
+            db.session.delete(record)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
 
 # ─── public API ───────────────────────────────────────────────────────────
