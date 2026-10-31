@@ -95,9 +95,30 @@ def mark_ping_read(ping_id: int, user_id: int) -> bool:
     return True
 
 
-def mark_all_pings_read(user_id: int) -> int:
+def mark_all_pings_read(user_id: int, keep_record_pings: bool = False) -> int:
+    """keep_record_pings leaves pings that point at a record unread, so they
+    only count as read once the receiver actually opens the record."""
+    now   = _now()
+    query = CommPing.query.filter_by(receiver_id=user_id, is_read=False)
+    if keep_record_pings:
+        query = query.filter(CommPing.context_record_id.is_(None))
+    rows = query.all()
+    for p in rows:
+        p.is_read = True
+        p.read_at = now
+    db.session.commit()
+    return len(rows)
+
+
+def mark_pings_read(ping_ids: list, user_id: int) -> int:
+    if not ping_ids:
+        return 0
     now  = _now()
-    rows = CommPing.query.filter_by(receiver_id=user_id, is_read=False).all()
+    rows = CommPing.query.filter(
+        CommPing.id.in_(ping_ids),
+        CommPing.receiver_id == user_id,
+        CommPing.is_read.is_(False),
+    ).all()
     for p in rows:
         p.is_read = True
         p.read_at = now

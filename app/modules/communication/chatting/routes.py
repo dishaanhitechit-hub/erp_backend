@@ -309,14 +309,35 @@ def send_ping():
 def received_pings():
     user_id     = int(get_jwt_identity())
     unread_only = request.args.get("unreadOnly", "false").lower() == "true"
-    return jsonify(ping_service.get_received_pings(user_id, unread_only)), 200
+    pings       = ping_service.get_received_pings(user_id, unread_only)
+    try:
+        approval_ping_service.add_record_status(pings)
+        # An approval ping whose record has left the receiver's stage needs no
+        # more attention, so stop counting it as unread.
+        done = [p["id"] for p in pings
+                if not p["isRead"] and p.get("recordStatus") not in (None, "pending")]
+        if done:
+            ping_service.mark_pings_read(done, user_id)
+            for p in pings:
+                if p["id"] in done:
+                    p["isRead"] = True
+    except Exception:
+        from app.extensions import db
+        db.session.rollback()   # status is extra info — never fail the list over it
+    return jsonify(pings), 200
 
 
 @comm_bp.route("/pings/sent", methods=["GET"])
 @jwt_required()
 def sent_pings():
     user_id = int(get_jwt_identity())
-    return jsonify(ping_service.get_sent_pings(user_id)), 200
+    pings   = ping_service.get_sent_pings(user_id)
+    try:
+        approval_ping_service.add_record_status(pings)
+    except Exception:
+        from app.extensions import db
+        db.session.rollback()
+    return jsonify(pings), 200
 
 
 @comm_bp.route("/pings/<int:ping_id>/read", methods=["POST"])
@@ -376,7 +397,8 @@ def approval_ping_send():
 @jwt_required()
 def mark_all_pings_read():
     user_id = int(get_jwt_identity())
-    return jsonify({"marked": ping_service.mark_all_pings_read(user_id)}), 200
+    keep    = request.args.get("keepRecords", "false").lower() == "true"
+    return jsonify({"marked": ping_service.mark_all_pings_read(user_id, keep_record_pings=keep)}), 200
 
 
 @comm_bp.route("/pings/unread-count", methods=["GET"])

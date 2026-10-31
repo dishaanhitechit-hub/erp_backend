@@ -86,3 +86,68 @@ def send_approval_pings(
         )
         sent.append({"pingId": ping.id, "recordId": rec["id"], "recordNo": rec["recordNo"]})
     return sent
+
+
+# ── Record status on approval pings ──────────────────────────────────────────
+# recordStatus, from the receiver's point of view:
+#   pending  – still waiting on the receiver's approval
+#   approved – passed the receiver's stage (approved there, or fully approved)
+#   rejected / returned (sent back or back in draft) / removed (record deleted)
+
+def _status_for(record, approval_code, receiver_id, path_cache) -> str | None:
+    from app.models.approval_path import ApprovalPath
+
+    if record is None:
+        return "removed"
+    ws = record.workflow_status or ""
+    if ws.startswith("Pending_L"):
+        try:
+            level = int(ws[len("Pending_L"):])
+        except ValueError:
+            return None
+        projects = tuple(sorted({
+            c for c in (getattr(record, f, None)
+                        for f in ("project_code", "to_project_code", "from_project_code")) if c
+        }))
+        key = (projects, approval_code, receiver_id, level)
+        if key not in path_cache:
+            path_cache[key] = bool(projects) and ApprovalPath.query.filter(
+                ApprovalPath.project_code.in_(projects),
+                ApprovalPath.module_code == approval_code,
+                ApprovalPath.user_id     == receiver_id,
+                ApprovalPath.level_no    == level,
+                ApprovalPath.path_type   == "APPROVER",
+            ).first() is not None
+        return "pending" if path_cache[key] else "approved"
+    if ws == "Approved":
+        return "approved"
+    if ws == "Rejected":
+        return "rejected"
+    if ws in ("Reback", "Rebacked", "Draft"):
+        return "returned"
+    return None
+
+
+def add_record_status(pings: list) -> list:
+    """Adds `recordStatus` and `recordWorkflowStatus` to approval pings in a
+    ping list (dicts from ping_service). Other pings are left untouched."""
+    from app.modules.workflow.service import MODULE_MAP
+    from app.alias_helper import get_approval_module
+
+    by_module = {}
+    for p in pings:
+        if p.get("pingType") == "approval_request" and p.get("contextModule") in MODULE_MAP \
+                and p.get("contextRecordId"):
+            by_module.setdefault(p["contextModule"], []).append(p)
+
+    path_cache = {}
+    for module_code, items in by_module.items():
+        Model   = MODULE_MAP[module_code]["model"]
+        ids     = {int(p["contextRecordId"]) for p in items}
+        records = {r.id: r for r in Model.query.filter(Model.id.in_(ids)).all()}
+        approval_code = get_approval_module(module_code)
+        for p in items:
+            rec = records.get(int(p["contextRecordId"]))
+            p["recordStatus"]         = _status_for(rec, approval_code, p["receiverId"], path_cache)
+            p["recordWorkflowStatus"] = rec.workflow_status if rec else None
+    return pings
