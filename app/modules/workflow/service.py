@@ -104,6 +104,71 @@ MODULE_MAP = {
 
 
 # ==========================================
+# PENDING RECORDS FOR A USER (shared lookup)
+# Returns the records of `module_code` in `project_code` that are waiting
+# on `user_id`'s approval. Raises ValueError for an unknown module.
+# Used by /workflow/my-approvals and by approval pings in communication.
+# ==========================================
+
+def find_pending_records(module_code, project_code, user_id):
+
+    entry = MODULE_MAP.get(module_code)
+
+    if not entry:
+        raise ValueError("Invalid module code")
+
+    approval_code = get_approval_module(module_code)
+
+    user_paths = (
+        ApprovalPath.query
+        .filter_by(
+            project_code=project_code,
+            module_code=approval_code,
+            user_id=user_id,
+            path_type="APPROVER"
+        )
+        .all()
+    )
+
+    if not user_paths:
+        return []
+
+    pending_statuses = [f"Pending_L{p.level_no}" for p in user_paths]
+
+    Model    = entry["model"]
+    no_field = entry["no_field"]
+
+    if entry.get("dc", False):
+        project_filter = or_(
+            Model.to_project_code   == project_code,
+            Model.from_project_code == project_code,
+        )
+    else:
+        project_filter = (Model.project_code == project_code)
+
+    records = (
+        Model.query
+        .filter(project_filter, Model.workflow_status.in_(pending_statuses))
+        .order_by(Model.id.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id":             r.id,
+            "recordNo":       getattr(r, no_field, None),
+            "workflowStatus": r.workflow_status,
+            "currentLevel":   r.current_level,
+            "createdAt": (
+                r.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if r.created_at else None
+            ),
+        }
+        for r in records
+    ]
+
+
+# ==========================================
 # MY PENDING APPROVALS
 # ==========================================
 
@@ -118,102 +183,16 @@ def get_my_pending_approvals(module_code, project_code, user_id):
                 400
             )
 
-        entry = MODULE_MAP.get(module_code)
-
-        if not entry:
+        if module_code not in MODULE_MAP:
             return res(
                 "Invalid module code",
                 [],
                 400
             )
 
-        approval_code = get_approval_module(module_code)
-
-        # levels where this user is an APPROVER for this project+module
-        user_paths = (
-
-            ApprovalPath.query
-
-            .filter_by(
-
-                project_code=project_code,
-                module_code=approval_code,
-                user_id=user_id,
-                path_type="APPROVER"
-
-            )
-
-            .all()
-
-        )
-
-        if not user_paths:
-            return res("My pending approvals", [], 200)
-
-        pending_statuses = [
-            f"Pending_L{p.level_no}"
-            for p in user_paths
-        ]
-
-        Model    = entry["model"]
-        no_field = entry["no_field"]
-        is_dc    = entry.get("dc", False)
-
-        if is_dc:
-            project_filter = or_(
-                Model.to_project_code   == project_code,
-                Model.from_project_code == project_code,
-            )
-        else:
-            project_filter = (
-                Model.project_code == project_code
-            )
-
-        records = (
-
-            Model.query
-
-            .filter(
-                project_filter,
-                Model.workflow_status.in_(pending_statuses)
-            )
-
-            .order_by(Model.id.desc())
-
-            .all()
-
-        )
-
-        data = []
-
-        for r in records:
-
-            data.append({
-
-                "id":
-                r.id,
-
-                "recordNo":
-                getattr(r, no_field, None),
-
-                "workflowStatus":
-                r.workflow_status,
-
-                "currentLevel":
-                r.current_level,
-
-                "createdAt": (
-                    r.created_at.strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                    if r.created_at else None
-                ),
-
-            })
-
         return res(
             "My pending approvals",
-            data,
+            find_pending_records(module_code, project_code, user_id),
             200
         )
 

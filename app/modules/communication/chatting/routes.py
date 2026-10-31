@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from app.modules.communication.chatting import chat_service
 from app.modules.communication.chatting import message_service
@@ -12,6 +12,7 @@ from app.modules.communication.chatting import announcement_service
 from app.modules.communication.chatting import presence_integration_service
 from app.modules.communication.chatting import media_service
 from app.modules.communication.chatting import reply_suggestion_service
+from app.modules.communication.chatting import approval_ping_service
 
 comm_bp = Blueprint("comm", __name__)
 
@@ -324,6 +325,41 @@ def mark_ping_read(ping_id):
     user_id = int(get_jwt_identity())
     ok      = ping_service.mark_ping_read(ping_id, user_id)
     return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Not found"}), 404)
+
+
+@comm_bp.route("/approval-pings/pending", methods=["GET"])
+@jwt_required()
+def approval_ping_pending():
+    """?module=order&userId=12 → records in the caller's current project waiting on userId"""
+    try:
+        data = approval_ping_service.pending_for_user(
+            module_code    = request.args.get("module", ""),
+            project_code   = get_jwt().get("projectId"),
+            target_user_id = request.args.get("userId", type=int),
+        )
+    except approval_ping_service.ApprovalPingError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 400
+    return jsonify(data), 200
+
+
+@comm_bp.route("/approval-pings", methods=["POST"])
+@jwt_required()
+def approval_ping_send():
+    """JSON: {receiverId, module, recordIds: [..], message}"""
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    try:
+        sent = approval_ping_service.send_approval_pings(
+            sender_id    = user_id,
+            receiver_id  = int(data.get("receiverId") or 0),
+            module_code  = data.get("module", ""),
+            record_ids   = data.get("recordIds") or [],
+            project_code = get_jwt().get("projectId"),
+            message      = data.get("message"),
+        )
+    except approval_ping_service.ApprovalPingError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 400
+    return jsonify({"sent": sent}), 201
 
 
 @comm_bp.route("/pings/read-all", methods=["POST"])
