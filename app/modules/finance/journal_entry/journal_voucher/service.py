@@ -57,17 +57,18 @@ def _parse_int(val):
 def _generate_voucher_no():
     last = (
         db.session.query(PettyCashJournalVoucher.voucher_no)
+        .filter(PettyCashJournalVoucher.voucher_no.like("BV%"))
         .order_by(PettyCashJournalVoucher.id.desc())
         .with_for_update()
         .first()
     )
     num = 0
-    if last and last[0] and last[0].startswith("JV"):
+    if last and last[0] and last[0].startswith("BV"):
         try:
             num = int(last[0][2:])
         except Exception:
             num = 0
-    return "JV" + str(num + 1).zfill(5)
+    return "BV" + str(num + 1).zfill(5)
 
 
 def _journalized_detail_ids():

@@ -12,6 +12,7 @@ from app.modules.finance.journal_entry.service import (
     reject_journal_entry,
     get_journal_entry_history,
     get_journal_entry_my_approval_status,
+    get_approved_dockets,
 )
 
 journal_entry_bp = Blueprint("journal_entry", __name__)
@@ -103,3 +104,10 @@ def api_journal_entry_history(entry_id):
 def api_journal_entry_my_approval_status(entry_id):
     user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
     return get_journal_entry_my_approval_status(entry_id, user_id)
+
+
+# ── 14. APPROVED DOCKETS (Bulk Docket mode) ───────────────────────
+@journal_entry_bp.route("/approved-dockets", methods=["GET"])
+@login_required
+def api_approved_dockets():
+    return get_approved_dockets(request.args.to_dict())

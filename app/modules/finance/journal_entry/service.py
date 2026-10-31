@@ -7,6 +7,7 @@ import uuid as _uuid
 from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.models.cc_code import CCCode
 from app.models.vendor import Vendor
+from app.models.journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -35,20 +36,29 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
-def _generate_voucher_no():
+_MODE_PREFIX = {
+    "new_voucher": "JV",
+    "bulk_docket": "BD",
+    "adjustment":  "JE",
+}
+
+
+def _generate_voucher_no(mode="new_voucher"):
+    prefix = _MODE_PREFIX.get(mode, "JV")
     last = (
         db.session.query(JournalEntryMaster.voucher_no)
+        .filter(JournalEntryMaster.voucher_no.like(f"{prefix}%"))
         .order_by(JournalEntryMaster.id.desc())
         .with_for_update()
         .first()
     )
     num = 0
-    if last and last[0] and last[0].startswith("JV"):
+    if last and last[0] and last[0].startswith(prefix):
         try:
-            num = int(last[0][2:])
+            num = int(last[0][len(prefix):])
         except Exception:
             num = 0
-    return "JV" + str(num + 1).zfill(5)
+    return prefix + str(num + 1).zfill(5)
 
 
 def _build_line_payload(line):
@@ -90,6 +100,7 @@ def _build_detail_payload(entry):
         "voucherNo":       entry.voucher_no,
         "journalUuid":     entry.journal_uuid,
         "entryDate":       _fmt_date(entry.entry_date),
+        "entryMode":       entry.entry_mode or "new_voucher",
         "projectCode":     entry.project_code,
         "remarks":         entry.remarks,
         "totalDebit":      float(entry.total_debit  or 0),
@@ -132,11 +143,16 @@ def create_journal_entry(data, user_id):
         if total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
+        entry_mode = data.get("entryMode", "new_voucher")
+        if entry_mode not in _MODE_PREFIX:
+            entry_mode = "new_voucher"
+
         entry = JournalEntryMaster(
-            voucher_no      = _generate_voucher_no(),
+            voucher_no      = _generate_voucher_no(entry_mode),
             journal_uuid    = str(_uuid.uuid4()),
             entry_date      = date.today(),
             project_code    = project_code,
+            entry_mode      = entry_mode,
             remarks         = data.get("remarks"),
             total_debit     = total_debit,
             total_credit    = total_credit,
@@ -223,6 +239,7 @@ def get_journal_entry_list(data):
                 "id":             r.id,
                 "voucherNo":      r.voucher_no,
                 "entryDate":      _fmt_date(r.entry_date),
+                "entryMode":      r.entry_mode or "new_voucher",
                 "totalDebit":     float(r.total_debit  or 0),
                 "totalCredit":    float(r.total_credit or 0),
                 "workflowStatus": r.workflow_status,
@@ -691,6 +708,54 @@ def get_dr_lines_by_vendor(vendor_id, params):
 
         total_debit = sum(r["debitAmount"] for r in result)
         return res("Dr lines fetched by Vendor", {"list": result, "totalDebit": total_debit}, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 14. APPROVED DOCKETS (for Bulk Docket mode)
+# ══════════════════════════════════════════════════════════════════
+
+def get_approved_dockets(params):
+    try:
+        project_code = params.get("projectCode")
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        dockets = (
+            PettyCashJournalVoucher.query
+            .filter(
+                PettyCashJournalVoucher.project_code == project_code,
+                PettyCashJournalVoucher.workflow_status == "Approved",
+            )
+            .order_by(PettyCashJournalVoucher.voucher_date.desc())
+            .all()
+        )
+
+        result = []
+        for d in dockets:
+            lines = sorted(d.lines, key=lambda x: x.sl_no)
+            result.append({
+                "id":          d.id,
+                "voucherNo":   d.voucher_no,
+                "voucherDate": _fmt_date(d.voucher_date),
+                "fundSource":  d.fund_source,
+                "totalAmount": float(d.total_amount or 0),
+                "lines": [
+                    {
+                        "id":          ln.id,
+                        "slNo":        ln.sl_no,
+                        "ccCode":      ln.cc_code,
+                        "ccName":      ln.cc_name,
+                        "description": ln.short_description,
+                        "amount":      float(ln.amount or 0),
+                    }
+                    for ln in lines
+                ],
+            })
+
+        return res("Approved dockets fetched", {"list": result}, 200)
 
     except Exception as e:
         return res(str(e), [], 500)

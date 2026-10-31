@@ -20,6 +20,7 @@ class JournalEntryMaster(db.Model):
     )
 
     remarks       = db.Column(db.Text, nullable=True)
+    entry_mode    = db.Column(db.String(20), nullable=False, default="new_voucher")  # new_voucher | bulk_docket | adjustment
     total_debit   = db.Column(db.Numeric(14, 2), default=0)
     total_credit  = db.Column(db.Numeric(14, 2), default=0)
 
