@@ -494,6 +494,20 @@ def end_call(call_id):
     return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Not found"}), 404)
 
 
+@comm_bp.route("/calls/<int:call_id>/leave", methods=["POST"])
+@jwt_required()
+def leave_call(call_id):
+    user_id = int(get_jwt_identity())
+    try:
+        ok = voice_call_service.leave_call(call_id, user_id)
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"{type(e).__name__}: {e}"
+        return jsonify({"error": err, "message": err}), 500
+    return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Not found"}), 404)
+
+
 @comm_bp.route("/calls/<int:call_id>/signal", methods=["POST"])
 @jwt_required()
 def send_signal(call_id):

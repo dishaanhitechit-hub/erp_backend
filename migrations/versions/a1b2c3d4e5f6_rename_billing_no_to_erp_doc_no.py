@@ -1,4 +1,4 @@
-"""rename billing_no to erp_no in billing_master and uncertain_allocation_lines
+"""add erp_no to billing_master; rename erp_doc_no columns
 
 Revision ID: a1b2c3d4e5f6
 Revises: 1b4facc64a29
@@ -22,11 +22,9 @@ def upgrade():
                     existing_type=sa.String(50),
                     existing_nullable=True)
 
-    # Step 2: rename billing_no (system-gen bill number) to erp_no
-    op.alter_column('billing_master', 'billing_no',
-                    new_column_name='erp_no',
-                    existing_type=sa.String(50),
-                    existing_nullable=False)
+    # Step 2: add new erp_no column for system-generated bill number
+    # (billing_no stays as the user-entered manual bill number)
+    op.add_column('billing_master', sa.Column('erp_no', sa.String(50), nullable=True))
 
     # Step 3: rename billing_no snapshot in uncertain_allocation_lines to bill_erp_no
     op.alter_column('uncertain_allocation_lines', 'billing_no',
@@ -74,10 +72,7 @@ def downgrade():
                     existing_type=sa.String(50),
                     existing_nullable=True)
 
-    op.alter_column('billing_master', 'erp_no',
-                    new_column_name='billing_no',
-                    existing_type=sa.String(50),
-                    existing_nullable=False)
+    op.drop_column('billing_master', 'erp_no')
 
     op.alter_column('billing_master', 'og_sale_order_erp_no',
                     new_column_name='erp_doc_no',

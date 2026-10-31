@@ -411,12 +411,13 @@ def _build_detail_payload(bill):
 
     return {
         "id":                   bill.id,
-        "erpNo":             bill.erp_no,
+        "erpNo":                bill.erp_no,
+        "billingNo":            bill.billing_no,
         "billingUuid":          bill.billing_uuid,
         "billingDate":          _fmt_date(bill.billing_date),
         "mode":                 bill.mode,
         "claimBillId":          bill.claim_bill_id,
-        "claimErpNo":        claim_bill_erp_no,
+        "claimErpNo":           claim_bill_erp_no,
         "ogSaleOrderNo":        bill.og_sale_order_erp_no,
         "ogSaleOrderId":        bill.og_sale_order_id,
         "projectCode":          bill.project_code,
@@ -698,22 +699,24 @@ def create_billing(req, user_id):
             ).first()
             if existing:
                 return res(
-                    f"A certified bill ({existing.erp_no}) already exists for this claim bill",
+                    f"A certified bill ({existing.billing_no or existing.erp_no}) already exists for this claim bill",
                     [], 400,
                 )
 
-            # erp_no for certified bill = claim bill's erp_no (auto-populated)
-            erp_no    = claim_bill.erp_no
+            # erp_no and billing_no for certified bill copied from claim bill (locked)
+            erp_no      = claim_bill.erp_no
+            billing_no_val = claim_bill.billing_no
             billing_uuid  = str(_uuid.uuid4())
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_erp_no, project_code, mode
             )
             attachment_url = _upload_billing_attachment(
-                req.files.get("attachment"), erp_no
+                req.files.get("attachment"), billing_no_val or erp_no
             )
 
             bill = BillingMaster(
                 erp_no           = erp_no,
+                billing_no       = billing_no_val,
                 billing_uuid         = billing_uuid,
                 billing_date         = req.form.get("billingDate"),
                 mode                 = mode,
@@ -754,7 +757,8 @@ def create_billing(req, user_id):
             db.session.commit()
             return res("Certified bill created", {
                 "id":           bill.id,
-                "erpNo":     bill.erp_no,
+                "erpNo":        bill.erp_no,
+                "billingNo":    bill.billing_no,
                 "billingUuid":  bill.billing_uuid,
                 "mode":         bill.mode,
                 "claimBillId":  claim_bill.id,
@@ -772,17 +776,21 @@ def create_billing(req, user_id):
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
-        # system-generate the erp_no for claim bill
-        erp_no     = generate_billing_no(mode)
+        # system-generate the erp_no for claim bill; accept manual billing_no from form
+        erp_no         = generate_billing_no(mode)
         _assert_erp_no_unique(erp_no)
+        billing_no_val = (req.form.get("billingNo") or "").strip()
+        if not billing_no_val:
+            return res("billingNo required", [], 400)
         billing_uuid   = str(_uuid.uuid4())
         pre_certified  = _get_pre_certified(og_sale_order_no, project_code, mode)
         attachment_url = _upload_billing_attachment(
-            req.files.get("attachment"), erp_no
+            req.files.get("attachment"), billing_no_val
         )
 
         bill = BillingMaster(
-            erp_no           = erp_no,
+            erp_no               = erp_no,
+            billing_no           = billing_no_val,
             billing_uuid         = billing_uuid,
             billing_date         = req.form.get("billingDate"),
             mode                 = mode,
@@ -821,7 +829,8 @@ def create_billing(req, user_id):
         db.session.commit()
         return res("Billing record created", {
             "id":          bill.id,
-            "erpNo":    bill.erp_no,
+            "erpNo":       bill.erp_no,
+            "billingNo":   bill.billing_no,
             "billingUuid": bill.billing_uuid,
             "mode":        bill.mode,
         }, 201)
@@ -883,7 +892,8 @@ def get_billing_list(data):
 
             result.append({
                 "id":                  row.id,
-                "erpNo":            row.erp_no,
+                "erpNo":               row.erp_no,
+                "billingNo":           row.billing_no,
                 "billingDate":         _fmt_date(row.billing_date),
                 "mode":                row.mode,
                 "ogSaleOrderNo":       row.og_sale_order_erp_no,
@@ -954,10 +964,12 @@ def edit_billing(bill_id, req, user_id):
             bill.note = req.form.get("note")
         if req.form.get("jobLocation") is not None:
             bill.job_location = req.form.get("jobLocation")
+        if req.form.get("billingNo") and bill.mode == "sale_claim_bill":
+            bill.billing_no = req.form.get("billingNo").strip()
 
         new_file = req.files.get("attachment")
         if new_file and new_file.filename:
-            bill.attachment = _upload_billing_attachment(new_file, bill.erp_no)
+            bill.attachment = _upload_billing_attachment(new_file, bill.billing_no or bill.erp_no)
         elif req.form.get("clearAttachment") == "true":
             delete_file_from_storage(bill.attachment)
             bill.attachment = None
@@ -1004,8 +1016,9 @@ def edit_billing(bill_id, req, user_id):
         db.session.commit()
 
         return res("Billing record updated", {
-            "id":       bill.id,
-            "erpNo": bill.erp_no,
+            "id":        bill.id,
+            "erpNo":     bill.erp_no,
+            "billingNo": bill.billing_no,
         }, 200)
 
     except ValueError as e:
