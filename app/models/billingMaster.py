@@ -8,7 +8,7 @@ class BillingMaster(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    billing_no   = db.Column(db.String(50), nullable=False)
+    erp_no   = db.Column(db.String(50), nullable=False)
     billing_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
     billing_date = db.Column(db.Date, nullable=False)
 
@@ -23,7 +23,7 @@ class BillingMaster(db.Model):
     )
 
     # Reference to OG Sale Order (both modes use this)
-    erp_doc_no = db.Column(db.String(50), nullable=True)
+    og_sale_order_erp_no = db.Column(db.String(50), nullable=True)
     og_sale_order_id = db.Column(
         db.Integer,
         db.ForeignKey("og_sale_order_master.id"),

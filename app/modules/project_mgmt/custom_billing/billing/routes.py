@@ -25,7 +25,7 @@ billing_bp = Blueprint("billing", __name__)
 @login_required
 def api_order_lookup():
     return get_order_lookup({
-        "erpDocNumber": request.args.get("erpDocNumber"),
+        "ogSaleOrderNo": request.args.get("ogSaleOrderNo"),
         "projectCode":   request.args.get("projectCode"),
         "mode":          request.args.get("mode"),
         "claimBillId":   request.args.get("claimBillId"),

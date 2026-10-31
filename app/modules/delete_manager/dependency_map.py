@@ -465,13 +465,13 @@ DEPENDENCY_MAP = {
 
     "OG_SALE_ORDER": {
         "model_class":  OgSaleOrderMaster,
-        "doc_no_field": "erp_doc_no",
+        "doc_no_field": "erp_no",
         "project_field": "project_code",
         "children": [
             {
                 "child_model":  BillingMaster,
                 "fk_column":    "og_sale_order_id",
-                "doc_no_field": "billing_no",
+                "doc_no_field": "erp_no",
                 "module_code":  "BILLING",
                 "label":        "Sale Claim / Certified Bill",
             },
@@ -494,7 +494,7 @@ DEPENDENCY_MAP = {
 
     "BILLING": {
         "model_class":  BillingMaster,
-        "doc_no_field": "billing_no",
+        "doc_no_field": "erp_no",
         "project_field": "project_code",
         # Item rows with no ORM cascade — removed together with the bill
         # (same as custom_billing delete_billing does).
@@ -504,7 +504,7 @@ DEPENDENCY_MAP = {
             {
                 "child_model":  BillingMaster,
                 "fk_column":    "claim_bill_id",
-                "doc_no_field": "billing_no",
+                "doc_no_field": "erp_no",
                 "module_code":  "BILLING",
                 "label":        "Certified Bill",
             },

@@ -159,7 +159,7 @@ def _render_billing(rows, proj_map):
         html += project_block_open(code, name, client)
         trows = []
         for r in items:
-            trows.append([r.billing_no or "—", r.title or "—", r.workflow_status, r.pre_certified_amount])
+            trows.append([r.erp_no or "—", r.title or "—", r.workflow_status, r.pre_certified_amount])
             total_count += 1
             total_amt += float(r.pre_certified_amount or 0)
         html += table(["Billing No", "Title", "Status", "Pre-Certified Amount"], trows, amount_cols={3})

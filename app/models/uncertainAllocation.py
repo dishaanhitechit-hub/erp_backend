@@ -81,7 +81,7 @@ class UncertainAllocationLine(db.Model):
         db.ForeignKey("og_sale_order_master.id"),
         nullable=True,
     )
-    erp_doc_no = db.Column(db.String(50),  nullable=True)
+    erp_no = db.Column(db.String(50),  nullable=True)
     order_title      = db.Column(db.String(500), nullable=True)
     order_no         = db.Column(db.String(50),  nullable=True)
     order_date       = db.Column(db.Date,        nullable=True)
@@ -92,7 +92,7 @@ class UncertainAllocationLine(db.Model):
         db.ForeignKey("billing_master.id", ondelete="SET NULL"),
         nullable=True,
     )
-    billing_no = db.Column(db.String(50), nullable=True)
+    bill_erp_no = db.Column(db.String(50), nullable=True)
 
     # Item-level columns (one row per BOQ/non-BOQ item)
     og_sale_order_item_id = db.Column(db.Integer,      nullable=True)  # PK of OgSaleOrderItem or OgSaleOrderBoqItem

@@ -17,7 +17,7 @@ class SaleReceiptBillingMaster(db.Model):
         nullable=False,
     )
 
-    erp_doc_no = db.Column(db.String(50), nullable=True)
+    erp_no = db.Column(db.String(50), nullable=True)
     og_sale_order_id = db.Column(
         db.Integer,
         db.ForeignKey("og_sale_order_master.id"),

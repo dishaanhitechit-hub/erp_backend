@@ -46,9 +46,9 @@ def _parse_date(val):
         return None
 
 
-def generate_erp_doc_no():
+def generate_erp_no():
     last = (
-        db.session.query(OgSaleOrderMaster.erp_doc_no)
+        db.session.query(OgSaleOrderMaster.erp_no)
         .order_by(OgSaleOrderMaster.id.desc())
         .with_for_update()
         .first()
@@ -135,7 +135,7 @@ def _serialize_rows(rows):
 def _build_detail_payload(og_so):
     return {
         "id":               og_so.id,
-        "erpDocNumber":    og_so.erp_doc_no,
+        "erpDocNumber":    og_so.erp_no,
         "ogSaleOrderUuid":  og_so.og_sale_order_uuid,
         "ogSaleOrderDate":  _fmt_date(og_so.og_sale_order_date),
         "orderNo":          og_so.order_no,
@@ -201,7 +201,7 @@ def create_og_sale_order(request, user_id):
         if not items_raw and not boq_raw:
             return res("At least one item or BOQ item is required", [], 400)
 
-        so_no   = generate_erp_doc_no()
+        so_no   = generate_erp_no()
         so_uuid = str(_uuid.uuid4())
 
         att_1 = _upload_attachment(request.files.get("attachment_1"), so_no, "attachment_1")
@@ -209,7 +209,7 @@ def create_og_sale_order(request, user_id):
         att_3 = _upload_attachment(request.files.get("attachment_3"), so_no, "attachment_3")
 
         og_so = OgSaleOrderMaster(
-            erp_doc_no   = so_no,
+            erp_no   = so_no,
             og_sale_order_uuid = so_uuid,
             og_sale_order_date = og_so_date,
             order_no           = data.get("orderNo") or None,
@@ -244,7 +244,7 @@ def create_og_sale_order(request, user_id):
 
         return res("OG Sale Order created", {
             "id":              og_so.id,
-            "erpDocNumber":   og_so.erp_doc_no,
+            "erpDocNumber":   og_so.erp_no,
             "ogSaleOrderUuid": og_so.og_sale_order_uuid,
         }, 201)
 
@@ -275,7 +275,7 @@ def get_og_sale_order_list(data):
             term = f"%{data.get('search')}%"
             query = query.filter(
                 db.or_(
-                    OgSaleOrderMaster.erp_doc_no.ilike(term),
+                    OgSaleOrderMaster.erp_no.ilike(term),
                     OgSaleOrderMaster.order_no.ilike(term),
                     OgSaleOrderMaster.order_title.ilike(term),
                 )
@@ -286,7 +286,7 @@ def get_og_sale_order_list(data):
         result = [
             {
                 "id":              row.id,
-                "erpDocNumber":   row.erp_doc_no,
+                "erpDocNumber":   row.erp_no,
                 "ogSaleOrderDate": _fmt_date(row.og_sale_order_date),
                 "orderNo":         row.order_no,
                 "orderValidity":   _fmt_date(row.order_validity),
@@ -370,17 +370,17 @@ def edit_og_sale_order(so_id, request, user_id):
         f2 = request.files.get("attachment_2")
         f3 = request.files.get("attachment_3")
         if f1 and f1.filename:
-            og_so.attachment_1 = _upload_attachment(f1, og_so.erp_doc_no, "attachment_1")
+            og_so.attachment_1 = _upload_attachment(f1, og_so.erp_no, "attachment_1")
         elif request.form.get("clearAttachment_1") == "true":
             delete_file_from_storage(og_so.attachment_1)
             og_so.attachment_1 = None
         if f2 and f2.filename:
-            og_so.attachment_2 = _upload_attachment(f2, og_so.erp_doc_no, "attachment_2")
+            og_so.attachment_2 = _upload_attachment(f2, og_so.erp_no, "attachment_2")
         elif request.form.get("clearAttachment_2") == "true":
             delete_file_from_storage(og_so.attachment_2)
             og_so.attachment_2 = None
         if f3 and f3.filename:
-            og_so.attachment_3 = _upload_attachment(f3, og_so.erp_doc_no, "attachment_3")
+            og_so.attachment_3 = _upload_attachment(f3, og_so.erp_no, "attachment_3")
         elif request.form.get("clearAttachment_3") == "true":
             delete_file_from_storage(og_so.attachment_3)
             og_so.attachment_3 = None
@@ -412,7 +412,7 @@ def edit_og_sale_order(so_id, request, user_id):
 
         return res("OG Sale Order updated", {
             "id":            og_so.id,
-            "erpDocNumber": og_so.erp_doc_no,
+            "erpDocNumber": og_so.erp_no,
         }, 200)
 
     except Exception as e:
@@ -472,7 +472,7 @@ def submit_og_sale_order(so_id, submitted_by):
             if first_level:
                 wa.on_submit(
                     module_code="og_sale_order",
-                    doc_no=og_so.erp_doc_no,
+                    doc_no=og_so.erp_no,
                     uuid=str(og_so.og_sale_order_uuid),
                     project_code=og_so.project_code,
                     submitter_name=submitter_name,
@@ -485,7 +485,7 @@ def submit_og_sale_order(so_id, submitted_by):
 
         return res("OG Sale Order submitted", {
             "id":             og_so.id,
-            "erpDocNumber":  og_so.erp_doc_no,
+            "erpDocNumber":  og_so.erp_no,
             "workflowStatus": og_so.workflow_status,
         }, 200)
 
@@ -551,7 +551,7 @@ def approve_og_sale_order(so_id, approved_by, comments=None):
             if next_level:
                 wa.on_approve(
                     module_code="og_sale_order",
-                    doc_no=og_so.erp_doc_no,
+                    doc_no=og_so.erp_no,
                     uuid=str(og_so.og_sale_order_uuid),
                     project_code=og_so.project_code,
                     approver_name=approver_name,
@@ -564,7 +564,7 @@ def approve_og_sale_order(so_id, approved_by, comments=None):
                 creator_user = User.query.get(og_so.created_by)
                 wa.on_final_approve(
                     module_code="og_sale_order",
-                    doc_no=og_so.erp_doc_no,
+                    doc_no=og_so.erp_no,
                     uuid=str(og_so.og_sale_order_uuid),
                     project_code=og_so.project_code,
                     approver_name=approver_name,
@@ -628,7 +628,7 @@ def reback_og_sale_order(so_id, reback_by, comments=None):
             creator_user = User.query.get(og_so.created_by)
             wa.on_reback(
                 module_code="og_sale_order",
-                doc_no=og_so.erp_doc_no,
+                doc_no=og_so.erp_no,
                 uuid=str(og_so.og_sale_order_uuid),
                 project_code=og_so.project_code,
                 approver_name=reback_name,
@@ -694,7 +694,7 @@ def reject_og_sale_order(so_id, rejected_by, comments=None):
             creator_user = User.query.get(og_so.created_by)
             wa.on_reject(
                 module_code="og_sale_order",
-                doc_no=og_so.erp_doc_no,
+                doc_no=og_so.erp_no,
                 uuid=str(og_so.og_sale_order_uuid),
                 project_code=og_so.project_code,
                 approver_name=rejected_name,

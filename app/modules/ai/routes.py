@@ -33,7 +33,7 @@ def suggest_sale_bill():
                 sbi.cc_name,
                 sbi.description,
                 sbi.basic_amount,
-                sbm.erp_doc_no
+                sbm.erp_no
             FROM sale_bill_master sbm
             JOIN sale_bill_items sbi ON sbi.sale_bill_id = sbm.id
             WHERE sbm.project_code = :pc
@@ -57,7 +57,7 @@ def suggest_sale_bill():
             "cc_name": r[5],
             "description": r[6],
             "basic_amount": float(r[7] or 0),
-            "erp_doc_no": r[8] or "",
+            "erp_no": r[8] or "",
         }
         for r in rows
     ]
@@ -90,11 +90,11 @@ def suggest_sale_bill():
         top_cc_name = ""
 
     # Most recently used sale order number
-    order_counts = Counter(r["erp_doc_no"] for r in history if r["erp_doc_no"])
+    order_counts = Counter(r["erp_no"] for r in history if r["erp_no"])
     top_order = order_counts.most_common(1)[0][0] if order_counts else ""
 
     fields = {
-        "erp_doc_no": top_order,
+        "erp_no": top_order,
         "cc_code": top_cc or "",
         "cc_name": top_cc_name,
         "basic_amount": round(avg_amount, 2),

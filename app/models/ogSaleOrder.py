@@ -8,7 +8,7 @@ class OgSaleOrderMaster(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    erp_doc_no   = db.Column(db.String(50), unique=True, nullable=False)
+    erp_no   = db.Column(db.String(50), unique=True, nullable=False)
     og_sale_order_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
     og_sale_order_date = db.Column(db.Date, nullable=False)
 
