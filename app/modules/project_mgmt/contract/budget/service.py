@@ -165,6 +165,7 @@ def get_sale_orders_for_dropdown(args):
             {
                 "id":            row.id,
                 "ogSaleOrderNo": row.og_sale_order_no,
+                "orderNo":       row.order_no,
                 "orderTitle":    row.order_title,
                 "totalAmount":   float(row.total_amount or 0),
             }
