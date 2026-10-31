@@ -335,17 +335,17 @@ def get_certified_bill_items_for_ua(billing_id):
         # Fetch parent claim bill for reference claim qtys
         claim_bill = BillingMaster.query.get(bill.claim_bill_id) if bill.claim_bill_id else None
 
-        def _claim_item_qty(sl_no, item_type):
-            """Return (claim_qty, claim_amt) from parent claim bill for given sl_no."""
+        def _claim_item_data(sl_no, item_type):
+            """Return (order_qty, claim_qty, claim_amt) from parent claim bill for given sl_no."""
             if not claim_bill:
-                return 0.0, 0.0
+                return 0.0, 0.0, 0.0
             items = claim_bill.items if item_type == "item" else (
                 BillingBoqItem.query.filter_by(billing_id=claim_bill.id).order_by(BillingBoqItem.sl_no).all()
             )
             match = next((i for i in items if i.sl_no == sl_no), None)
             if match:
-                return float(match.claim_qty or 0), float(match.amount or 0)
-            return 0.0, 0.0
+                return float(match.order_qty or 0), float(match.claim_qty or 0), float(match.amount or 0)
+            return 0.0, 0.0, 0.0
 
         result = []
 
@@ -354,8 +354,9 @@ def get_certified_bill_items_for_ua(billing_id):
             cert_qty  = float(item.claim_qty or 0)
             cert_amt  = float(item.amount    or 0)
             unit_rate = float(item.rate      or 0)
-            order_qty = float(item.order_qty or 0)
-            claim_qty, claim_amt = _claim_item_qty(item.sl_no, "item")
+            order_qty, claim_qty, claim_amt = _claim_item_data(item.sl_no, "item")
+            if not order_qty:
+                order_qty = float(item.order_qty or 0)
             result.append({
                 "billingItemId":   item.id,
                 "itemType":        "item",
@@ -379,8 +380,9 @@ def get_certified_bill_items_for_ua(billing_id):
             cert_qty  = float(item.claim_qty or 0)
             cert_amt  = float(item.amount    or 0)
             unit_rate = float(item.rate      or 0)
-            order_qty = float(item.order_qty or 0)
-            claim_qty, claim_amt = _claim_item_qty(item.sl_no, "boq_item")
+            order_qty, claim_qty, claim_amt = _claim_item_data(item.sl_no, "boq_item")
+            if not order_qty:
+                order_qty = float(item.order_qty or 0)
             result.append({
                 "billingItemId":   item.id,
                 "itemType":        "boq_item",
