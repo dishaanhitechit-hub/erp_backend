@@ -694,7 +694,7 @@ def create_billing(req, user_id):
             if claim_bill.project_code != project_code:
                 return res("Claim bill does not belong to this project", [], 403)
 
-            # erp_no is auto-generated for certified bill; billing_no not used
+            # erp_no is auto-generated; billing_no copied from claim bill for display
             erp_no        = generate_billing_no(mode)
             _assert_erp_no_unique(erp_no)
             billing_uuid  = str(_uuid.uuid4())
@@ -707,7 +707,7 @@ def create_billing(req, user_id):
 
             bill = BillingMaster(
                 erp_no           = erp_no,
-                billing_no       = None,
+                billing_no       = claim_bill.billing_no,
                 billing_uuid         = billing_uuid,
                 billing_date         = req.form.get("billingDate"),
                 mode                 = mode,
