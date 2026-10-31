@@ -199,6 +199,39 @@ def end_call(call_id: int, user_id: int) -> bool:
     return True
 
 
+def leave_call(call_id: int, user_id: int) -> bool:
+    """Leave (or decline) a call without ending it for everyone else.
+    The call itself ends once nobody is left to talk to."""
+    call = db.session.get(CommCall, call_id)
+    if not call:
+        return False
+    part = CommCallParticipant.query.filter_by(call_id=call_id, user_id=user_id).first()
+    if not part:
+        return False
+    if call.status in ("ended", "missed"):
+        return True
+
+    now = _now()
+    if part.status == "ringing":
+        part.status = "declined"
+    elif part.status == "in_call":
+        part.status  = "left"
+        part.left_at = now
+    db.session.commit()
+
+    in_call = [p for p in call.participants if p.status == "in_call"]
+    ringing = [p for p in call.participants if p.status == "ringing"]
+    if not in_call or (len(in_call) == 1 and not ringing):
+        return end_call(call_id, user_id)
+
+    for p in in_call:
+        try:
+            send_signal(call_id, user_id, p.user_id, "left", {})
+        except Exception:
+            db.session.rollback()
+    return True
+
+
 def get_incoming_calls(user_id: int) -> list:
     ringing = (
         CommCallParticipant.query
@@ -211,7 +244,8 @@ def get_incoming_calls(user_id: int) -> list:
     expired = False
     for part in ringing:
         call = part.call
-        if not call or call.status != "ringing":
+        # "active" = someone else already answered a group call; still ring the rest
+        if not call or call.status not in ("ringing", "active"):
             part.status = "missed"
             expired = True
             continue
