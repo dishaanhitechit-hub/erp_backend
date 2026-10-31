@@ -177,7 +177,7 @@ def _assert_erp_no_unique(erp_no, exclude_id=None):
 
 
 def generate_billing_no(mode):
-    prefix = ""
+    prefix = "CLM" if mode == "sale_claim_bill" else "CRT"
     rows = (
         db.session.query(BillingMaster.erp_no)
         .filter(BillingMaster.mode == mode)
@@ -186,7 +186,7 @@ def generate_billing_no(mode):
     )
     max_num = 0
     for (val,) in rows:
-        if not val:
+        if not val or not val.startswith(prefix):
             continue
         try:
             n = int(val[len(prefix):])
@@ -694,18 +694,7 @@ def create_billing(req, user_id):
             if claim_bill.project_code != project_code:
                 return res("Claim bill does not belong to this project", [], 403)
 
-            existing = BillingMaster.query.filter(
-                BillingMaster.claim_bill_id   == claim_bill.id,
-                BillingMaster.mode            == "sale_certified_bill",
-                BillingMaster.workflow_status != "Rejected",
-            ).first()
-            if existing:
-                return res(
-                    f"A certified bill ({existing.billing_no or existing.erp_no}) already exists for this claim bill",
-                    [], 400,
-                )
-
-            # erp_no is auto-generated for certified bill; billing_no not used
+            # erp_no is auto-generated; billing_no copied from claim bill for display
             erp_no        = generate_billing_no(mode)
             _assert_erp_no_unique(erp_no)
             billing_uuid  = str(_uuid.uuid4())
@@ -718,7 +707,7 @@ def create_billing(req, user_id):
 
             bill = BillingMaster(
                 erp_no           = erp_no,
-                billing_no       = None,
+                billing_no       = claim_bill.billing_no,
                 billing_uuid         = billing_uuid,
                 billing_date         = req.form.get("billingDate"),
                 mode                 = mode,
