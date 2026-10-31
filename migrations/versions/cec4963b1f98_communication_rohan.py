@@ -246,22 +246,22 @@ def upgrade():
     op.create_table('comm_call_signals',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('call_id', sa.Integer(), nullable=False),
-    sa.Column('from_user_id', sa.Integer(), nullable=False),
-    sa.Column('to_user_id', sa.Integer(), nullable=False),
+    sa.Column('sender_id', sa.Integer(), nullable=False),
+    sa.Column('receiver_id', sa.Integer(), nullable=False),
     sa.Column('signal_type', sa.String(length=30), nullable=False),
     sa.Column('payload', sa.Text(), nullable=True),
     sa.Column('is_consumed', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['call_id'], ['comm_calls.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['from_user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['to_user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['sender_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['receiver_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('comm_call_signals', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_comm_call_signals_call_id'), ['call_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_comm_call_signals_created_at'), ['created_at'], unique=False)
         batch_op.create_index(batch_op.f('ix_comm_call_signals_is_consumed'), ['is_consumed'], unique=False)
-        batch_op.create_index(batch_op.f('ix_comm_call_signals_to_user_id'), ['to_user_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_comm_call_signals_to_user_id'), ['receiver_id'], unique=False)
 
     op.create_table('comm_message_receipts',
     sa.Column('id', sa.Integer(), nullable=False),

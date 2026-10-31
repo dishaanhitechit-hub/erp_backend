@@ -355,9 +355,9 @@ class CommCallSignal(db.Model):
         nullable=False,
         index=True,
     )
-    sender_id   = db.Column("from_user_id", db.Integer,
+    sender_id   = db.Column(db.Integer,
         db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    receiver_id = db.Column("to_user_id", db.Integer,
+    receiver_id = db.Column(db.Integer,
         db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     signal_type = db.Column(db.String(30), nullable=False)
     payload     = db.Column(db.Text,       nullable=True)

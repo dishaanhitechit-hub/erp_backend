@@ -380,15 +380,21 @@ def end_call(call_id):
 @jwt_required()
 def send_signal(call_id):
     user_id = int(get_jwt_identity())
-    data    = request.json
-    signal  = voice_call_service.send_signal(
-        call_id     = call_id,
-        sender_id   = user_id,
-        receiver_id = int(data["receiverId"]),
-        signal_type = data["signalType"],
-        payload     = data.get("payload", {}),
-    )
-    return jsonify({"signalId": signal.id}), 201
+    data    = request.get_json(silent=True) or {}
+    try:
+        signal = voice_call_service.send_signal(
+            call_id     = call_id,
+            sender_id   = user_id,
+            receiver_id = int(data["receiverId"]),
+            signal_type = data["signalType"],
+            payload     = data.get("payload", {}),
+        )
+        return jsonify({"signalId": signal.id}), 201
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"{type(e).__name__}: {e}"
+        return jsonify({"error": err, "message": err}), 500
 
 
 @comm_bp.route("/calls/<int:call_id>/signals", methods=["GET"])
