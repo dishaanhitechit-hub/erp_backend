@@ -54,7 +54,7 @@ def _fmt_date(d):
     return d.strftime("%Y-%m-%d")
 
 
-def _get_certified_by_item_for_order(og_sale_order_no, project_code):
+def _get_certified_by_item_for_order(erp_doc_no, project_code):
     """Return (items_map, boq_map) where each map is {sl_no: {'amount': Decimal, 'qty': Decimal}}
     summed across all Approved sale_certified_bills for the given order."""
     def _query_model(model_class):
@@ -66,7 +66,7 @@ def _get_certified_by_item_for_order(og_sale_order_no, project_code):
             )
             .join(BillingMaster, BillingMaster.id == model_class.billing_id)
             .filter(
-                BillingMaster.og_sale_order_no == og_sale_order_no,
+                BillingMaster.erp_doc_no == erp_doc_no,
                 BillingMaster.project_code     == project_code,
                 BillingMaster.mode             == "sale_certified_bill",
                 BillingMaster.workflow_status  == "Approved",
@@ -110,13 +110,13 @@ def _get_pre_certified_by_item(claim_bill_id, exclude_id=None):
     return items_map, boq_map
 
 
-def _get_pre_certified(og_sale_order_no, project_code, mode, exclude_id=None):
+def _get_pre_certified(erp_doc_no, project_code, mode, exclude_id=None):
     q = (
         db.session.query(
             func.coalesce(func.sum(BillingMaster.this_bill_claim), 0)
         )
         .filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == mode,
             BillingMaster.workflow_status  == "Approved",
@@ -127,13 +127,13 @@ def _get_pre_certified(og_sale_order_no, project_code, mode, exclude_id=None):
     return Decimal(str(q.scalar() or 0))
 
 
-def _get_billed_amount(og_sale_order_no, project_code, mode):
+def _get_billed_amount(erp_doc_no, project_code, mode):
     return Decimal(str(
         db.session.query(
             func.coalesce(func.sum(BillingMaster.this_bill_claim), 0)
         )
         .filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == mode,
             BillingMaster.workflow_status  == "Approved",
@@ -142,16 +142,16 @@ def _get_billed_amount(og_sale_order_no, project_code, mode):
     ))
 
 
-def _get_order_financials(og_sale_order_no, project_code):
+def _get_order_financials(erp_doc_no, project_code):
     og_so = OgSaleOrderMaster.query.filter_by(
-        og_sale_order_no=og_sale_order_no,
+        erp_doc_no=erp_doc_no,
         project_code=project_code,
     ).first()
     if not og_so:
         return None
     return {
         "ogSaleOrderId":   og_so.id,
-        "ogSaleOrderNo":   og_so.og_sale_order_no,
+        "erpDocNumber":   og_so.erp_doc_no,
         "ogSaleOrderDate": _fmt_date(og_so.og_sale_order_date),
         "orderTitle":      og_so.order_title,
         "basicAmount":     float(og_so.basic_amount or 0),
@@ -199,11 +199,11 @@ def generate_billing_no(mode):
     return f"{prefix}{str(num + 1).zfill(3)}"
 
 
-def _bills_under_og_so(og_sale_order_no, project_code, mode):
+def _bills_under_og_so(erp_doc_no, project_code, mode):
     rows = (
         BillingMaster.query
         .filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == mode,
         )
@@ -324,9 +324,9 @@ def _build_rows(raw_rows, billing_id, model_class, source_lookup=None):
 
 def _build_detail_payload(bill):
     mode      = bill.mode
-    order_fin = _get_order_financials(bill.og_sale_order_no, bill.project_code)
-    billed    = _get_billed_amount(bill.og_sale_order_no, bill.project_code, mode)
-    bills     = _bills_under_og_so(bill.og_sale_order_no, bill.project_code, mode)
+    order_fin = _get_order_financials(bill.erp_doc_no, bill.project_code)
+    billed    = _get_billed_amount(bill.erp_doc_no, bill.project_code, mode)
+    bills     = _bills_under_og_so(bill.erp_doc_no, bill.project_code, mode)
     order_basic = Decimal(str(order_fin["basicAmount"])) if order_fin else Decimal('0')
     job_balance = float(order_basic - billed)
 
@@ -381,7 +381,7 @@ def _build_detail_payload(bill):
         boq_items_serialized = serialize(boq_items, _boq=True)
     elif bill.mode == "sale_claim_bill":
         cert_items_map, cert_boq_map = _get_certified_by_item_for_order(
-            bill.og_sale_order_no, bill.project_code
+            bill.erp_doc_no, bill.project_code
         )
         def _serialize_with_cert(rows, c_map):
             return [
@@ -421,7 +421,7 @@ def _build_detail_payload(bill):
         "mode":                 bill.mode,
         "claimBillId":          bill.claim_bill_id,
         "claimBillingNo":       claim_bill_no,
-        "ogSaleOrderNo":        bill.og_sale_order_no,
+        "erpDocNumber":        bill.erp_doc_no,
         "ogSaleOrderId":        bill.og_sale_order_id,
         "projectCode":          bill.project_code,
         "note":                 bill.note,
@@ -561,17 +561,17 @@ def get_order_lookup(data):
             ]
 
             pre_certified = _get_pre_certified(
-                claim_bill.og_sale_order_no, project_code, mode
+                claim_bill.erp_doc_no, project_code, mode
             )
             order_fin = _get_order_financials(
-                claim_bill.og_sale_order_no, project_code
+                claim_bill.erp_doc_no, project_code
             )
 
             return res("Claim bill found", {
                 "claimBillId":        claim_bill.id,
                 "claimBillingNo":     claim_bill.billing_no,
                 "ogSaleOrderId":      claim_bill.og_sale_order_id,
-                "ogSaleOrderNo":      claim_bill.og_sale_order_no,
+                "erpDocNumber":      claim_bill.erp_doc_no,
                 "orderTitle":         order_fin["orderTitle"]  if order_fin else None,
                 "basicAmount":        order_fin["basicAmount"] if order_fin else 0,
                 "gstAmount":          order_fin["gstAmount"]   if order_fin else 0,
@@ -582,19 +582,19 @@ def get_order_lookup(data):
             }, 200)
 
         # ── claim bill: lookup by og sale order number ─────────────
-        og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
-        if not og_sale_order_no:
-            return res("ogSaleOrderNo required", [], 400)
+        erp_doc_no = (data.get("erpDocNumber") or "").strip()
+        if not erp_doc_no:
+            return res("erpDocNumber required", [], 400)
 
         og_so = OgSaleOrderMaster.query.filter_by(
-            og_sale_order_no=og_sale_order_no,
+            erp_doc_no=erp_doc_no,
             project_code=project_code,
         ).first()
         if not og_so:
             return res("OG Sale Order not found in this project", [], 404)
 
         cert_items_map, cert_boq_map = _get_certified_by_item_for_order(
-            og_sale_order_no, project_code
+            erp_doc_no, project_code
         )
 
         og_items = [
@@ -630,11 +630,11 @@ def get_order_lookup(data):
             for og_item in og_so.boq_items
         ]
 
-        pre_certified = _get_pre_certified(og_sale_order_no, project_code, mode)
+        pre_certified = _get_pre_certified(erp_doc_no, project_code, mode)
 
         return res("OG Sale Order found", {
             "ogSaleOrderId":      og_so.id,
-            "ogSaleOrderNo":      og_so.og_sale_order_no,
+            "erpDocNumber":      og_so.erp_doc_no,
             "ogSaleOrderDate":    _fmt_date(og_so.og_sale_order_date),
             "orderTitle":         og_so.order_title,
             "orderValidity":      _fmt_date(og_so.order_validity),
@@ -712,7 +712,7 @@ def create_billing(req, user_id):
             _assert_billing_no_unique(billing_no)
             billing_uuid  = str(_uuid.uuid4())
             pre_certified = _get_pre_certified(
-                claim_bill.og_sale_order_no, project_code, mode
+                claim_bill.erp_doc_no, project_code, mode
             )
             attachment_url = _upload_billing_attachment(
                 req.files.get("attachment"), billing_no
@@ -724,7 +724,7 @@ def create_billing(req, user_id):
                 billing_date         = req.form.get("billingDate"),
                 mode                 = mode,
                 claim_bill_id        = claim_bill.id,
-                og_sale_order_no     = claim_bill.og_sale_order_no,
+                erp_doc_no     = claim_bill.erp_doc_no,
                 og_sale_order_id     = claim_bill.og_sale_order_id,
                 project_code         = project_code,
                 note                 = req.form.get("note") or claim_bill.note,
@@ -767,12 +767,12 @@ def create_billing(req, user_id):
             }, 201)
 
         # ── CLAIM BILL ────────────────────────────────────────────
-        og_sale_order_no = (req.form.get("ogSaleOrderNo") or "").strip()
-        if not og_sale_order_no:
-            return res("ogSaleOrderNo required", [], 400)
+        erp_doc_no = (req.form.get("erpDocNumber") or "").strip()
+        if not erp_doc_no:
+            return res("erpDocNumber required", [], 400)
 
         og_so = OgSaleOrderMaster.query.filter_by(
-            og_sale_order_no=og_sale_order_no,
+            erp_doc_no=erp_doc_no,
             project_code=project_code,
         ).first()
         if not og_so:
@@ -783,7 +783,7 @@ def create_billing(req, user_id):
             return res("billingNo (Bill No) is required", [], 400)
         _assert_billing_no_unique(billing_no)
         billing_uuid   = str(_uuid.uuid4())
-        pre_certified  = _get_pre_certified(og_sale_order_no, project_code, mode)
+        pre_certified  = _get_pre_certified(erp_doc_no, project_code, mode)
         attachment_url = _upload_billing_attachment(
             req.files.get("attachment"), billing_no
         )
@@ -793,7 +793,7 @@ def create_billing(req, user_id):
             billing_uuid         = billing_uuid,
             billing_date         = req.form.get("billingDate"),
             mode                 = mode,
-            og_sale_order_no     = og_sale_order_no,
+            erp_doc_no     = erp_doc_no,
             og_sale_order_id     = og_so.id,
             project_code         = project_code,
             note                 = req.form.get("note"),
@@ -860,9 +860,9 @@ def get_billing_list(data):
 
         if data.get("mode"):
             query = query.filter(BillingMaster.mode == data.get("mode"))
-        if data.get("ogSaleOrderNo"):
+        if data.get("erpDocNumber"):
             query = query.filter(
-                BillingMaster.og_sale_order_no.ilike(f"%{data.get('ogSaleOrderNo')}%")
+                BillingMaster.erp_doc_no.ilike(f"%{data.get('erpDocNumber')}%")
             )
         if data.get("workflowStatus"):
             query = query.filter(BillingMaster.workflow_status == data.get("workflowStatus"))
@@ -871,7 +871,7 @@ def get_billing_list(data):
             query = query.filter(
                 db.or_(
                     BillingMaster.billing_no.ilike(term),
-                    BillingMaster.og_sale_order_no.ilike(term),
+                    BillingMaster.erp_doc_no.ilike(term),
                     BillingMaster.note.ilike(term),
                 )
             )
@@ -881,9 +881,9 @@ def get_billing_list(data):
         result = []
         for row in rows:
             mode      = row.mode
-            billed    = _get_billed_amount(row.og_sale_order_no, row.project_code, mode)
-            order_fin = _get_order_financials(row.og_sale_order_no, row.project_code)
-            bills     = _bills_under_og_so(row.og_sale_order_no, row.project_code, mode)
+            billed    = _get_billed_amount(row.erp_doc_no, row.project_code, mode)
+            order_fin = _get_order_financials(row.erp_doc_no, row.project_code)
+            bills     = _bills_under_og_so(row.erp_doc_no, row.project_code, mode)
 
             order_basic = Decimal(str(order_fin["basicAmount"])) if order_fin else Decimal('0')
             job_balance = float(order_basic - billed)
@@ -893,7 +893,7 @@ def get_billing_list(data):
                 "billingNo":           row.billing_no,
                 "billingDate":         _fmt_date(row.billing_date),
                 "mode":                row.mode,
-                "ogSaleOrderNo":       row.og_sale_order_no,
+                "erpDocNumber":       row.erp_doc_no,
                 "note":                row.note,
                 "jobLocation":         row.job_location,
                 "preCertifiedAmount":  float(row.pre_certified_amount or 0),
@@ -979,7 +979,7 @@ def edit_billing(bill_id, req, user_id):
 
         if bill.mode == "sale_claim_bill":
             og_so = OgSaleOrderMaster.query.filter_by(
-                og_sale_order_no=bill.og_sale_order_no,
+                erp_doc_no=bill.erp_doc_no,
                 project_code=bill.project_code,
             ).first()
             items_lookup = _items_to_lookup(og_so.items)    if og_so else {}
@@ -995,7 +995,7 @@ def edit_billing(bill_id, req, user_id):
             db.session.add(obj)
 
         pre_certified = _get_pre_certified(
-            bill.og_sale_order_no, bill.project_code, bill.mode, exclude_id=bill.id
+            bill.erp_doc_no, bill.project_code, bill.mode, exclude_id=bill.id
         )
 
         total_basic = basic_items + basic_boq

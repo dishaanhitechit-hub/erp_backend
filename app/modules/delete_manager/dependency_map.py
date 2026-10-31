@@ -465,7 +465,7 @@ DEPENDENCY_MAP = {
 
     "OG_SALE_ORDER": {
         "model_class":  OgSaleOrderMaster,
-        "doc_no_field": "og_sale_order_no",
+        "doc_no_field": "erp_doc_no",
         "project_field": "project_code",
         "children": [
             {

@@ -106,7 +106,7 @@ def _build_srb_payload(srb):
         "srbNo":              srb.srb_no,
         "srbUuid":            srb.srb_uuid,
         "receiptId":          srb.receipt_id,
-        "ogSaleOrderNo":      srb.og_sale_order_no,
+        "erpDocNumber":      srb.erp_doc_no,
         "ogSaleOrderId":      srb.og_sale_order_id,
         "saleOrderDate":      _fmt_date(srb.sale_order_date),
         "certifiedBillId":    srb.certified_bill_id,
@@ -172,16 +172,16 @@ def _build_srb_payload(srb):
 def get_certified_bills_for_order(data):
     """Return all Approved certified bills for a given OG Sale Order."""
     try:
-        og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
+        erp_doc_no = (data.get("erpDocNumber") or "").strip()
         project_code     = (data.get("projectCode")   or "").strip()
 
-        if not og_sale_order_no:
-            return res("ogSaleOrderNo required", [], 400)
+        if not erp_doc_no:
+            return res("erpDocNumber required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
         bills = BillingMaster.query.filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_certified_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -342,7 +342,7 @@ def get_receipt_items(data):
         return res("Receipt items fetched", {
             "certifiedBillId": bill.id,
             "certifiedBillNo": bill.billing_no,
-            "ogSaleOrderNo":   bill.og_sale_order_no,
+            "erpDocNumber":   bill.erp_doc_no,
             "saleOrderDate":   _fmt_date(bill.og_so.og_sale_order_date) if bill.og_so else None,
             "items":           result_items,
             "gstLines":        result_gst,
@@ -362,16 +362,16 @@ def get_receipt_items(data):
 def get_invoices_by_sale_order(data):
     """Return all Approved sale bills for a given OG Sale Order No."""
     try:
-        og_sale_order_no = (data.get("ogSaleOrderNo") or "").strip()
+        erp_doc_no = (data.get("erpDocNumber") or "").strip()
         project_code     = (data.get("projectCode")   or "").strip()
 
-        if not og_sale_order_no:
-            return res("ogSaleOrderNo required", [], 400)
+        if not erp_doc_no:
+            return res("erpDocNumber required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
         bills = SaleBillMaster.query.filter_by(
-            sale_order_no   = og_sale_order_no,
+            sale_order_no   = erp_doc_no,
             project_code    = project_code,
             workflow_status = "Approved",
         ).order_by(SaleBillMaster.id.asc()).all()
@@ -542,7 +542,7 @@ def get_details_by_invoice_no(data):
             "shipToAddress":    sale_bill.ship_to_address,
             "billAbstractNo":   sale_bill.bill_abstract_no,
             "billAbstractDate": _fmt_date(sale_bill.bill_abstract_date),
-            "ogSaleOrderNo":    bill.og_sale_order_no,
+            "erpDocNumber":    bill.erp_doc_no,
             "ogSaleOrderId":    bill.og_sale_order_id,
             "saleOrderDate":    _fmt_date(bill.og_so.og_sale_order_date) if bill.og_so else None,
             "certifiedBillId":  bill.id,
@@ -619,7 +619,7 @@ def create_srb(data, user_id):
             srb_no             = _generate_srb_no(),
             srb_uuid           = str(_uuid.uuid4()),
             receipt_id         = parent.id,
-            og_sale_order_no   = cert_bill.og_sale_order_no,
+            erp_doc_no   = cert_bill.erp_doc_no,
             og_sale_order_id   = cert_bill.og_sale_order_id,
             sale_order_date    = sale_order_date,
             certified_bill_id  = cert_bill.id,
@@ -716,7 +716,7 @@ def get_srb_list(data):
             {
                 "id":                 r.id,
                 "srbNo":              r.srb_no,
-                "ogSaleOrderNo":      r.og_sale_order_no,
+                "erpDocNumber":      r.erp_doc_no,
                 "certifiedBillNo":    r.certified_bill_no,
                 "basicAmount":        float(r.basic_amount         or 0),
                 "gstAmount":          float(r.gst_amount           or 0),

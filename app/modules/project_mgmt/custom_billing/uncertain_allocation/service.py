@@ -54,11 +54,11 @@ def _generate_ua_no():
     return str(last_serial + 1)
 
 
-def _fetch_claim_amount(og_sale_order_no, project_code):
+def _fetch_claim_amount(erp_doc_no, project_code):
     result = (
         db.session.query(func.coalesce(func.sum(BillingMaster.this_bill_claim), 0))
         .filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_claim_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -68,11 +68,11 @@ def _fetch_claim_amount(og_sale_order_no, project_code):
     return Decimal(str(result or 0))
 
 
-def _fetch_certified_amount(og_sale_order_no, project_code):
+def _fetch_certified_amount(erp_doc_no, project_code):
     result = (
         db.session.query(func.coalesce(func.sum(BillingMaster.this_bill_claim), 0))
         .filter(
-            BillingMaster.og_sale_order_no == og_sale_order_no,
+            BillingMaster.erp_doc_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_certified_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -137,7 +137,7 @@ def _line_payload(line):
         "id":                              line.id,
         "slNo":                            line.sl_no,
         "ogSaleOrderId":                   line.og_sale_order_id,
-        "ogSaleOrderNo":                   line.og_sale_order_no,
+        "erpDocNumber":                   line.erp_doc_no,
         "orderTitle":                      line.order_title,
         "orderNo":                         line.order_no,
         "orderDate":                       _fmt_date(line.order_date),
@@ -190,7 +190,7 @@ def get_sale_orders_for_lookup(data):
             s = f"%{data.get('search')}%"
             query = query.filter(
                 db.or_(
-                    OgSaleOrderMaster.og_sale_order_no.ilike(s),
+                    OgSaleOrderMaster.erp_doc_no.ilike(s),
                     OgSaleOrderMaster.order_title.ilike(s),
                     OgSaleOrderMaster.order_no.ilike(s),
                 )
@@ -200,12 +200,12 @@ def get_sale_orders_for_lookup(data):
 
         result = []
         for r in rows:
-            claim_amt = _fetch_claim_amount(r.og_sale_order_no, project_code)
-            cert_amt  = _fetch_certified_amount(r.og_sale_order_no, project_code)
+            claim_amt = _fetch_claim_amount(r.erp_doc_no, project_code)
+            cert_amt  = _fetch_certified_amount(r.erp_doc_no, project_code)
             diff      = claim_amt - cert_amt
             result.append({
                 "ogSaleOrderId":   r.id,
-                "ogSaleOrderNo":   r.og_sale_order_no,
+                "erpDocNumber":   r.erp_doc_no,
                 "ogSaleOrderDate": _fmt_date(r.og_sale_order_date),
                 "orderTitle":      r.order_title,
                 "orderNo":         r.order_no,
@@ -276,7 +276,7 @@ def get_sale_order_items_for_ua(og_sale_order_id, project_code):
 
         return res("Sale order items fetched", {
             "ogSaleOrderId":   og_so.id,
-            "ogSaleOrderNo":   og_so.og_sale_order_no,
+            "erpDocNumber":   og_so.erp_doc_no,
             "orderTitle":      og_so.order_title,
             "orderNo":         og_so.order_no,
             "orderDate":       _fmt_date(og_so.order_validity),
@@ -399,7 +399,7 @@ def get_claim_bill_items_for_ua(billing_id):
             "billingId":     bill.id,
             "billingNo":     bill.billing_no,
             "ogSaleOrderId": og_so.id   if og_so else None,
-            "ogSaleOrderNo": og_so.og_sale_order_no if og_so else bill.og_sale_order_no,
+            "erpDocNumber": og_so.erp_doc_no if og_so else bill.erp_doc_no,
             "orderTitle":    og_so.order_title if og_so else None,
             "orderNo":       og_so.order_no    if og_so else None,
             "items":         result,
@@ -450,7 +450,7 @@ def create_ua(data, user_id):
             og_so_id   = row.get("ogSaleOrderId")
             billing_id = row.get("billingId")
             og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no   = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            og_so_no   = og_so.erp_doc_no if og_so else row.get("erpDocNumber")
             bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
@@ -473,7 +473,7 @@ def create_ua(data, user_id):
                 ua_id                 = ua.id,
                 sl_no                 = idx,
                 og_sale_order_id      = og_so_id,
-                og_sale_order_no      = og_so_no,
+                erp_doc_no      = og_so_no,
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
@@ -651,7 +651,7 @@ def edit_ua(ua_id, data, user_id):
             og_so_id   = row.get("ogSaleOrderId")
             billing_id = row.get("billingId")
             og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no   = og_so.og_sale_order_no if og_so else row.get("ogSaleOrderNo")
+            og_so_no   = og_so.erp_doc_no if og_so else row.get("erpDocNumber")
             bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
@@ -673,7 +673,7 @@ def edit_ua(ua_id, data, user_id):
                 ua_id                 = ua.id,
                 sl_no                 = idx,
                 og_sale_order_id      = og_so_id,
-                og_sale_order_no      = og_so_no,
+                erp_doc_no      = og_so_no,
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,

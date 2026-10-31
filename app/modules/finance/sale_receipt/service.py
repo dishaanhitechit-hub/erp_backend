@@ -51,7 +51,7 @@ def get_og_sale_orders(data):
         result = [
             {
                 "id":              o.id,
-                "ogSaleOrderNo":   o.og_sale_order_no,
+                "erpDocNumber":   o.erp_doc_no,
                 "ogSaleOrderDate": _fmt_date(o.og_sale_order_date),
                 "orderTitle":      o.order_title,
                 "totalAmount":     float(o.total_amount or 0),
@@ -162,7 +162,7 @@ def get_sale_receipt_details(receipt_id):
             {
                 "id":                 b.id,
                 "srbNo":              b.srb_no,
-                "ogSaleOrderNo":      b.og_sale_order_no,
+                "erpDocNumber":      b.erp_doc_no,
                 "certifiedBillNo":    b.certified_bill_no,
                 "basicAmount":        float(b.basic_amount         or 0),
                 "gstAmount":          float(b.gst_amount           or 0),

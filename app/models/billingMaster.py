@@ -23,7 +23,7 @@ class BillingMaster(db.Model):
     )
 
     # Reference to OG Sale Order (both modes use this)
-    og_sale_order_no = db.Column(db.String(50), nullable=True)
+    erp_doc_no = db.Column(db.String(50), nullable=True)
     og_sale_order_id = db.Column(
         db.Integer,
         db.ForeignKey("og_sale_order_master.id"),

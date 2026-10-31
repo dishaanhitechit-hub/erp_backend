@@ -81,7 +81,7 @@ class UncertainAllocationLine(db.Model):
         db.ForeignKey("og_sale_order_master.id"),
         nullable=True,
     )
-    og_sale_order_no = db.Column(db.String(50),  nullable=True)
+    erp_doc_no = db.Column(db.String(50),  nullable=True)
     order_title      = db.Column(db.String(500), nullable=True)
     order_no         = db.Column(db.String(50),  nullable=True)
     order_date       = db.Column(db.Date,        nullable=True)
