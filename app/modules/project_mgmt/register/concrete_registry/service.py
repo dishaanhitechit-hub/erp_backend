@@ -9,7 +9,7 @@ from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_stora
 from app.models.concrete_registry import ConcreteRegistry
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
-from app.utils.date_utils import parse_date
+from app.utils.date_utils import parse_date, parse_time
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -188,9 +188,9 @@ def update_registry(registry_id, request, user_id=None):
         if data.get("pouringDate"):
             registry.pouring_date = parse_date(data.get("pouringDate"), "pouringDate")
         if data.get("pouringStartDate"):
-            registry.pouring_start_date = parse_date(data.get("pouringStartDate"), "pouringStartDate")
+            registry.pouring_start_date = parse_time(data.get("pouringStartDate"), "pouringStartDate")
         if data.get("pouringEndDate"):
-            registry.pouring_end_date = parse_date(data.get("pouringEndDate"), "pouringEndDate")
+            registry.pouring_end_date = parse_time(data.get("pouringEndDate"), "pouringEndDate")
         if data.get("gradeConcrete"):
             registry.grade_concrete = data.get("gradeConcrete")
         if data.get("concreteVolume"):

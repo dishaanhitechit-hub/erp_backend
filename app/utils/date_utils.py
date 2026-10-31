@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 import calendar
 
 def parse_date(value, field_name="date"):
@@ -41,6 +41,33 @@ def parse_date(value, field_name="date"):
             f"{field_name}: year must be 4 digits (got {parsed.year})"
         )
     return parsed
+
+
+def parse_time(value, field_name="time"):
+    """Parse and validate a time value before writing to the DB.
+
+    Accepts: None/empty → None; time object → as-is; strings HH:MM or HH:MM:SS.
+    Raises ValueError with a clear message on invalid input.
+    """
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, time):
+        return value
+
+    import re as _re
+    raw = str(value).strip()
+    if not _re.fullmatch(r"\d{2}:\d{2}(:\d{2})?", raw):
+        raise ValueError(
+            f"{field_name}: '{raw}' is not a valid time — expected HH:MM or HH:MM:SS"
+        )
+    fmt = "%H:%M:%S" if len(raw) == 8 else "%H:%M"
+    try:
+        return datetime.strptime(raw, fmt).time()
+    except ValueError:
+        raise ValueError(
+            f"{field_name}: '{raw}' is not a valid time (hours 0-23, minutes 0-59)"
+        )
 
 
 def last_month_range() -> tuple[datetime, datetime]:
