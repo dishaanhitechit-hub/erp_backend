@@ -173,26 +173,28 @@ def _assert_erp_no_unique(erp_no, exclude_id=None):
     if exclude_id:
         q = q.filter(BillingMaster.id != exclude_id)
     if q.first():
-        raise ValueError(f"ERP Doc No '{normalised}' already exists")
+        raise ValueError(f"ERP No '{normalised}' already exists")
 
 
 def generate_billing_no(mode):
     prefix = ""
-    last = (
+    rows = (
         db.session.query(BillingMaster.erp_no)
         .filter(BillingMaster.mode == mode)
-        .order_by(BillingMaster.id.desc())
         .with_for_update()
-        .first()
+        .all()
     )
-    if last:
+    max_num = 0
+    for (val,) in rows:
+        if not val:
+            continue
         try:
-            num = int(last[0][len(prefix):])
-        except Exception:
-            num = 0
-    else:
-        num = 0
-    return f"{prefix}{str(num + 1).zfill(3)}"
+            n = int(val[len(prefix):])
+            if n > max_num:
+                max_num = n
+        except (ValueError, TypeError):
+            pass
+    return f"{prefix}{str(max_num + 1).zfill(3)}"
 
 
 def _bills_under_og_so(og_sale_order_no, project_code, mode):
