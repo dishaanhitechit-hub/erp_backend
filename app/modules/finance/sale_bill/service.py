@@ -172,17 +172,17 @@ def _build_detail_payload(bill):
 def get_certified_bills_for_order(data):
     """Return Approved certified bills that are still available for invoicing."""
     try:
-        erp_doc_no = (data.get("erpDocNumber") or "").strip()
+        erp_no = (data.get("erpDocNumber") or "").strip()
         project_code     = (data.get("projectCode")   or "").strip()
 
-        if not erp_doc_no:
+        if not erp_no:
             return res("erpDocNumber required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
         # Check if the order itself is fully invoiced (sum of non-Rejected sale bills >= order basic amount)
         og_so = OgSaleOrderMaster.query.filter_by(
-            erp_doc_no=erp_doc_no,
+            erp_no=erp_no,
             project_code=project_code,
         ).first()
 
@@ -190,7 +190,7 @@ def get_certified_bills_for_order(data):
             total_invoiced = db.session.query(
                 func.coalesce(func.sum(SaleBillMaster.basic_amount), 0)
             ).filter(
-                SaleBillMaster.sale_order_no    == erp_doc_no,
+                SaleBillMaster.sale_order_no    == erp_no,
                 SaleBillMaster.project_code     == project_code,
                 SaleBillMaster.workflow_status  != "Rejected",
             ).scalar()
@@ -203,7 +203,7 @@ def get_certified_bills_for_order(data):
         billed_cert_ids = {
             row[0]
             for row in db.session.query(SaleBillMaster.certified_bill_id).filter(
-                SaleBillMaster.sale_order_no   == erp_doc_no,
+                SaleBillMaster.sale_order_no   == erp_no,
                 SaleBillMaster.project_code    == project_code,
                 SaleBillMaster.workflow_status != "Rejected",
                 SaleBillMaster.certified_bill_id.isnot(None),
@@ -211,7 +211,7 @@ def get_certified_bills_for_order(data):
         }
 
         bills = BillingMaster.query.filter(
-            BillingMaster.erp_doc_no == erp_doc_no,
+            BillingMaster.og_sale_order_erp_no == erp_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_certified_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -220,7 +220,7 @@ def get_certified_bills_for_order(data):
         result = [
             {
                 "id":            b.id,
-                "billingNo":     b.billing_no,
+                "erpNo":      b.erp_no,
                 "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }
@@ -268,8 +268,8 @@ def get_certified_bill_items_grouped(data):
 
         return res("Items grouped by CC Code", {
             "certifiedBillId": bill.id,
-            "certifiedBillNo": bill.billing_no,
-            "erpDocNumber":   bill.erp_doc_no,
+            "certifiedErpDocNo": bill.erp_no,
+            "ogSaleOrderNo":   bill.og_sale_order_erp_no,
             "items":           items,
             "gstLines":        gst_lines,
         }, 200)
@@ -349,10 +349,10 @@ def create_sale_bill(data, user_id):
             invoice_date       = invoice_date_val,
             reference_no       = data.get("referenceNo"),
             reference_date     = parse_date(data.get("referenceDate"), "referenceDate"),
-            sale_order_no      = cert_bill.erp_doc_no,
+            sale_order_no      = cert_bill.og_sale_order_erp_no,
             sale_order_id      = cert_bill.og_sale_order_id,
             certified_bill_id  = cert_bill.id,
-            certified_bill_no  = cert_bill.billing_no,
+            certified_bill_no  = cert_bill.erp_no,
             project_code       = project_code,
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),

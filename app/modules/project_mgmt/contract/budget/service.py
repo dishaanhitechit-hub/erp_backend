@@ -164,7 +164,7 @@ def get_sale_orders_for_dropdown(args):
         result = [
             {
                 "id":            row.id,
-                "erpDocNumber": row.erp_doc_no,
+                "erpDocNumber": row.erp_no,
                 "orderNo":       row.order_no,
                 "orderTitle":    row.order_title,
                 "totalAmount":   float(row.total_amount or 0),
@@ -211,7 +211,7 @@ def get_sale_order_items(so_id):
 
         return res("Sale order items fetched", {
             "saleOrderId":         og_so.id,
-            "erpDocNumber":       og_so.erp_doc_no,
+            "erpDocNumber":       og_so.erp_no,
             "orderTitle":          og_so.order_title,
             "orderValueExclGst":   order_value_excl_gst,
             "items":               items,
@@ -304,7 +304,7 @@ def create_budget(data, user_id):
             budget_uuid          = budget_uuid,
             budget_date          = budget_date,
             sale_order_id        = og_so.id,
-            sale_order_no        = og_so.erp_doc_no,
+            sale_order_no        = og_so.erp_no,
             sale_order_title     = og_so.order_title,
             project_code         = project_code,
             remarks              = data.get("remarks") or None,

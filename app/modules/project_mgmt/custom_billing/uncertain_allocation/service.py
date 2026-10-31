@@ -58,7 +58,7 @@ def _fetch_claim_amount(erp_doc_no, project_code):
     result = (
         db.session.query(func.coalesce(func.sum(BillingMaster.this_bill_claim), 0))
         .filter(
-            BillingMaster.erp_doc_no == erp_doc_no,
+            BillingMaster.erp_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_claim_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -72,7 +72,7 @@ def _fetch_certified_amount(erp_doc_no, project_code):
     result = (
         db.session.query(func.coalesce(func.sum(BillingMaster.this_bill_claim), 0))
         .filter(
-            BillingMaster.erp_doc_no == erp_doc_no,
+            BillingMaster.erp_no == erp_doc_no,
             BillingMaster.project_code     == project_code,
             BillingMaster.mode             == "sale_certified_bill",
             BillingMaster.workflow_status  == "Approved",
@@ -137,14 +137,14 @@ def _line_payload(line):
         "id":                              line.id,
         "slNo":                            line.sl_no,
         "ogSaleOrderId":                   line.og_sale_order_id,
-        "erpDocNumber":                   line.erp_doc_no,
+        "erpDocNumber":                   line.erp_no,
         "orderTitle":                      line.order_title,
         "orderNo":                         line.order_no,
         "orderDate":                       _fmt_date(line.order_date),
         "ogSaleOrderDate":                 _fmt_date(og.og_sale_order_date) if og else None,
         # Claim bill reference
         "billingId":                       line.billing_id,
-        "billingNo":                       line.billing_no,
+        "billErpNo":                       line.bill_erp_no,
         # Item-level fields
         "ogSaleOrderItemId":               line.og_sale_order_item_id,
         "itemType":                        line.item_type,
@@ -190,7 +190,7 @@ def get_sale_orders_for_lookup(data):
             s = f"%{data.get('search')}%"
             query = query.filter(
                 db.or_(
-                    OgSaleOrderMaster.erp_doc_no.ilike(s),
+                    OgSaleOrderMaster.erp_no.ilike(s),
                     OgSaleOrderMaster.order_title.ilike(s),
                     OgSaleOrderMaster.order_no.ilike(s),
                 )
@@ -200,12 +200,12 @@ def get_sale_orders_for_lookup(data):
 
         result = []
         for r in rows:
-            claim_amt = _fetch_claim_amount(r.erp_doc_no, project_code)
-            cert_amt  = _fetch_certified_amount(r.erp_doc_no, project_code)
+            claim_amt = _fetch_claim_amount(r.erp_no, project_code)
+            cert_amt  = _fetch_certified_amount(r.erp_no, project_code)
             diff      = claim_amt - cert_amt
             result.append({
                 "ogSaleOrderId":   r.id,
-                "erpDocNumber":   r.erp_doc_no,
+                "erpDocNumber":   r.erp_no,
                 "ogSaleOrderDate": _fmt_date(r.og_sale_order_date),
                 "orderTitle":      r.order_title,
                 "orderNo":         r.order_no,
@@ -276,7 +276,7 @@ def get_sale_order_items_for_ua(og_sale_order_id, project_code):
 
         return res("Sale order items fetched", {
             "ogSaleOrderId":   og_so.id,
-            "erpDocNumber":   og_so.erp_doc_no,
+            "erpDocNumber":   og_so.erp_no,
             "orderTitle":      og_so.order_title,
             "orderNo":         og_so.order_no,
             "orderDate":       _fmt_date(og_so.order_validity),
@@ -291,7 +291,129 @@ def get_sale_order_items_for_ua(og_sale_order_id, project_code):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 1c. CERTIFIED BILL LOOKUP (for a given sale order)
+# 1c. CLAIM BILL LOOKUP (for a given sale order)
+# ══════════════════════════════════════════════════════════════════
+
+def get_claim_bills_for_so(og_sale_order_id):
+    try:
+        bills = (
+            BillingMaster.query
+            .filter(
+                BillingMaster.og_sale_order_id == og_sale_order_id,
+                BillingMaster.mode             == "sale_claim_bill",
+                BillingMaster.workflow_status  == "Approved",
+            )
+            .order_by(BillingMaster.id.desc())
+            .all()
+        )
+        result = [
+            {
+                "billingId":     b.id,
+                "erpNo":         b.erp_no,
+                "note":          b.note or "",
+                "billingDate":   _fmt_date(b.billing_date),
+                "thisBillClaim": float(b.this_bill_claim or 0),
+            }
+            for b in bills
+        ]
+        return res("Claim bills fetched", result, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1d. CLAIM BILL ITEMS (item-level, for table population)
+# ══════════════════════════════════════════════════════════════════
+
+def get_claim_bill_items_for_ua(billing_id):
+    try:
+        bill = BillingMaster.query.get(billing_id)
+        if not bill:
+            return res("Claim bill not found", [], 404)
+
+        og_so = bill.og_so
+
+        result = []
+
+        def _cert_qty(cert_amt, rate):
+            r = Decimal(str(rate or 0))
+            return float(cert_amt / r) if r else 0.0
+
+        # Regular items
+        for item in bill.items:
+            cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "item")
+            claim_qty   = float(item.claim_qty  or 0)
+            order_qty   = float(item.order_qty  or 0)
+            unit_rate   = float(item.rate       or 0)
+            claim_amt   = float(item.amount     or 0)
+            cert_qty    = _cert_qty(cert_amt, item.rate)
+            cert_amt_f  = float(cert_amt)
+            result.append({
+                "billingItemId":   item.id,
+                "itemType":        "item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        order_qty,
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        unit_rate,
+                "claimAmount":     claim_amt,
+                "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
+            })
+
+        # BOQ items
+        boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
+        for item in boq_items:
+            cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item.item_code, "boq_item")
+            claim_qty   = float(item.claim_qty  or 0)
+            order_qty   = float(item.order_qty  or 0)
+            unit_rate   = float(item.rate       or 0)
+            claim_amt   = float(item.amount     or 0)
+            cert_qty    = _cert_qty(cert_amt, item.rate)
+            cert_amt_f  = float(cert_amt)
+            result.append({
+                "billingItemId":   item.id,
+                "itemType":        "boq_item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        order_qty,
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        unit_rate,
+                "claimAmount":     claim_amt,
+                "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
+            })
+
+        return res("Claim bill items fetched", {
+            "billingId":     bill.id,
+            "erpNo":         bill.erp_no,
+            "ogSaleOrderId": og_so.id   if og_so else None,
+            "erpDocNumber":  og_so.erp_no if og_so else None,
+            "orderTitle":    og_so.order_title if og_so else None,
+            "orderNo":       og_so.order_no    if og_so else None,
+            "items":         result,
+        }, 200)
+
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1e. CERTIFIED BILLS FOR UA LOOKUP
 # ══════════════════════════════════════════════════════════════════
 
 def get_certified_bills_for_so(og_sale_order_id):
@@ -308,11 +430,11 @@ def get_certified_bills_for_so(og_sale_order_id):
         )
         result = [
             {
-                "billingId":     b.id,
-                "billingNo":     b.billing_no,
-                "note":          b.note or "",
-                "billingDate":   _fmt_date(b.billing_date),
-                "thisBillClaim": float(b.this_bill_claim or 0),
+                "billingId":           b.id,
+                "erpNo":               b.erp_no,
+                "note":                b.note or "",
+                "billingDate":         _fmt_date(b.billing_date),
+                "preCertifiedAmount":  float(b.pre_certified_amount or 0),
             }
             for b in bills
         ]
@@ -328,83 +450,62 @@ def get_certified_bills_for_so(og_sale_order_id):
 def get_certified_bill_items_for_ua(billing_id):
     try:
         bill = BillingMaster.query.get(billing_id)
-        if not bill or bill.mode != "sale_certified_bill":
+        if not bill:
             return res("Certified bill not found", [], 404)
 
         og_so = bill.og_so
-        # Fetch parent claim bill for reference claim qtys
-        claim_bill = BillingMaster.query.get(bill.claim_bill_id) if bill.claim_bill_id else None
-
-        def _claim_item_data(sl_no, item_type):
-            """Return (order_qty, claim_qty, claim_amt) from parent claim bill for given sl_no."""
-            if not claim_bill:
-                return 0.0, 0.0, 0.0
-            items = claim_bill.items if item_type == "item" else (
-                BillingBoqItem.query.filter_by(billing_id=claim_bill.id).order_by(BillingBoqItem.sl_no).all()
-            )
-            match = next((i for i in items if i.sl_no == sl_no), None)
-            if match:
-                return float(match.order_qty or 0), float(match.claim_qty or 0), float(match.amount or 0)
-            return 0.0, 0.0, 0.0
 
         result = []
 
-        # Regular items (certified bill stores certified qty in claim_qty field)
+        def _cert_qty(cert_amt, rate):
+            r = Decimal(str(rate or 0))
+            return float(cert_amt / r) if r else 0.0
+
         for item in bill.items:
-            cert_qty  = float(item.claim_qty or 0)
-            cert_amt  = float(item.amount    or 0)
-            unit_rate = float(item.rate      or 0)
-            order_qty, claim_qty, claim_amt = _claim_item_data(item.sl_no, "item")
-            if not order_qty:
-                order_qty = float(item.order_qty or 0)
+            claim_qty  = float(item.claim_qty or 0)
+            order_qty  = float(item.order_qty or 0)
+            unit_rate  = float(item.rate      or 0)
+            cert_amt_f = float(item.amount    or 0)
+            cert_qty   = _cert_qty(item.amount, item.rate)
             result.append({
-                "billingItemId":   item.id,
-                "itemType":        "item",
-                "boqSlNo":         item.sl_no,
-                "itemCode":        item.item_code,
-                "itemName":        item.item_name,
-                "itemNameDesc":    item.item_name_desc,
-                "unit":            item.unit,
-                "orderQty":        order_qty,
-                "claimQty":        claim_qty,
-                "certifiedQty":    round(cert_qty, 4),
-                "unitRate":        unit_rate,
-                "claimAmount":     round(claim_amt, 2),
-                "certifiedAmount": round(cert_amt, 2),
-                "difference":      round(claim_amt - cert_amt, 2),
+                "billingItemId": item.id,
+                "itemType":      "item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "orderQty":      order_qty,
+                "claimQty":      claim_qty,
+                "certifiedQty":  round(cert_qty, 4),
+                "unitRate":      unit_rate,
+                "certifiedAmount": cert_amt_f,
             })
 
-        # BOQ items
         boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
         for item in boq_items:
-            cert_qty  = float(item.claim_qty or 0)
-            cert_amt  = float(item.amount    or 0)
-            unit_rate = float(item.rate      or 0)
-            order_qty, claim_qty, claim_amt = _claim_item_data(item.sl_no, "boq_item")
-            if not order_qty:
-                order_qty = float(item.order_qty or 0)
+            cert_amt_f = float(item.amount or 0)
+            cert_qty   = _cert_qty(item.amount, item.rate)
             result.append({
-                "billingItemId":   item.id,
-                "itemType":        "boq_item",
-                "boqSlNo":         item.sl_no,
-                "itemCode":        item.item_code,
-                "itemName":        item.item_name,
-                "itemNameDesc":    item.item_name_desc,
-                "unit":            item.unit,
-                "orderQty":        order_qty,
-                "claimQty":        claim_qty,
-                "certifiedQty":    round(cert_qty, 4),
-                "unitRate":        unit_rate,
-                "claimAmount":     round(claim_amt, 2),
-                "certifiedAmount": round(cert_amt, 2),
-                "difference":      round(claim_amt - cert_amt, 2),
+                "billingItemId": item.id,
+                "itemType":      "boq_item",
+                "boqSlNo":       item.sl_no,
+                "itemCode":      item.item_code,
+                "itemName":      item.item_name,
+                "itemNameDesc":  item.item_name_desc,
+                "unit":          item.unit,
+                "orderQty":      float(item.order_qty or 0),
+                "claimQty":      float(item.claim_qty or 0),
+                "certifiedQty":  round(cert_qty, 4),
+                "unitRate":      float(item.rate      or 0),
+                "certifiedAmount": cert_amt_f,
             })
 
         return res("Certified bill items fetched", {
             "billingId":     bill.id,
-            "billingNo":     bill.billing_no,
-            "ogSaleOrderId": og_so.id         if og_so else None,
-            "erpDocNumber":  og_so.erp_doc_no if og_so else bill.erp_doc_no,
+            "erpNo":         bill.erp_no,
+            "ogSaleOrderId": og_so.id          if og_so else None,
+            "erpDocNumber":  og_so.erp_no      if og_so else None,
             "orderTitle":    og_so.order_title if og_so else None,
             "orderNo":       og_so.order_no    if og_so else None,
             "items":         result,
@@ -452,7 +553,7 @@ def create_ua(data, user_id):
             og_so_id   = row.get("ogSaleOrderId")
             billing_id = row.get("billingId")
             og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no   = og_so.erp_doc_no if og_so else row.get("erpDocNumber")
+            og_so_no   = og_so.erp_no if og_so else row.get("erpDocNumber")
             bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
@@ -464,10 +565,7 @@ def create_ua(data, user_id):
             claim_amt  = claim_qty * unit_rate
 
             # Re-compute certified from DB to stay fresh
-            # For certified bills (billing_id points to a cert bill): trust frontend value
-            if bill and bill.mode == "sale_certified_bill":
-                cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
-            elif billing_id and item_code:
+            if billing_id and item_code:
                 cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
                 cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
@@ -478,12 +576,12 @@ def create_ua(data, user_id):
                 ua_id                 = ua.id,
                 sl_no                 = idx,
                 og_sale_order_id      = og_so_id,
-                erp_doc_no      = og_so_no,
+                erp_no      = og_so_no,
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
                 billing_id            = billing_id,
-                billing_no            = bill.billing_no if bill else row.get("billingNo"),
+                bill_erp_no           = bill.erp_no if bill else row.get("billErpNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),
@@ -656,7 +754,7 @@ def edit_ua(ua_id, data, user_id):
             og_so_id   = row.get("ogSaleOrderId")
             billing_id = row.get("billingId")
             og_so      = OgSaleOrderMaster.query.get(og_so_id) if og_so_id else None
-            og_so_no   = og_so.erp_doc_no if og_so else row.get("erpDocNumber")
+            og_so_no   = og_so.erp_no if og_so else row.get("erpDocNumber")
             bill       = BillingMaster.query.get(billing_id) if billing_id else None
 
             item_type = row.get("itemType")
@@ -667,9 +765,7 @@ def edit_ua(ua_id, data, user_id):
             og_boq_qty = Decimal(str(row.get("ogBOQQty") or 0))
             claim_amt  = claim_qty * unit_rate
 
-            if bill and bill.mode == "sale_certified_bill":
-                cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
-            elif billing_id and item_code:
+            if billing_id and item_code:
                 cert_amt = _fetch_item_certified_amount_for_bill(billing_id, item_code, item_type)
             else:
                 cert_amt = Decimal(str(row.get("certifiedAmount") or 0))
@@ -680,12 +776,12 @@ def edit_ua(ua_id, data, user_id):
                 ua_id                 = ua.id,
                 sl_no                 = idx,
                 og_sale_order_id      = og_so_id,
-                erp_doc_no      = og_so_no,
+                erp_no      = og_so_no,
                 order_title           = og_so.order_title        if og_so else row.get("orderTitle"),
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
                 billing_id            = billing_id,
-                billing_no            = bill.billing_no if bill else row.get("billingNo"),
+                bill_erp_no           = bill.erp_no if bill else row.get("billErpNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),
