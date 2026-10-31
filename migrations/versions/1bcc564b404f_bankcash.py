@@ -1,7 +1,7 @@
 """bankcash
 
 Revision ID: 1bcc564b404f
-Revises: 4c9a86fca0d9
+Revises: 136f076ba8b1
 Create Date: 2026-09-06 16:40:15.913773
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '1bcc564b404f'
-down_revision = '4c9a86fca0d9'
+down_revision = '136f076ba8b1'
 branch_labels = None
 depends_on = None
 
