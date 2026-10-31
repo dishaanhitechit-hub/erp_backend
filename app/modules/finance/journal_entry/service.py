@@ -207,6 +207,17 @@ def get_journal_entry_list(data):
 
         rows = query.order_by(JournalEntryMaster.id.desc()).all()
 
+        def _cr_label(entry):
+            for line in entry.lines:
+                if float(line.credit_amount or 0) > 0:
+                    if line.vendor:
+                        parts = [p for p in [line.vendor.ledger_code, line.vendor.ledger_name] if p]
+                        return " - ".join(parts)
+                    if line.cc:
+                        parts = [p for p in [line.cc.cc_code, line.cc.cc_name] if p]
+                        return " - ".join(parts)
+            return None
+
         result = [
             {
                 "id":             r.id,
@@ -217,6 +228,7 @@ def get_journal_entry_list(data):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      _fmt_date(r.created_at),
+                "crName":         _cr_label(r),
             }
             for r in rows
         ]
