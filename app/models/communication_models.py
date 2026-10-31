@@ -355,19 +355,12 @@ class CommCallSignal(db.Model):
         nullable=False,
         index=True,
     )
-    sender_id   = db.Column(
-        db.Integer,
-        db.ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    receiver_id = db.Column(
-        db.Integer,
-        db.ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    sender_id   = db.Column("from_user_id", db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    receiver_id = db.Column("to_user_id", db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     signal_type = db.Column(db.String(30), nullable=False)
-    payload     = db.Column(db.Text,       nullable=True)  # JSON
+    payload     = db.Column(db.Text,       nullable=True)
     is_consumed = db.Column(db.Boolean, default=False, index=True)
     created_at  = db.Column(db.DateTime(timezone=True), default=_now, index=True)
 
