@@ -1,7 +1,7 @@
-"""rename billing_no to erp_no in billing_master and uncertain_allocation
+"""rename billing_no to erp_no in billing_master and uncertain_allocation_lines
 
 Revision ID: a1b2c3d4e5f6
-Revises: efd0fb041696
+Revises: 1b4facc64a29
 Create Date: 2026-10-31 10:00:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = 'a1b2c3d4e5f6'
-down_revision = 'efd0fb041696'
+down_revision = '1b4facc64a29'
 branch_labels = None
 depends_on = None
 
@@ -28,14 +28,14 @@ def upgrade():
                     existing_type=sa.String(50),
                     existing_nullable=False)
 
-    # Step 3: rename billing_no snapshot in uncertain_allocation to bill_erp_no
-    op.alter_column('uncertain_allocation', 'billing_no',
+    # Step 3: rename billing_no snapshot in uncertain_allocation_lines to bill_erp_no
+    op.alter_column('uncertain_allocation_lines', 'billing_no',
                     new_column_name='bill_erp_no',
                     existing_type=sa.String(50),
                     existing_nullable=True)
 
-    # Step 4: rename erp_doc_no (OG Sale Order ref) in uncertain_allocation to erp_no
-    op.alter_column('uncertain_allocation', 'erp_doc_no',
+    # Step 4: rename erp_doc_no (OG Sale Order ref) in uncertain_allocation_lines to erp_no
+    op.alter_column('uncertain_allocation_lines', 'erp_doc_no',
                     new_column_name='erp_no',
                     existing_type=sa.String(50),
                     existing_nullable=True)
@@ -64,12 +64,12 @@ def downgrade():
                     existing_type=sa.String(50),
                     existing_nullable=False)
 
-    op.alter_column('uncertain_allocation', 'erp_no',
+    op.alter_column('uncertain_allocation_lines', 'erp_no',
                     new_column_name='erp_doc_no',
                     existing_type=sa.String(50),
                     existing_nullable=True)
 
-    op.alter_column('uncertain_allocation', 'bill_erp_no',
+    op.alter_column('uncertain_allocation_lines', 'bill_erp_no',
                     new_column_name='billing_no',
                     existing_type=sa.String(50),
                     existing_nullable=True)
