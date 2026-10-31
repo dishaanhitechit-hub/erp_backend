@@ -242,6 +242,7 @@ def get_incoming_calls(user_id: int) -> list:
     cutoff  = _now() - RING_TIMEOUT
     result  = []
     expired = False
+    timed_out_active = []
     for part in ringing:
         call = part.call
         # "active" = someone else already answered a group call; still ring the rest
@@ -251,14 +252,24 @@ def get_incoming_calls(user_id: int) -> list:
             continue
         started = _aware(call.started_at or call.created_at)
         if started and started < cutoff:
-            # Caller vanished without hanging up — never offer this call again
-            call.status = "missed"
+            # Only this person missed it. The whole call is "missed" only when
+            # nobody answered at all — a group call others joined keeps going.
             part.status = "missed"
+            if call.status == "ringing":
+                call.status = "missed"
+            else:
+                timed_out_active.append(call)
             expired = True
             continue
         result.append(_call_dict(call, user_id))
     if expired:
         db.session.commit()
+    # A call left with one person and nobody else ringing is over
+    for call in timed_out_active:
+        in_call = [p for p in call.participants if p.status == "in_call"]
+        ringing_left = [p for p in call.participants if p.status == "ringing"]
+        if len(in_call) <= 1 and not ringing_left:
+            end_call(call.id, in_call[0].user_id if in_call else user_id)
     return result
 
 
