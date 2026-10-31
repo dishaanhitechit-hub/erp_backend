@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.extensions import db
 from app.models.communication_models import (
     CommCall,
@@ -9,8 +9,17 @@ from app.models.communication_models import (
 from app.modules.communication.chatting.notification_service import push_notification
 
 
+RING_TIMEOUT = timedelta(seconds=45)
+
+
 def _now():
     return datetime.now(timezone.utc)
+
+
+def _aware(dt):
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def start_call(
@@ -141,12 +150,12 @@ def end_call(call_id: int, user_id: int) -> bool:
     call.ended_at = now
 
     if call.started_at:
-        delta = now - call.started_at
+        delta = now - _aware(call.started_at)
         call.duration_seconds = int(delta.total_seconds())
 
     other_ids = []
     for part in call.participants:
-        if part.status == "in_call":
+        if part.status in ("in_call", "ringing"):
             part.status  = "ended"
             part.left_at = now
         if part.user_id != user_id:
@@ -168,13 +177,28 @@ def get_incoming_calls(user_id: int) -> list:
     ringing = (
         CommCallParticipant.query
         .filter_by(user_id=user_id, status="ringing")
+        .order_by(CommCallParticipant.id.desc())
         .all()
     )
-    result = []
+    cutoff  = _now() - RING_TIMEOUT
+    result  = []
+    expired = False
     for part in ringing:
         call = part.call
-        if call and call.status == "ringing":
-            result.append(_call_dict(call, user_id))
+        if not call or call.status != "ringing":
+            part.status = "missed"
+            expired = True
+            continue
+        started = _aware(call.started_at or call.created_at)
+        if started and started < cutoff:
+            # Caller vanished without hanging up — never offer this call again
+            call.status = "missed"
+            part.status = "missed"
+            expired = True
+            continue
+        result.append(_call_dict(call, user_id))
+    if expired:
+        db.session.commit()
     return result
 
 

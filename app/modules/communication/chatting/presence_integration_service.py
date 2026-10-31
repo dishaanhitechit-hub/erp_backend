@@ -81,6 +81,9 @@ def set_communication_status(user_id: int, status: str) -> bool:
 
 
 def _is_in_call(user_id: int) -> bool:
+    # A user whose tabs are all closed can't be in a call, whatever stale rows say
+    if not _is_online_via_heartbeat(user_id):
+        return False
     try:
         return db.session.query(CommCallParticipant).join(CommCall).filter(
             CommCallParticipant.user_id  == user_id,
