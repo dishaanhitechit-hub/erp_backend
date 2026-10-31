@@ -44,12 +44,18 @@ def request_delete(module_code: str, record_id: int):
     body   = request.get_json(silent=True) or {}
     reason = body.get("reason", "")
 
-    result, status_code = raise_delete_request(
-        module_code  = module_code.upper(),
-        record_id    = record_id,
-        requested_by = g.current_user["id"],
-        reason       = reason,
-    )
+    try:
+        result, status_code = raise_delete_request(
+            module_code  = module_code.upper(),
+            record_id    = record_id,
+            requested_by = g.current_user["id"],
+            reason       = reason,
+        )
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"Delete failed ({type(e).__name__}: {str(e).splitlines()[0][:300]})"
+        return res(err, {"status": "error", "message": err}, 500)
     return res(result.get("message", ""), result, status_code)
 
 

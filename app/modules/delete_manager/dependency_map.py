@@ -49,7 +49,7 @@ from app.models.paymentVoucher     import PaymentVoucherMaster
 from app.models.saleBill           import SaleBillMaster
 from app.models.saleReceipt        import SaleReceiptMaster
 from app.models.saleReceiptBilling import SaleReceiptBillingMaster
-from app.models.billingMaster      import BillingMaster
+from app.models.billingMaster      import BillingMaster, BillingBoqItem
 from app.models.ogSaleOrder        import OgSaleOrderMaster
 from app.models.enquiry_master     import EnquiryMaster
 from app.models.batchingPlant      import BatchingPlantMaster
@@ -496,6 +496,9 @@ DEPENDENCY_MAP = {
         "model_class":  BillingMaster,
         "doc_no_field": "billing_no",
         "project_field": "project_code",
+        # Item rows with no ORM cascade — removed together with the bill
+        # (same as custom_billing delete_billing does).
+        "delete_first": [(BillingBoqItem, "billing_id")],
         "children": [
             # Certified bills reference their claim bill via claim_bill_id (self-FK)
             {
