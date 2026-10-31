@@ -705,20 +705,20 @@ def create_billing(req, user_id):
                     [], 400,
                 )
 
-            # erp_no and billing_no for certified bill copied from claim bill (locked)
-            erp_no      = claim_bill.erp_no
-            billing_no_val = claim_bill.billing_no
+            # erp_no is auto-generated for certified bill; billing_no not used
+            erp_no        = generate_billing_no(mode)
+            _assert_erp_no_unique(erp_no)
             billing_uuid  = str(_uuid.uuid4())
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_erp_no, project_code, mode
             )
             attachment_url = _upload_billing_attachment(
-                req.files.get("attachment"), billing_no_val or erp_no
+                req.files.get("attachment"), erp_no
             )
 
             bill = BillingMaster(
                 erp_no           = erp_no,
-                billing_no       = billing_no_val,
+                billing_no       = None,
                 billing_uuid         = billing_uuid,
                 billing_date         = req.form.get("billingDate"),
                 mode                 = mode,
