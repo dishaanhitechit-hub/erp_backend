@@ -23,6 +23,21 @@ class ApprovalPingError(ValueError):
     pass
 
 
+def project_code_for(project_id) -> str | None:
+    """The JWT's `projectId` claim is the project's numeric id, but workflow
+    tables are keyed by the project_code string — translate between them."""
+    from app.extensions import db
+    from app.models.project import Project
+
+    if project_id in (None, ""):
+        return None
+    try:
+        project = db.session.get(Project, int(project_id))
+    except (TypeError, ValueError):
+        return None
+    return project.project_code if project else None
+
+
 def _check(module_code: str, project_code: str):
     if module_code not in APPROVAL_PING_MODULES:
         raise ApprovalPingError("This module can't be used for approval pings")

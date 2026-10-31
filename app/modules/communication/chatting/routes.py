@@ -334,11 +334,16 @@ def approval_ping_pending():
     try:
         data = approval_ping_service.pending_for_user(
             module_code    = request.args.get("module", ""),
-            project_code   = get_jwt().get("projectId"),
+            project_code   = approval_ping_service.project_code_for(get_jwt().get("projectId")),
             target_user_id = request.args.get("userId", type=int),
         )
     except approval_ping_service.ApprovalPingError as e:
         return jsonify({"error": str(e), "message": str(e)}), 400
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"Could not load pending records ({type(e).__name__}: {e})"
+        return jsonify({"error": err, "message": err}), 500
     return jsonify(data), 200
 
 
@@ -354,11 +359,16 @@ def approval_ping_send():
             receiver_id  = int(data.get("receiverId") or 0),
             module_code  = data.get("module", ""),
             record_ids   = data.get("recordIds") or [],
-            project_code = get_jwt().get("projectId"),
+            project_code = approval_ping_service.project_code_for(get_jwt().get("projectId")),
             message      = data.get("message"),
         )
     except approval_ping_service.ApprovalPingError as e:
         return jsonify({"error": str(e), "message": str(e)}), 400
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"Could not send approval ping ({type(e).__name__}: {e})"
+        return jsonify({"error": err, "message": err}), 500
     return jsonify({"sent": sent}), 201
 
 
