@@ -227,11 +227,7 @@ def create_app():
     from .modules.finance.journal_entry.journal_voucher.routes import journal_voucher_bp
     app.register_blueprint(journal_voucher_bp, url_prefix="/finance/journal-entry/journal-voucher")
 
-    from .modules.finance.journal_entry.journal_accounting.routes import journal_accounting_bp
-    app.register_blueprint(journal_accounting_bp, url_prefix="/finance/journal-entry/journal-accounting")
-
     from .models import journalVoucher      # noqa — registers PettyCashJournalVoucher, PettyCashJournalLine
-    from .models import journalAccounting   # noqa — registers PettyCashJournalAccounting, PettyCashJournalAccountingLine
 
     from .modules.finance.vendor_ledger.routes import vendor_ledger_bp
     app.register_blueprint(vendor_ledger_bp, url_prefix="/finance/vendor-ledger")

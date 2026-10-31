@@ -68,5 +68,4 @@ from .creditNote import CreditNoteMaster, CreditNoteItem
 from .pettyCashBudget import PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
 from .pettyCashDocketVoucher import PettyCashDocketVoucher, PettyCashDocketVoucherDetail
 from .journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
-from .journalAccounting import PettyCashJournalAccounting, PettyCashJournalAccountingLine
 from .budget import BudgetMaster, BudgetItem, BudgetItemCCCode
