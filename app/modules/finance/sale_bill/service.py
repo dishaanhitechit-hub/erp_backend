@@ -217,15 +217,24 @@ def get_certified_bills_for_order(data):
             BillingMaster.workflow_status  == "Approved",
         ).order_by(BillingMaster.id.asc()).all()
 
+        # deduplicate by billing_no: keep only the latest (highest id) per billing_no
+        latest_by_billing_no = {}
+        for b in bills:
+            if b.id in billed_cert_ids:
+                continue
+            key = b.billing_no or b.erp_no or str(b.id)
+            if key not in latest_by_billing_no or b.id > latest_by_billing_no[key].id:
+                latest_by_billing_no[key] = b
+
         result = [
             {
                 "id":            b.id,
-                "erpNo":      b.erp_no,
+                "billingNo":     b.billing_no or b.erp_no,
+                "erpNo":         b.erp_no,
                 "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }
-            for b in bills
-            if b.id not in billed_cert_ids
+            for b in latest_by_billing_no.values()
         ]
 
         return res("Certified bills fetched", result, 200)
@@ -352,7 +361,7 @@ def create_sale_bill(data, user_id):
             sale_order_no      = cert_bill.og_sale_order_erp_no,
             sale_order_id      = cert_bill.og_sale_order_id,
             certified_bill_id  = cert_bill.id,
-            certified_bill_no  = cert_bill.erp_no,
+            certified_bill_no  = cert_bill.billing_no or cert_bill.erp_no,
             project_code       = project_code,
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),
