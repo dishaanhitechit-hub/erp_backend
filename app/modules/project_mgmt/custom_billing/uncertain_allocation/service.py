@@ -428,15 +428,23 @@ def get_certified_bills_for_so(og_sale_order_id):
             .order_by(BillingMaster.id.desc())
             .all()
         )
+        # deduplicate by billing_no: keep only the latest (highest id) per billing_no
+        latest_by_key = {}
+        for b in bills:
+            key = b.billing_no or b.erp_no or str(b.id)
+            if key not in latest_by_key:
+                latest_by_key[key] = b
+
         result = [
             {
                 "billingId":           b.id,
-                "erpNo":               b.erp_no,
+                "billingNo":           b.billing_no or "",
+                "erpNo":               b.erp_no or "",
                 "note":                b.note or "",
                 "billingDate":         _fmt_date(b.billing_date),
                 "preCertifiedAmount":  float(b.pre_certified_amount or 0),
             }
-            for b in bills
+            for b in latest_by_key.values()
         ]
         return res("Certified bills fetched", result, 200)
     except Exception as e:
