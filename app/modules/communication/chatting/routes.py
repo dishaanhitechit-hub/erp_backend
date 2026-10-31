@@ -10,6 +10,8 @@ from app.modules.communication.chatting import group_service
 from app.modules.communication.chatting import meeting_service
 from app.modules.communication.chatting import announcement_service
 from app.modules.communication.chatting import presence_integration_service
+from app.modules.communication.chatting import media_service
+from app.modules.communication.chatting import reply_suggestion_service
 
 comm_bp = Blueprint("comm", __name__)
 
@@ -146,6 +148,54 @@ def send_message(conv_id):
         reply_to_id     = data.get("replyToId"),
     )
     return jsonify({"messageId": msg.id}), 201
+
+
+@comm_bp.route("/conversations/<int:conv_id>/media", methods=["POST"])
+@jwt_required()
+def send_media(conv_id):
+    """multipart/form-data: file (required), caption, replyToId"""
+    user_id = int(get_jwt_identity())
+    try:
+        msg = media_service.send_media_message(
+            conversation_id = conv_id,
+            sender_id       = user_id,
+            file            = request.files.get("file"),
+            caption         = request.form.get("caption"),
+            reply_to_id     = request.form.get("replyToId", type=int),
+        )
+    except PermissionError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 403
+    except media_service.MediaError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 400
+    return jsonify({"messageId": msg.id, "fileUrl": msg.file_url, "type": msg.message_type}), 201
+
+
+@comm_bp.route("/messages/<int:msg_id>/forward", methods=["POST"])
+@jwt_required()
+def forward_message(msg_id):
+    """JSON: {userIds: [..], conversationIds: [..], caption}"""
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    try:
+        sent = media_service.forward_message(
+            message_id      = msg_id,
+            user_id         = user_id,
+            target_user_ids = data.get("userIds") or [],
+            target_conv_ids = data.get("conversationIds") or [],
+            caption         = data.get("caption"),
+        )
+    except PermissionError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 404
+    except media_service.MediaError as e:
+        return jsonify({"error": str(e), "message": str(e)}), 400
+    return jsonify({"sent": sent}), 201
+
+
+@comm_bp.route("/messages/<int:msg_id>/suggestions", methods=["GET"])
+@jwt_required()
+def reply_suggestions(msg_id):
+    user_id = int(get_jwt_identity())
+    return jsonify({"suggestions": reply_suggestion_service.suggestions_for_message(msg_id, user_id)}), 200
 
 
 @comm_bp.route("/messages/<int:msg_id>", methods=["DELETE"])

@@ -192,6 +192,20 @@ def _update_last_read(conversation_id: int, user_id: int, message_id: int) -> No
         db.session.commit()
 
 
+def _reply_preview(msg: CommMessage) -> dict | None:
+    parent = msg.reply_to
+    if not parent:
+        return None
+    return {
+        "id":         parent.id,
+        "senderName": parent.sender.username if parent.sender else None,
+        "type":       parent.message_type,
+        "content":    None if parent.is_deleted else (parent.content or "")[:120],
+        "fileName":   None if parent.is_deleted else parent.file_name,
+        "isDeleted":  parent.is_deleted,
+    }
+
+
 def _msg_dict(msg: CommMessage, requesting_user_id: int) -> dict:
     receipts = {r.user_id: r.status for r in msg.receipts}
     return {
@@ -205,6 +219,7 @@ def _msg_dict(msg: CommMessage, requesting_user_id: int) -> dict:
         "fileSize":   msg.file_size,
         "fileMime":   msg.file_mime,
         "replyToId":  msg.reply_to_id,
+        "replyTo":    _reply_preview(msg),
         "isMine":     msg.sender_id == requesting_user_id,
         "receipts":   receipts,
         "isDeleted":  msg.is_deleted,
