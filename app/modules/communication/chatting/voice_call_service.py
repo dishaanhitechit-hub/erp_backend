@@ -10,6 +10,32 @@ from app.modules.communication.chatting.notification_service import push_notific
 
 
 RING_TIMEOUT = timedelta(seconds=45)
+TURN_CRED_TTL = 12 * 3600
+
+
+def turn_credentials(user_id: int) -> dict:
+    """Short-lived TURN credentials for coturn's `use-auth-secret` mode."""
+    import base64, hashlib, hmac, os, time
+
+    secret = os.getenv("TURN_SECRET")
+    host   = os.getenv("TURN_HOST")
+    if not secret or not host:
+        return {"iceServers": []}
+
+    username   = f"{int(time.time()) + TURN_CRED_TTL}:{user_id}"
+    credential = base64.b64encode(
+        hmac.new(secret.encode(), username.encode(), hashlib.sha1).digest()
+    ).decode()
+    return {
+        "iceServers": [{
+            "urls": [
+                f"turn:{host}:3478?transport=udp",
+                f"turn:{host}:3478?transport=tcp",
+            ],
+            "username":   username,
+            "credential": credential,
+        }]
+    }
 
 
 def _now():

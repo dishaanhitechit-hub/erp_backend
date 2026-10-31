@@ -353,6 +353,13 @@ def start_call():
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
+@comm_bp.route("/turn-credentials", methods=["GET"])
+@jwt_required()
+def turn_credentials():
+    user_id = int(get_jwt_identity())
+    return jsonify(voice_call_service.turn_credentials(user_id)), 200
+
+
 @comm_bp.route("/calls/<int:call_id>/answer", methods=["POST"])
 @jwt_required()
 def answer_call(call_id):
