@@ -72,7 +72,7 @@ _PRINT_SLUG = {
     "og_sale_order": "og-sale-order",
 }
 
-_PRINT_BASE = "http://132.154.156.82/print"
+_PRINT_BASE = "https://132.154.156.82/print"
 
 
 def _base() -> str:

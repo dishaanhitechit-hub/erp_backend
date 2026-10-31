@@ -159,7 +159,7 @@ def end_call(call_id: int, user_id: int) -> bool:
         try:
             send_signal(call_id, user_id, uid, "ended", {})
         except Exception:
-            pass
+            db.session.rollback()
 
     return True
 
