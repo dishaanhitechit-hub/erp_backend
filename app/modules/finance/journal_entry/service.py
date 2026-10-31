@@ -38,8 +38,8 @@ def _fmt_date(d):
 
 _MODE_PREFIX = {
     "new_voucher": "JV",
-    "bulk_docket": "BD",
-    "adjustment":  "JE",
+    "bulk_docket": "JB",
+    "adjustment":  "JA",
 }
 
 
