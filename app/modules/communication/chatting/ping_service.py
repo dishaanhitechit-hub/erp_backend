@@ -95,6 +95,16 @@ def mark_ping_read(ping_id: int, user_id: int) -> bool:
     return True
 
 
+def mark_all_pings_read(user_id: int) -> int:
+    now  = _now()
+    rows = CommPing.query.filter_by(receiver_id=user_id, is_read=False).all()
+    for p in rows:
+        p.is_read = True
+        p.read_at = now
+    db.session.commit()
+    return len(rows)
+
+
 def get_unread_ping_count(user_id: int) -> int:
     return CommPing.query.filter_by(receiver_id=user_id, is_read=False).count()
 

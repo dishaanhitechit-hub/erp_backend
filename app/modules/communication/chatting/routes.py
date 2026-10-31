@@ -276,6 +276,13 @@ def mark_ping_read(ping_id):
     return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Not found"}), 404)
 
 
+@comm_bp.route("/pings/read-all", methods=["POST"])
+@jwt_required()
+def mark_all_pings_read():
+    user_id = int(get_jwt_identity())
+    return jsonify({"marked": ping_service.mark_all_pings_read(user_id)}), 200
+
+
 @comm_bp.route("/pings/unread-count", methods=["GET"])
 @jwt_required()
 def unread_ping_count():
