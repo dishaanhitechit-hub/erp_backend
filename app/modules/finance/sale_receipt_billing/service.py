@@ -190,7 +190,7 @@ def get_certified_bills_for_order(data):
         result = [
             {
                 "id":            b.id,
-                "erpDocNo":      b.erp_no,
+                "erpNo":      b.erp_no,
                 "billingDate":   _fmt_date(b.billing_date),
                 "thisBillClaim": float(b.this_bill_claim or 0),
             }

@@ -209,7 +209,7 @@ def _bills_under_og_so(og_sale_order_no, project_code, mode):
     return [
         {
             "id":             r.id,
-            "erpDocNo":       r.erp_no,
+            "erpNo":       r.erp_no,
             "billingDate":    _fmt_date(r.billing_date),
             "thisBillClaim":  float(r.this_bill_claim or 0),
             "workflowStatus": r.workflow_status,
@@ -411,12 +411,12 @@ def _build_detail_payload(bill):
 
     return {
         "id":                   bill.id,
-        "erpDocNo":             bill.erp_no,
+        "erpNo":             bill.erp_no,
         "billingUuid":          bill.billing_uuid,
         "billingDate":          _fmt_date(bill.billing_date),
         "mode":                 bill.mode,
         "claimBillId":          bill.claim_bill_id,
-        "claimErpDocNo":        claim_bill_erp_no,
+        "claimErpNo":        claim_bill_erp_no,
         "ogSaleOrderNo":        bill.og_sale_order_erp_no,
         "ogSaleOrderId":        bill.og_sale_order_id,
         "projectCode":          bill.project_code,
@@ -474,7 +474,7 @@ def get_cert_bills_for_claim_bill(data):
         result = [
             {
                 "id":             b.id,
-                "erpDocNo":       b.erp_no,
+                "erpNo":       b.erp_no,
                 "billingDate":    _fmt_date(b.billing_date),
                 "thisBillClaim":  float(b.this_bill_claim or 0),
                 "workflowStatus": b.workflow_status,
@@ -565,7 +565,7 @@ def get_order_lookup(data):
 
             return res("Claim bill found", {
                 "claimBillId":        claim_bill.id,
-                "claimErpDocNo":      claim_bill.erp_no,
+                "claimErpNo":      claim_bill.erp_no,
                 "ogSaleOrderId":      claim_bill.og_sale_order_id,
                 "ogSaleOrderNo":      claim_bill.og_sale_order_erp_no,
                 "orderTitle":         order_fin["orderTitle"]  if order_fin else None,
@@ -754,7 +754,7 @@ def create_billing(req, user_id):
             db.session.commit()
             return res("Certified bill created", {
                 "id":           bill.id,
-                "erpDocNo":     bill.erp_no,
+                "erpNo":     bill.erp_no,
                 "billingUuid":  bill.billing_uuid,
                 "mode":         bill.mode,
                 "claimBillId":  claim_bill.id,
@@ -821,7 +821,7 @@ def create_billing(req, user_id):
         db.session.commit()
         return res("Billing record created", {
             "id":          bill.id,
-            "erpDocNo":    bill.erp_no,
+            "erpNo":    bill.erp_no,
             "billingUuid": bill.billing_uuid,
             "mode":        bill.mode,
         }, 201)
@@ -883,7 +883,7 @@ def get_billing_list(data):
 
             result.append({
                 "id":                  row.id,
-                "erpDocNo":            row.erp_no,
+                "erpNo":            row.erp_no,
                 "billingDate":         _fmt_date(row.billing_date),
                 "mode":                row.mode,
                 "ogSaleOrderNo":       row.og_sale_order_erp_no,
@@ -1005,7 +1005,7 @@ def edit_billing(bill_id, req, user_id):
 
         return res("Billing record updated", {
             "id":       bill.id,
-            "erpDocNo": bill.erp_no,
+            "erpNo": bill.erp_no,
         }, 200)
 
     except ValueError as e:
@@ -1089,7 +1089,7 @@ def submit_billing(bill_id, submitted_by):
 
         return res("Billing record submitted", {
             "id":             bill.id,
-            "erpDocNo":       bill.erp_no,
+            "erpNo":       bill.erp_no,
             "workflowStatus": bill.workflow_status,
         }, 200)
 

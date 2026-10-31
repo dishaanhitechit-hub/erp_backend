@@ -144,7 +144,7 @@ def _line_payload(line):
         "ogSaleOrderDate":                 _fmt_date(og.og_sale_order_date) if og else None,
         # Claim bill reference
         "billingId":                       line.billing_id,
-        "billingNo":                       line.billing_no,
+        "billErpNo":                       line.bill_erp_no,
         # Item-level fields
         "ogSaleOrderItemId":               line.og_sale_order_item_id,
         "itemType":                        line.item_type,
@@ -581,7 +581,7 @@ def create_ua(data, user_id):
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
                 billing_id            = billing_id,
-                billing_no            = bill.billing_no if bill else row.get("billingNo"),
+                bill_erp_no           = bill.erp_no if bill else row.get("billErpNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),
@@ -781,7 +781,7 @@ def edit_ua(ua_id, data, user_id):
                 order_no              = og_so.order_no           if og_so else row.get("orderNo"),
                 order_date            = og_so.og_sale_order_date if og_so else None,
                 billing_id            = billing_id,
-                billing_no            = bill.billing_no if bill else row.get("billingNo"),
+                bill_erp_no           = bill.erp_no if bill else row.get("billErpNo"),
                 og_sale_order_item_id = row.get("ogSaleOrderItemId"),
                 item_type             = item_type,
                 boq_sl_no             = row.get("boqSlNo"),
