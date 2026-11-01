@@ -770,6 +770,60 @@ def get_dr_lines_by_vendor(vendor_id, params):
 # 14. APPROVED DOCKETS (for Bulk Docket mode)
 # ══════════════════════════════════════════════════════════════════
 
+def get_ref_bills(params):
+    """Return all approved Sale Bills, Purchase Bills, and Receipt Billings for a project in a unified list."""
+    try:
+        project_code = (params.get("projectCode") or "").strip()
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        from app.models.saleBill import SaleBillMaster
+        from app.models.purchaseBill import PurchaseBillMaster
+        from app.models.saleReceiptBilling import SaleReceiptBillingMaster
+        from app.models.vendor import Vendor
+
+        result = []
+
+        for bill in SaleBillMaster.query.filter_by(project_code=project_code, workflow_status="Approved").all():
+            result.append({
+                "billType":  "sale_bill",
+                "billLabel": "Sale Bill",
+                "id":        bill.id,
+                "docNo":     bill.sale_bill_no,
+                "date":      _fmt_date(bill.invoice_date),
+                "amount":    float(bill.total_invoice_amount or 0),
+                "party":     None,
+            })
+
+        for bill in PurchaseBillMaster.query.filter_by(project_code=project_code, workflow_status="Approved").all():
+            vendor = Vendor.query.get(bill.vendor_id) if bill.vendor_id else None
+            result.append({
+                "billType":  "purchase_bill",
+                "billLabel": "Purchase Bill",
+                "id":        bill.id,
+                "docNo":     bill.purchase_bill_no,
+                "date":      _fmt_date(bill.processing_date),
+                "amount":    float(bill.total_invoice_amount or 0),
+                "party":     vendor.ledger_name if vendor else None,
+            })
+
+        for bill in SaleReceiptBillingMaster.query.filter_by(project_code=project_code, workflow_status="Approved").all():
+            result.append({
+                "billType":  "receipt_billing",
+                "billLabel": "Receipt Billing",
+                "id":        bill.id,
+                "docNo":     bill.erp_no or bill.srb_no,
+                "date":      _fmt_date(bill.created_at),
+                "amount":    float(bill.total_invoice_amount or 0),
+                "party":     None,
+            })
+
+        return res("Ref bills fetched", result, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
 def get_approved_dockets(params):
     try:
         project_code = params.get("projectCode")

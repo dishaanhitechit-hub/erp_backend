@@ -13,6 +13,7 @@ from app.modules.finance.journal_entry.service import (
     get_journal_entry_history,
     get_journal_entry_my_approval_status,
     get_approved_dockets,
+    get_ref_bills,
 )
 
 journal_entry_bp = Blueprint("journal_entry", __name__)
@@ -111,3 +112,10 @@ def api_journal_entry_my_approval_status(entry_id):
 @login_required
 def api_approved_dockets():
     return get_approved_dockets(request.args.to_dict())
+
+
+# ── 15. REF BILLS (unified list for adjustment mode) ──────────────
+@journal_entry_bp.route("/ref-bills", methods=["GET"])
+@login_required
+def api_ref_bills():
+    return get_ref_bills(request.args.to_dict())
