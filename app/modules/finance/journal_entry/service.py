@@ -9,6 +9,27 @@ from app.models.cc_code import CCCode
 from app.models.vendor import Vendor
 from app.models.journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
 from app.response import res
+
+def _resolve_ref_bill_doc_no(ref_bill_type, ref_bill_id):
+    """Return a display doc number for the linked adjustment bill reference."""
+    if not ref_bill_type or not ref_bill_id:
+        return None
+    try:
+        if ref_bill_type == "sale_bill":
+            from app.models.saleBill import SaleBillMaster
+            bill = SaleBillMaster.query.get(ref_bill_id)
+            return bill.sale_bill_no if bill else None
+        if ref_bill_type == "purchase_bill":
+            from app.models.purchaseBill import PurchaseBillMaster
+            bill = PurchaseBillMaster.query.get(ref_bill_id)
+            return bill.purchase_bill_no if bill else None
+        if ref_bill_type == "receipt_billing":
+            from app.models.saleReceiptBilling import SaleReceiptBillingMaster
+            bill = SaleReceiptBillingMaster.query.get(ref_bill_id)
+            return bill.erp_no if bill else None
+    except Exception:
+        return None
+    return None
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -118,6 +139,9 @@ def _build_detail_payload(entry):
         "rejectedBy":      entry.rejector.username  if entry.rejector  else None,
         "rejectedAt":      _fmt_date(entry.rejected_at),
         "lines":           [_build_line_payload(l) for l in entry.lines],
+        "refBillType":     entry.ref_bill_type,
+        "refBillId":       entry.ref_bill_id,
+        "refBillDocNo":    _resolve_ref_bill_doc_no(entry.ref_bill_type, entry.ref_bill_id),
     }
 
 
@@ -148,6 +172,9 @@ def create_journal_entry(data, user_id):
         if entry_mode not in _MODE_PREFIX:
             entry_mode = "new_voucher"
 
+        ref_type = data.get("refBillType") or None
+        ref_id   = int(data["refBillId"]) if data.get("refBillId") else None
+
         entry = JournalEntryMaster(
             voucher_no      = _generate_voucher_no(entry_mode),
             journal_uuid    = str(_uuid.uuid4()),
@@ -157,6 +184,8 @@ def create_journal_entry(data, user_id):
             remarks         = data.get("remarks"),
             total_debit     = total_debit,
             total_credit    = total_credit,
+            ref_bill_type   = ref_type,
+            ref_bill_id     = ref_id,
             workflow_status = "Draft",
             current_level   = 0,
             locked          = False,
@@ -323,6 +352,11 @@ def edit_journal_entry(entry_id, data, user_id):
 
         if data.get("remarks") is not None:
             entry.remarks = data["remarks"]
+
+        if "refBillType" in data:
+            entry.ref_bill_type = data.get("refBillType") or None
+        if "refBillId" in data:
+            entry.ref_bill_id = int(data["refBillId"]) if data.get("refBillId") else None
 
         JournalEntryLine.query.filter_by(journal_id=entry.id).delete()
         db.session.flush()

@@ -7,6 +7,7 @@ from app.modules.finance.sale_receipt_billing.service import (
     get_details_by_invoice_no,
     create_srb,
     get_srb_list,
+    get_srb_list_by_project,
     get_srb_details,
     edit_srb,
     submit_srb,
@@ -63,6 +64,13 @@ def api_create_srb():
 @login_required
 def api_srb_list():
     return get_srb_list(request.args.to_dict())
+
+
+# ── 4b. LIST BY PROJECT (no receiptId required — for adjustment reference) ──
+@sale_receipt_billing_bp.route("/list-by-project", methods=["GET"])
+@login_required
+def api_srb_list_by_project():
+    return get_srb_list_by_project(request.args.to_dict())
 
 
 # ── 5. DETAILS ────────────────────────────────────────────────────

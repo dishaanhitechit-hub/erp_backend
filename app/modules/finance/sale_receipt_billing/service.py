@@ -1171,3 +1171,49 @@ def delete_sale_receipt_billing(srb_id):
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
+
+
+def get_srb_list_by_project(params):
+    """List all Sale Receipt Billings for a project (no receiptId required). Used for adjustment bill reference lookup."""
+    try:
+        project_code = (params.get("projectCode") or "").strip()
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        query = SaleReceiptBillingMaster.query.filter(
+            SaleReceiptBillingMaster.project_code == project_code,
+        )
+
+        if params.get("workflowStatus"):
+            query = query.filter(
+                SaleReceiptBillingMaster.workflow_status == params["workflowStatus"]
+            )
+
+        if params.get("search"):
+            term = f"%{params['search']}%"
+            query = query.filter(
+                SaleReceiptBillingMaster.erp_no.ilike(term) |
+                SaleReceiptBillingMaster.srb_no.ilike(term)
+            )
+
+        rows = query.order_by(SaleReceiptBillingMaster.id.desc()).all()
+
+        result = [
+            {
+                "id":                 r.id,
+                "srbNo":              r.srb_no,
+                "erpDocNumber":       r.erp_no,
+                "certifiedBillNo":    r.certified_bill_no,
+                "basicAmount":        float(r.basic_amount         or 0),
+                "gstAmount":          float(r.gst_amount           or 0),
+                "totalInvoiceAmount": float(r.total_invoice_amount or 0),
+                "workflowStatus":     r.workflow_status,
+                "createdAt":          _fmt_date(r.created_at),
+            }
+            for r in rows
+        ]
+
+        return res("Sale receipt billing list fetched", result, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
