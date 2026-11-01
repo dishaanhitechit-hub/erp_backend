@@ -86,7 +86,7 @@ def get_workbench_context(user_id):
 # ─────────────────────────────────────────────────────────────────
 
 def _as_date(col):
-    """Date columns as-is; datetime columns (e.g. enquiry_date) truncated with date(), valid in Postgres and SQLite."""
+    """Date columns as-is; datetime columns truncated with date(), valid in Postgres and SQLite."""
     return func.date(col, type_=Date) if isinstance(col.type, DateTime) else col
 
 
@@ -225,7 +225,6 @@ HEADER_FIELDS = {
     "INDENT": [("Priority", "priority", "text"), ("Required Within", "required_within", "date"),
                ("Placed By", "indent_placed_by", "text"), ("Site Reg. Serial", "site_reg_serial_no", "text"),
                ("Remarks", "remarks", "text")],
-    "ENQUIRY": [("Enquiry To", "enquiry_to", "text"), ("Address", "address", "text")],
     "ORDER": [("Order Type", "category_code", "code"), ("Quotation No", "quotation_no", "text"),
               ("Quotation Date", "quotation_date", "date"), ("Validity", "validity_date", "date"),
               ("Taxable", "basic_amount", "amount"), ("GST", "gst_amount", "amount"),

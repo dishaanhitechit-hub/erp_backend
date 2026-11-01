@@ -6,7 +6,6 @@ Builds the downstream lifecycle of ONE indent item, using only the
 foreign keys that already exist in the schema:
 
     indent_items
-      ├─ enquiry_item.indent_item_id          (side branch)
       └─ order_items.indent_item_id           (one indent item → many order lines)
            ├─ grn_items.order_item_id         (receipt)
            │    └─ brb_items.grn_item_id      (exact item-level billing)
@@ -42,8 +41,6 @@ from app.response import res
 
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
-from app.models.enquiry_master import EnquiryMaster
-from app.models.enquiry_item import EnquiryItem
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
 from app.models.ginMaster import GinMaster, GinItem
@@ -152,16 +149,6 @@ def _load_indent_item(indent_item_id):
         )
         .filter(IndentItem.id == indent_item_id)
         .first()
-    )
-
-
-def _load_enquiry_lines(indent_item_id):
-    return (
-        db.session.query(EnquiryItem, EnquiryMaster)
-        .join(EnquiryMaster, EnquiryMaster.id == EnquiryItem.enquiry_id)
-        .filter(EnquiryItem.indent_item_id == indent_item_id)
-        .order_by(EnquiryMaster.enquiry_date, EnquiryMaster.id)
-        .all()
     )
 
 
@@ -380,25 +367,6 @@ def build_indent_item_trace(ii):
         docType="INDENT", docId=src["indentId"], docNo=src["indentNo"], parentRef=None,
         qty=src["qty"], rate=None, amount=None, status=src["indentStatus"],
     )
-
-    # ── enquiries ────────────────────────────────────────────────
-    enquiries = []
-    for ei, em in _load_enquiry_lines(ii.id):
-        enquiries.append({
-            "enquiryId": em.id,
-            "enquiryNo": em.enquiry_no,
-            "enquiryDate": _date(em.enquiry_date),
-            "enquiryTo": em.enquiry_to,
-            "workflowStatus": em.workflow_status,
-            "enquiryItemId": ei.id,
-            "indentQty": _qty(ei.indent_qty),
-            "enquiryQty": _qty(ei.enquiry_qty),
-        })
-        add_ledger(
-            date=_date(em.enquiry_date), stage=1, module="Procurement", transactionType="Enquiry",
-            docType="ENQUIRY", docId=em.id, docNo=em.enquiry_no, parentRef=src["indentNo"],
-            qty=_qty(ei.enquiry_qty), rate=None, amount=None, status=em.workflow_status,
-        )
 
     # ── order lines ──────────────────────────────────────────────
     order_rows = _load_order_lines(ii.id)
@@ -877,7 +845,7 @@ def build_indent_item_trace(ii):
     }
 
     stage_order = {k: i for i, k in enumerate(
-        ["INDENT", "ENQUIRY", "ORDER", "GRN", "GIN", "DC", "BRR", "BRB", "PURCHASE_BILL", "BILL_PAYMENT"])}
+        ["INDENT", "ORDER", "GRN", "GIN", "DC", "BRR", "BRB", "PURCHASE_BILL", "BILL_PAYMENT"])}
     ledger.sort(key=lambda r: (r["date"] or "9999-99-99", r["stage"], stage_order.get(r["docType"], 99), r["docId"] or 0))
     for r in ledger:
         r.pop("stage", None)
@@ -888,7 +856,6 @@ def build_indent_item_trace(ii):
     return {
         "source": src,
         "summary": summary,
-        "enquiries": enquiries,
         "orders": orders,
         "legacyBilling": legacy,
         "ledger": ledger,

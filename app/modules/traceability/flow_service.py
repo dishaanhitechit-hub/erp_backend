@@ -56,7 +56,7 @@ APPROVED = "Approved"
 REJECTED = "Rejected"
 
 # line types whose FK points at an item / asset master
-_ITEM_LINES = ("INDENT_LINE", "ENQ_LINE", "ORD_LINE", "GRN_LINE", "DC_LINE", "PW_LINE")
+_ITEM_LINES = ("INDENT_LINE", "ORD_LINE", "GRN_LINE", "DC_LINE", "PW_LINE")
 
 
 def _d(v):
@@ -402,8 +402,6 @@ def _party(dt, row, vendors):
     v = getattr(row, "vendor_id", None) or getattr(row, "from_vendor_id", None)
     if v:
         return vendors.get(v)
-    if dt == "ENQUIRY":
-        return row.enquiry_to
     if dt == "INDENT":
         return row.indent_placed_by
     if dt == "DC":

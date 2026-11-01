@@ -8,8 +8,6 @@ or names.
 
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
-from app.models.enquiry_master import EnquiryMaster
-from app.models.enquiry_item import EnquiryItem
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster, ProjectWorkOrderItem
 from app.models.grnMaster import GrnMaster, GrnItem
@@ -27,7 +25,6 @@ from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 # Lifecycle stages, in order (the "lanes" of the flow).
 STAGES = [
     ("REQUISITION", "Requisition"),
-    ("SOURCING", "Sourcing"),
     ("ORDERING", "Ordering"),
     ("RECEIPT", "Receipt"),
     ("INVENTORY", "Issue & Transfer"),
@@ -45,11 +42,6 @@ DOC_TYPES = {
         label="Indent", model=IndentMaster, no="indent_no", date="indent_date",
         projects=("project_code",), pages=("indent",), stage="REQUISITION", flow="MATERIAL",
         line="INDENT_LINE", amount=None,
-    ),
-    "ENQUIRY": dict(
-        label="Enquiry", model=EnquiryMaster, no="enquiry_no", date="enquiry_date",
-        projects=("project_code",), pages=("enquiry", "indent"), stage="SOURCING", flow="MATERIAL",
-        line="ENQ_LINE", amount=None,
     ),
     "ORDER": dict(
         label="Material Order", model=OrderMaster, no="order_no", date="order_date",
@@ -117,7 +109,6 @@ DOC_TYPES = {
 # Line tables: model, header FK column, owning document type, quantity column.
 LINE_TYPES = {
     "INDENT_LINE": dict(model=IndentItem, header="indent_id", doc="INDENT", qty="qty"),
-    "ENQ_LINE": dict(model=EnquiryItem, header="enquiry_id", doc="ENQUIRY", qty="enquiry_qty"),
     "ORD_LINE": dict(model=OrderItem, header="order_id", doc="ORDER", qty="qty"),
     "PW_LINE": dict(model=ProjectWorkOrderItem, header="order_id", doc="PW_ORDER", qty="qty"),
     "GRN_LINE": dict(model=GrnItem, header="grn_id", doc="GRN", qty="current_received_qty"),
@@ -132,7 +123,6 @@ LINE_TYPES = {
 
 # Exact item-level links: (child line type, FK column on child, parent line type, meaning).
 LINE_LINKS = [
-    ("ENQ_LINE", "indent_item_id", "INDENT_LINE", "Enquired"),
     ("ORD_LINE", "indent_item_id", "INDENT_LINE", "Ordered"),
     ("GRN_LINE", "order_item_id", "ORD_LINE", "Received"),
     ("GIN_LINE", "order_item_id", "ORD_LINE", "Issued"),
