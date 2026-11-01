@@ -498,14 +498,30 @@ def end_call(call_id):
 @jwt_required()
 def leave_call(call_id):
     user_id = int(get_jwt_identity())
+    soft    = request.args.get("soft") == "1"   # tab closing/reloading — may come back
     try:
-        ok = voice_call_service.leave_call(call_id, user_id)
+        ok = (voice_call_service.soft_leave(call_id, user_id) if soft
+              else voice_call_service.leave_call(call_id, user_id))
     except Exception as e:
         from app.extensions import db
         db.session.rollback()
         err = f"{type(e).__name__}: {e}"
         return jsonify({"error": err, "message": err}), 500
     return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Not found"}), 404)
+
+
+@comm_bp.route("/calls/<int:call_id>/rejoin", methods=["POST"])
+@jwt_required()
+def rejoin_call(call_id):
+    user_id = int(get_jwt_identity())
+    try:
+        ok = voice_call_service.rejoin_call(call_id, user_id)
+    except Exception as e:
+        from app.extensions import db
+        db.session.rollback()
+        err = f"{type(e).__name__}: {e}"
+        return jsonify({"error": err, "message": err}), 500
+    return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Call is over"}), 409)
 
 
 @comm_bp.route("/calls/<int:call_id>/signal", methods=["POST"])

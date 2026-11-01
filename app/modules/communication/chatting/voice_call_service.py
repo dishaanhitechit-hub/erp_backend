@@ -214,22 +214,76 @@ def leave_call(call_id: int, user_id: int) -> bool:
     now = _now()
     if part.status == "ringing":
         part.status = "declined"
-    elif part.status == "in_call":
+    elif part.status in ("in_call", "away"):
         part.status  = "left"
         part.left_at = now
     db.session.commit()
+    return _after_leave(call, user_id)
 
-    in_call = [p for p in call.participants if p.status == "in_call"]
+
+def _after_leave(call: CommCall, user_id: int) -> bool:
+    """End the call when nobody is left to talk to, otherwise tell the others."""
+    # "away" = reloading their page, expected back within AWAY_GRACE
+    present = [p for p in call.participants if p.status in ("in_call", "away")]
     ringing = [p for p in call.participants if p.status == "ringing"]
-    if not in_call or (len(in_call) == 1 and not ringing):
-        return end_call(call_id, user_id)
+    if not present or (len(present) == 1 and not ringing):
+        return end_call(call.id, user_id)
 
-    for p in in_call:
+    for p in present:
+        if p.status != "in_call":
+            continue
         try:
-            send_signal(call_id, user_id, p.user_id, "left", {})
+            send_signal(call.id, user_id, p.user_id, "left", {})
         except Exception:
             db.session.rollback()
     return True
+
+
+AWAY_GRACE = timedelta(seconds=20)
+
+
+def soft_leave(call_id: int, user_id: int) -> bool:
+    """Tab is closing or reloading: mark "away" instead of leaving. If the user
+    rejoins within AWAY_GRACE (a page reload) the call carries on; otherwise
+    the others' polling turns it into a normal leave (see sweep_away)."""
+    call = db.session.get(CommCall, call_id)
+    part = CommCallParticipant.query.filter_by(call_id=call_id, user_id=user_id).first()
+    if not call or not part or call.status in ("ended", "missed"):
+        return False
+    if part.status == "in_call":
+        part.status  = "away"
+        part.left_at = _now()
+        db.session.commit()
+    return True
+
+
+def rejoin_call(call_id: int, user_id: int) -> bool:
+    """Come back after a page reload."""
+    call = db.session.get(CommCall, call_id)
+    part = CommCallParticipant.query.filter_by(call_id=call_id, user_id=user_id).first()
+    if not call or not part or call.status not in ("ringing", "active"):
+        return False
+    if part.status not in ("away", "in_call"):
+        return False
+    part.status  = "in_call"
+    part.left_at = None
+    db.session.commit()
+    return True
+
+
+def sweep_away(call: CommCall) -> None:
+    """Anyone "away" for longer than AWAY_GRACE has really gone."""
+    if call.status not in ("ringing", "active"):
+        return
+    cutoff = _now() - AWAY_GRACE
+    gone = [p for p in call.participants
+            if p.status == "away" and (_aware(p.left_at) or cutoff) < cutoff]
+    for p in gone:
+        p.status = "left"
+        db.session.commit()
+        _after_leave(call, p.user_id)
+        if call.status == "ended":
+            break
 
 
 def get_incoming_calls(user_id: int) -> list:
@@ -266,7 +320,7 @@ def get_incoming_calls(user_id: int) -> list:
         db.session.commit()
     # A call left with one person and nobody else ringing is over
     for call in timed_out_active:
-        in_call = [p for p in call.participants if p.status == "in_call"]
+        in_call = [p for p in call.participants if p.status in ("in_call", "away")]
         ringing_left = [p for p in call.participants if p.status == "ringing"]
         if len(in_call) <= 1 and not ringing_left:
             end_call(call.id, in_call[0].user_id if in_call else user_id)
@@ -277,6 +331,10 @@ def get_call_detail(call_id: int, user_id: int) -> dict | None:
     call = db.session.get(CommCall, call_id)
     if not call:
         return None
+    try:
+        sweep_away(call)
+    except Exception:
+        db.session.rollback()
     return _call_dict(call, user_id)
 
 
