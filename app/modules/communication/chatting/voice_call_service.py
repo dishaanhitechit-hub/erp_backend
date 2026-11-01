@@ -106,6 +106,40 @@ def start_call(
     return call
 
 
+def invite_to_call(call_id: int, requester_id: int, user_ids: list) -> list | None:
+    """Ring more people into a live call. Any participant who is in the call can add."""
+    from app.models.user import User
+
+    call = db.session.get(CommCall, call_id)
+    req  = CommCallParticipant.query.filter_by(call_id=call_id, user_id=requester_id).first()
+    if not call or call.status not in ("ringing", "active") or not req or req.status not in ("in_call", "away"):
+        return None
+
+    added = []
+    for uid in {int(u) for u in user_ids if u}:
+        part = CommCallParticipant.query.filter_by(call_id=call_id, user_id=uid).first()
+        if part and part.status in ("in_call", "away", "ringing"):
+            continue
+        if part:
+            part.status, part.left_at = "ringing", None
+        else:
+            part = CommCallParticipant(call_id=call_id, user_id=uid, status="ringing")
+            db.session.add(part)
+        part.joined_at = _now()   # ring timer start; overwritten on answer
+        added.append(uid)
+    db.session.commit()
+
+    me   = db.session.get(User, requester_id)
+    name = me.username if me else "Someone"
+    for uid in added:
+        push_notification(
+            user_id=uid, notification_type="incoming_call",
+            title=f"{name} added you to a {call.call_type} call",
+            data={"callId": call.id, "callType": call.call_type, "roomCode": call.room_code},
+        )
+    return added
+
+
 def answer_call(call_id: int, user_id: int) -> bool:
     call = db.session.get(CommCall, call_id)
     if not call:
@@ -304,7 +338,8 @@ def get_incoming_calls(user_id: int) -> list:
             part.status = "missed"
             expired = True
             continue
-        started = _aware(call.started_at or call.created_at)
+        # People added mid-call ring from when they were invited (joined_at)
+        started = _aware(part.joined_at or call.started_at or call.created_at)
         if started and started < cutoff:
             # Only this person missed it. The whole call is "missed" only when
             # nobody answered at all — a group call others joined keeps going.

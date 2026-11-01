@@ -79,6 +79,9 @@ class CommConversationMember(db.Model):
     last_read_message_id = db.Column(db.Integer, nullable=True)
     joined_at            = db.Column(db.DateTime(timezone=True), default=_now)
     left_at              = db.Column(db.DateTime(timezone=True), nullable=True)
+    # "active" | "invited" — invited members must accept before they see the chat
+    status     = db.Column(db.String(20), nullable=False, default="active", server_default="active")
+    invited_by = db.Column(db.Integer, nullable=True)
 
     user = db.relationship("User", foreign_keys=[user_id])
 
