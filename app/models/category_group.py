@@ -108,20 +108,24 @@ class CategoryMaster(db.Model):
 
 # =========================================
 # SUB GROUP MASTER
-# One Group can have many Sub Groups.
-# Each Sub Group belongs to one Group.
-# Category is chosen on the CC code, not here.
+# Tree under a Group:
+#   Group -> Sub Group (level 0) -> Sub Group 1 (level 1) -> Sub Group 2 (level 2)
+# Deeper levels are optional. Category is chosen on the CC code, not here.
 # =========================================
+
+SUB_GROUP_MAX_LEVELS = 3  # Sub Group, Sub Group 1, Sub Group 2
+
 
 class SubGroupMaster(db.Model):
     __tablename__ = "sub_group_master"
     __table_args__ = (
-        db.UniqueConstraint("group_id", "sub_group_name", name="uq_sub_group_group_name"),
+        # same name allowed under different parents, not twice under one parent
+        db.UniqueConstraint("group_id", "parent_id", "sub_group_name", name="uq_sub_group_parent_name"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Stable code used by logic/filters, e.g. FIXED_ASSET, PROJECT_OH
+    # Unique code, always UPPERCASE (typed by user or auto generated)
     fixed_code = db.Column(db.String(50), unique=True, nullable=False)
 
     sub_group_name = db.Column(db.String(150), nullable=False)
@@ -132,12 +136,31 @@ class SubGroupMaster(db.Model):
         nullable=False
     )
 
+    # Empty for top level Sub Group; set for Sub Group 1 / Sub Group 2
+    parent_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sub_group_master.id"),
+        nullable=True
+    )
+
+    # 0 = Sub Group, 1 = Sub Group 1, 2 = Sub Group 2
+    level = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
     status = db.Column(db.String(30), default="Active")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, nullable=True)
 
     group = db.relationship("GroupMaster", backref="sub_groups", lazy=True)
+    parent = db.relationship("SubGroupMaster", remote_side=[id], backref="children", lazy=True)
+
+    def path(self):
+        """List of nodes from top Sub Group down to this one."""
+        nodes, node = [], self
+        while node is not None:
+            nodes.append(node)
+            node = node.parent
+        return nodes[::-1]
 
     def __repr__(self):
         return f"<SubGroupMaster {self.sub_group_name}>"

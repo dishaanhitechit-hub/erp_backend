@@ -18,6 +18,7 @@ from app.extensions import db
 from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
 from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
+from app.modules.master.sub_group_service import sub_group_path_fields
 
 
 
@@ -585,12 +586,8 @@ def _check_sub_group(sub_group_id, group_id):
 
 
 def _sub_group_fields(cc):
-    sub = cc.sub_group
-    return {
-        "ccSubGroupId": cc.sub_group_id,
-        "ccSubGroupName": sub.sub_group_name if sub else None,
-        "ccSubGroupCode": sub.fixed_code if sub else None,
-    }
+    # id, name, code, full path and each level of the chosen sub group
+    return sub_group_path_fields(cc.sub_group)
 
 
 def create_cc_code(data, createdBy=None):
@@ -981,129 +978,6 @@ def update_category(categoryId, data):
             [],
             500
         )
-
-
-
-# SUB GROUP (many per Group; category is set on the CC code)
-
-
-def _sub_group_row(sub):
-    return {
-        "subGroupId": sub.id,
-        "subGroupCode": sub.fixed_code,
-        "subGroupName": sub.sub_group_name,
-        "groupId": sub.group_id,
-        "groupName": sub.group.group_name if sub.group else None,
-        "headUnder": sub.group.head_under if sub.group else None,
-        "status": sub.status,
-    }
-
-
-def _validate_sub_group_group(group_id):
-    if not group_id or not GroupMaster.query.get(group_id):
-        return "Valid groupId is required"
-    return None
-
-
-def create_sub_group(data):
-    code = (data.get("subGroupCode") or "").strip()
-    name = (data.get("subGroupName") or "").strip()
-    group_id = data.get("groupId")
-
-    if not code or not name:
-        return res("subGroupCode and subGroupName are required", [], 400)
-
-    err = _validate_sub_group_group(group_id)
-    if err:
-        return res(err, [], 400)
-
-    if SubGroupMaster.query.filter_by(fixed_code=code).first():
-        return res("Sub Group code already exists", [], 400)
-    if SubGroupMaster.query.filter_by(group_id=group_id, sub_group_name=name).first():
-        return res("Sub Group already exists in this Group", [], 400)
-
-    createdBy = g.current_user.get("id") if hasattr(g, "current_user") else None
-    sub = SubGroupMaster(
-        fixed_code=code,
-        sub_group_name=name,
-        group_id=group_id,
-        created_by=createdBy,
-    )
-    try:
-        db.session.add(sub)
-        db.session.commit()
-        return res("Sub Group created successfully", [_sub_group_row(sub)], 201)
-    except Exception:
-        db.session.rollback()
-        return res("Failed to create sub group", [], 500)
-
-
-def update_sub_group(subGroupId, data):
-    sub = SubGroupMaster.query.get(subGroupId)
-    if not sub:
-        return res("Sub Group not found", [], 404)
-
-    code = (data.get("subGroupCode") or sub.fixed_code).strip()
-    name = (data.get("subGroupName") or sub.sub_group_name).strip()
-    group_id = data.get("groupId", sub.group_id)
-
-    err = _validate_sub_group_group(group_id)
-    if err:
-        return res(err, [], 400)
-
-    if SubGroupMaster.query.filter(SubGroupMaster.fixed_code == code, SubGroupMaster.id != sub.id).first():
-        return res("Sub Group code already exists", [], 400)
-    if SubGroupMaster.query.filter(
-        SubGroupMaster.group_id == group_id,
-        SubGroupMaster.sub_group_name == name,
-        SubGroupMaster.id != sub.id,
-    ).first():
-        return res("Sub Group already exists in this Group", [], 400)
-
-    # CC codes already linked must stay consistent
-    linked = CCCode.query.filter_by(sub_group_id=sub.id)
-    if int(group_id) != int(sub.group_id) and linked.filter(CCCode.group_id != group_id).first():
-        return res("Cannot move Sub Group: CC codes linked to it are in another Group", [], 400)
-
-    sub.fixed_code = code
-    sub.sub_group_name = name
-    sub.group_id = group_id
-    if data.get("status"):
-        sub.status = data.get("status")
-    try:
-        db.session.commit()
-        return res("Sub Group updated successfully", [_sub_group_row(sub)], 200)
-    except Exception:
-        db.session.rollback()
-        return res("Failed to update sub group", [], 500)
-
-
-def get_all_sub_groups(data):
-    query = SubGroupMaster.query
-    if data.get("groupId"):
-        query = query.filter(SubGroupMaster.group_id == data.get("groupId"))
-    if data.get("status"):
-        query = query.filter(SubGroupMaster.status == data.get("status"))
-    subs = query.order_by(SubGroupMaster.group_id, SubGroupMaster.sub_group_name).all()
-    return res("Sub Group list fetched successfully", [_sub_group_row(s) for s in subs], 200)
-
-
-def get_sub_group_by_id(subGroupId):
-    sub = SubGroupMaster.query.get(subGroupId)
-    if not sub:
-        return res("Sub Group not found", [], 404)
-    return res("Sub Group fetched successfully", [_sub_group_row(sub)], 200)
-
-
-def delete_sub_group(subGroupId):
-    sub = SubGroupMaster.query.get(subGroupId)
-    if not sub:
-        return res("Sub Group not found", [], 404)
-    if CCCode.query.filter_by(sub_group_id=sub.id).first():
-        return res("Sub Group is used by CC codes and cannot be deleted", [], 400)
-    db.session.delete(sub)
-    db.session.commit()
-    return res("Sub Group deleted successfully", [], 200)
 
 
 

@@ -16,6 +16,11 @@ from app.modules.master.supplier_service import (
     get_nature_of_service, bulk_assign_projects, bulk_remove_projects,
 )
 
+from app.modules.master.sub_group_service import (
+    create_sub_group, update_sub_group, get_all_sub_groups, get_sub_group_by_id,
+    delete_sub_group, check_sub_group_code, suggest_sub_group_code,
+)
+
 master_bp = Blueprint('master', __name__)
 UPLOAD_FOLDER = "/uploads/vendor"
 
@@ -241,6 +246,20 @@ def sub_group_create():
 @login_required
 def sub_group_list():
     return get_all_sub_groups(request.args.to_dict() if request.args else {})
+
+
+@master_bp.route("/sub-group/check-code", methods=["GET"])
+@login_required
+def sub_group_check_code():
+    # live check while typing: ?code=&excludeId=
+    return check_sub_group_code(request.args.to_dict())
+
+
+@master_bp.route("/sub-group/suggest-code", methods=["GET"])
+@login_required
+def sub_group_suggest_code():
+    # preview auto code: ?name=&parentId=
+    return suggest_sub_group_code(request.args.to_dict())
 
 
 @master_bp.route("/sub-group/<int:subGroupId>", methods=["GET"])

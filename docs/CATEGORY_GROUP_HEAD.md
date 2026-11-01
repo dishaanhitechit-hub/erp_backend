@@ -203,42 +203,60 @@ These read Category Master to turn a `fixed_code` into a name:
 Added on top of the existing structure. Nothing old was changed or removed.
 
 ```
-Group (group_master)            e.g. Assets, Indirect Expenses   + head_under (Balance Sheet / Profit & Loss)
-  └── Sub Group (sub_group_master)   many per Group                e.g. Fixed Asset, Project Overhead
-        └── CC Code (cc_codes.sub_group_id, optional)   — Category is chosen here, on the CC code
+Group (group_master)                         e.g. Assets          + head_under (Balance Sheet / Profit & Loss)
+  └── Sub Group     (level 0)                e.g. Fixed Asset       code FA
+        └── Sub Group 1 (level 1, optional)  e.g. Heavy Machinery   code FA_HM
+              └── Sub Group 2 (level 2, optional)  e.g. Excavators  code FA_HM_EXCA
+CC Code → sub_group_id = the deepest level chosen. Category is chosen on the CC code.
 ```
 
 ### Table `sub_group_master`
 
-| Column          | Notes |
-|-----------------|-------|
-| `id`            | PK |
-| `fixed_code`    | Unique, stable code for logic (e.g. `FIXED_ASSET`) |
-| `sub_group_name`| Unique **inside one group** (same name allowed under a different group) |
-| `group_id`      | FK → `group_master.id` (required) |
-| `status`, audit | |
+| Column           | Notes |
+|------------------|-------|
+| `id`             | PK |
+| `fixed_code`     | Unique, always UPPERCASE |
+| `sub_group_name` | Unique under the same parent (same name allowed under a different parent) |
+| `group_id`       | FK → `group_master.id` (children always have the parent's group) |
+| `parent_id`      | FK → `sub_group_master.id`, empty for top level |
+| `level`          | 0 = Sub Group, 1 = Sub Group 1, 2 = Sub Group 2 (max 3 levels: `SUB_GROUP_MAX_LEVELS`) |
+| `status`, audit  | |
 
 `cc_codes.sub_group_id` → FK `sub_group_master.id`, **nullable** (old CC codes keep working without it).
 
-### Rules checked by the API
-- CC code's sub group must belong to the CC code's group.
-- A sub group used by CC codes cannot be deleted.
-- A sub group cannot move to another group while CC codes in the old group use it.
+### Code rules
+| Case | Result |
+|------|--------|
+| User types a code | Spaces → `_`, saved in CAPITALS. Only letters, numbers, `_`, `-`. Rejected if it already exists. |
+| Code left empty | Auto code: initials of the name (one word → first 4 letters). Child codes start with the parent code: `FA` → `FA_HM` → `FA_HM_EXCA`. If taken, `01`, `02`… is added. |
+| Edit with empty code | Current code is kept |
+| Live check | Frontend calls `/sub-group/check-code` while typing (400 ms after typing stops) |
 
-### APIs (`app/modules/master/routes.py`)
+### Other rules checked by the API
+- A CC code's sub group must belong to the CC code's group.
+- No more than 3 levels; a sub group cannot be put under itself or its own child.
+- A sub group with children, or used by CC codes, cannot be deleted.
+- A sub group cannot change Group if it has children or CC codes use it.
+
+### APIs (`app/modules/master/routes.py`, logic in `sub_group_service.py`)
 
 | Method | URL | Body / Params |
 |--------|-----|---------------|
-| POST   | `/sub-group/create` | `{ subGroupCode, subGroupName, groupId }` |
-| GET    | `/sub-group/list` | `?groupId=&status=` |
+| POST   | `/sub-group/create` | `{ subGroupName, groupId, parentId?, subGroupCode? }` |
+| GET    | `/sub-group/list` | `?groupId=&parentId=(id or root)&level=&status=` |
 | GET    | `/sub-group/<id>` | – |
 | PUT    | `/sub-group/update/<id>` | any of the create fields, `status` |
-| DELETE | `/sub-group/delete/<id>` | blocked if used |
+| DELETE | `/sub-group/delete/<id>` | blocked if it has children or CC codes |
+| GET    | `/sub-group/check-code` | `?code=&excludeId=` → `{ code, valid, exists }` |
+| GET    | `/sub-group/suggest-code` | `?name=&parentId=` → `{ code }` (auto code preview) |
 
-CC code APIs now also accept `subGroupId` (optional) on create / update, accept `?groupId=&subGroupId=` on list, and return `ccSubGroupId`, `ccSubGroupName`, `ccSubGroupCode`.
+CC code APIs accept `subGroupId` (deepest level) and return `ccSubGroupId`, `ccSubGroupName`, `ccSubGroupCode`, `ccSubGroupPath` ("Fixed Asset > Heavy Machinery") and `ccSubGroupLevels` (each level).
 
-Migration: `migrations/versions/b1d4e6f8a902_add_sub_group_master.py` (run `flask db upgrade`).
+Migrations (run `flask db upgrade`):
+- `b1d4e6f8a902_add_sub_group_master.py`: table + `cc_codes.sub_group_id`
+- `c3f7a9d1e204_sub_group_levels.py`: `parent_id`, `level`, name unique per parent, codes → uppercase
 
 ### Frontend (`erp-frontend`)
-- Master → Category & Group page: Sub Group list, filter by group, add / edit / delete.
-- CC Code form: after choosing a Group, the Sub Group dropdown lists only that group's active sub groups. Changing the Group clears the Sub Group.
+- Master → Category & Group: Sub Group tree list (indented by level), filter by group, `+` on a row adds a child, edit, delete. Form: Group, Under (parent), Name, Code (optional, live check, shows the auto code).
+- CC Code form: Group → Sub Group → Sub Group 1 → Sub Group 2. Each list shows only the children of the one above; the next one appears only if there are children.
+- CC Code list: Sub Group, Sub Group 1, Sub Group 2 columns.
