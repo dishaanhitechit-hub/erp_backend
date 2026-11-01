@@ -74,7 +74,7 @@ def _build_line_payload(line):
 
     # unified display fields (whichever is populated)
     account_code = cc_code or vendor_code
-    account_name = cc_name or vendor_name
+    account_name = cc_name or vendor_name or line.customer_ref
 
     return {
         "id":             line.id,
@@ -87,6 +87,7 @@ def _build_line_payload(line):
         "vendorId":       line.vendor_id,
         "vendorCode":     vendor_code,
         "vendorName":     vendor_name,
+        "customerRef":    line.customer_ref,
         "accountCode":    account_code,
         "accountName":    account_name,
         "debitAmount":  float(line.debit_amount  or 0),
@@ -165,11 +166,19 @@ def create_journal_entry(data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            debit     = Decimal(str(row.get("debitAmount")  or 0))
-            credit    = Decimal(str(row.get("creditAmount") or 0))
-            cc_id     = row.get("ccId")
-            vendor_id = row.get("vendorId")
-            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
+            debit        = Decimal(str(row.get("debitAmount")  or 0))
+            credit       = Decimal(str(row.get("creditAmount") or 0))
+            cc_id        = row.get("ccId")
+            vendor_id    = row.get("vendorId")
+            customer_ref = row.get("customerRef") or None
+            if cc_id:
+                acc_type = "CC"
+            elif vendor_id:
+                acc_type = "Vendor"
+            elif customer_ref:
+                acc_type = "Customer"
+            else:
+                acc_type = None
             db.session.add(JournalEntryLine(
                 journal_id    = entry.id,
                 sl_no         = row.get("slNo") or idx,
@@ -177,6 +186,7 @@ def create_journal_entry(data, user_id):
                 dr_cr         = row.get("drCr"),
                 cc_id         = cc_id,
                 vendor_id     = vendor_id,
+                customer_ref  = customer_ref,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
@@ -318,11 +328,19 @@ def edit_journal_entry(entry_id, data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            debit     = Decimal(str(row.get("debitAmount")  or 0))
-            credit    = Decimal(str(row.get("creditAmount") or 0))
-            cc_id     = row.get("ccId")
-            vendor_id = row.get("vendorId")
-            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
+            debit        = Decimal(str(row.get("debitAmount")  or 0))
+            credit       = Decimal(str(row.get("creditAmount") or 0))
+            cc_id        = row.get("ccId")
+            vendor_id    = row.get("vendorId")
+            customer_ref = row.get("customerRef") or None
+            if cc_id:
+                acc_type = "CC"
+            elif vendor_id:
+                acc_type = "Vendor"
+            elif customer_ref:
+                acc_type = "Customer"
+            else:
+                acc_type = None
             db.session.add(JournalEntryLine(
                 journal_id   = entry.id,
                 sl_no        = row.get("slNo") or idx,
@@ -330,6 +348,7 @@ def edit_journal_entry(entry_id, data, user_id):
                 dr_cr        = row.get("drCr"),
                 cc_id        = cc_id,
                 vendor_id    = vendor_id,
+                customer_ref = customer_ref,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
