@@ -83,9 +83,40 @@ def send_approval_pings(
             context_module     = module_code,
             context_record_id  = rec["id"],
             context_record_ref = (rec["recordNo"] or str(rec["id"]))[:100],
+            whatsapp           = False,          # one summary alert below instead
         )
         sent.append({"pingId": ping.id, "recordId": rec["id"], "recordNo": rec["recordNo"]})
+
+    _whatsapp_summary(sender_id, receiver_id, module_code, sent, message, sent[0]["pingId"])
     return sent
+
+
+def _whatsapp_summary(sender_id, receiver_id, module_code, sent, message, first_ping_id):
+    """One WhatsApp for the whole batch, e.g. "2 Indent records need your
+    approval: IND-012, IND-015 — please approve today"."""
+    try:
+        from app.extensions import db
+        from app.models.user import User
+        from app.modules.communication.chatting.ping_whatsapp import notify_ping, module_label
+
+        sender = db.session.get(User, sender_id)
+        nos    = [str(s["recordNo"] or s["recordId"]) for s in sent]
+        shown  = ", ".join(nos[:8]) + (f" +{len(nos) - 8} more" if len(nos) > 8 else "")
+        count  = f"{len(nos)} {module_label(module_code)} record{'s' if len(nos) > 1 else ''}"
+        verb   = "need" if len(nos) > 1 else "needs"
+        details = f"{count} {verb} your approval: {shown}"
+        if (message or "").strip():
+            details += f" — {message.strip()}"
+        notify_ping(
+            receiver    = db.session.get(User, receiver_id),
+            sender_name = sender.username if sender else "Someone",
+            ping_label  = ping_service.PING_TYPES.get("approval_request", "Approval Requested"),
+            details     = details,
+            ping_id     = first_ping_id,
+            module_code = module_code,
+        )
+    except Exception:
+        pass
 
 
 # ── Record status on approval pings ──────────────────────────────────────────

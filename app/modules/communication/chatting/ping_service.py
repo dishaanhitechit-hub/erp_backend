@@ -26,7 +26,10 @@ def send_ping(
     context_module:    str  = None,
     context_record_id: int  = None,
     context_record_ref:str  = None,
+    whatsapp:          bool = True,
 ) -> CommPing:
+    """whatsapp=False skips the WhatsApp alert (approval pings send one
+    summary alert for the whole batch instead)."""
     from app.models.user import User
 
     ping = CommPing(
@@ -63,6 +66,18 @@ def send_ping(
             "contextRecordRef":context_record_ref,
         },
     )
+
+    if whatsapp:
+        from app.modules.communication.chatting.ping_whatsapp import notify_ping, module_label
+        record  = f"{module_label(context_module)} {context_record_ref}".strip() if context_record_ref else ""
+        details = " — ".join(x for x in (record, (message or "").strip()) if x) or "Please check the ERP."
+        notify_ping(
+            receiver    = db.session.get(User, receiver_id),
+            sender_name = sender_name,
+            ping_label  = ping_label,
+            details     = details,
+            ping_id     = ping.id,
+        )
     return ping
 
 
