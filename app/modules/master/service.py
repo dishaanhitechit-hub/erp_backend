@@ -572,7 +572,7 @@ def delete_item(itemId):
     return res("Item deleted successfully", [], 200)
 
 
-def _check_sub_group(sub_group_id, group_id, category_code):
+def _check_sub_group(sub_group_id, group_id):
     """Return (sub_group, error_message). Sub group is optional."""
     if not sub_group_id:
         return None, None
@@ -581,8 +581,6 @@ def _check_sub_group(sub_group_id, group_id, category_code):
         return None, "Sub Group not found"
     if group_id and int(sub.group_id) != int(group_id):
         return None, "Sub Group does not belong to the selected Group"
-    if sub.category_code and category_code and sub.category_code != category_code:
-        return None, f"Sub Group '{sub.sub_group_name}' only allows category {sub.category_code}"
     return sub, None
 
 
@@ -610,9 +608,7 @@ def create_cc_code(data, createdBy=None):
     # if not category:
     #     return res("Invalid Category Fixed Code", [], 400)
 
-    sub, err = _check_sub_group(
-        data.get("subGroupId"), data.get("groupId"), data.get("categoryId")
-    )
+    sub, err = _check_sub_group(data.get("subGroupId"), data.get("groupId"))
     if err:
         return res(err, [], 400)
 
@@ -805,7 +801,7 @@ def update_cc_code(ccId, data):
     newCategory = data.get("categoryId", cc.category_code)
     newSubGroupId = data["subGroupId"] if "subGroupId" in data else cc.sub_group_id
 
-    sub, err = _check_sub_group(newSubGroupId, newGroupId, newCategory)
+    sub, err = _check_sub_group(newSubGroupId, newGroupId)
     if err:
         return res(err, [], 400)
 
@@ -988,7 +984,7 @@ def update_category(categoryId, data):
 
 
 
-# SUB GROUP (many per Group, optional Category link)
+# SUB GROUP (many per Group; category is set on the CC code)
 
 
 def _sub_group_row(sub):
@@ -999,17 +995,13 @@ def _sub_group_row(sub):
         "groupId": sub.group_id,
         "groupName": sub.group.group_name if sub.group else None,
         "headUnder": sub.group.head_under if sub.group else None,
-        "categoryId": sub.category_code,
-        "categoryName": sub.category.category_name if sub.category else None,
         "status": sub.status,
     }
 
 
-def _validate_sub_group_links(group_id, category_code):
+def _validate_sub_group_group(group_id):
     if not group_id or not GroupMaster.query.get(group_id):
         return "Valid groupId is required"
-    if category_code and not CategoryMaster.query.filter_by(fixed_code=category_code).first():
-        return "Category not found"
     return None
 
 
@@ -1017,12 +1009,11 @@ def create_sub_group(data):
     code = (data.get("subGroupCode") or "").strip()
     name = (data.get("subGroupName") or "").strip()
     group_id = data.get("groupId")
-    category_code = data.get("categoryId") or None
 
     if not code or not name:
         return res("subGroupCode and subGroupName are required", [], 400)
 
-    err = _validate_sub_group_links(group_id, category_code)
+    err = _validate_sub_group_group(group_id)
     if err:
         return res(err, [], 400)
 
@@ -1036,7 +1027,6 @@ def create_sub_group(data):
         fixed_code=code,
         sub_group_name=name,
         group_id=group_id,
-        category_code=category_code,
         created_by=createdBy,
     )
     try:
@@ -1056,9 +1046,8 @@ def update_sub_group(subGroupId, data):
     code = (data.get("subGroupCode") or sub.fixed_code).strip()
     name = (data.get("subGroupName") or sub.sub_group_name).strip()
     group_id = data.get("groupId", sub.group_id)
-    category_code = (data["categoryId"] or None) if "categoryId" in data else sub.category_code
 
-    err = _validate_sub_group_links(group_id, category_code)
+    err = _validate_sub_group_group(group_id)
     if err:
         return res(err, [], 400)
 
@@ -1075,13 +1064,10 @@ def update_sub_group(subGroupId, data):
     linked = CCCode.query.filter_by(sub_group_id=sub.id)
     if int(group_id) != int(sub.group_id) and linked.filter(CCCode.group_id != group_id).first():
         return res("Cannot move Sub Group: CC codes linked to it are in another Group", [], 400)
-    if category_code and linked.filter(CCCode.category_code != category_code).first():
-        return res("Cannot set category: some linked CC codes use a different category", [], 400)
 
     sub.fixed_code = code
     sub.sub_group_name = name
     sub.group_id = group_id
-    sub.category_code = category_code
     if data.get("status"):
         sub.status = data.get("status")
     try:
@@ -1096,8 +1082,6 @@ def get_all_sub_groups(data):
     query = SubGroupMaster.query
     if data.get("groupId"):
         query = query.filter(SubGroupMaster.group_id == data.get("groupId"))
-    if data.get("categoryId"):
-        query = query.filter(SubGroupMaster.category_code == data.get("categoryId"))
     if data.get("status"):
         query = query.filter(SubGroupMaster.status == data.get("status"))
     subs = query.order_by(SubGroupMaster.group_id, SubGroupMaster.sub_group_name).all()

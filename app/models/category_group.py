@@ -109,8 +109,8 @@ class CategoryMaster(db.Model):
 # =========================================
 # SUB GROUP MASTER
 # One Group can have many Sub Groups.
-# Each Sub Group belongs to one Group and can
-# optionally be tied to one Category.
+# Each Sub Group belongs to one Group.
+# Category is chosen on the CC code, not here.
 # =========================================
 
 class SubGroupMaster(db.Model):
@@ -132,20 +132,12 @@ class SubGroupMaster(db.Model):
         nullable=False
     )
 
-    # Optional: if set, CC codes in this sub group must use this category
-    category_code = db.Column(
-        db.String(50),
-        db.ForeignKey("category_master.fixed_code"),
-        nullable=True
-    )
-
     status = db.Column(db.String(30), default="Active")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, nullable=True)
 
     group = db.relationship("GroupMaster", backref="sub_groups", lazy=True)
-    category = db.relationship("CategoryMaster", backref="sub_groups", lazy=True)
 
     def __repr__(self):
         return f"<SubGroupMaster {self.sub_group_name}>"
