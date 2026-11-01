@@ -60,7 +60,6 @@ from app.models.billPaymentReceipt import (
 from app.models.item import Item
 from app.models.asset import Asset
 from app.models.cc_code import CCCode
-from app.models.user import User
 
 
 ZERO = Decimal("0")
@@ -114,25 +113,14 @@ def _live(status):
     return status != REJECTED
 
 
-def _user_is_super_admin(user_id):
-    user = User.query.options(joinedload(User.global_role)).get(user_id)
-    return bool(user and user.global_role and user.global_role.name == "super_admin")
-
-
-def user_can_view_indent(user_id, project_id):
+def user_can_view_indent(user_id, project_code):
     """
-    Same permission keys the frontend uses for the Indent page
-    (indent.VIEW / indent.EDIT / indent.APPROVER), resolved from the
-    database for the indent's own project — so a token issued for a
-    different project cannot read this project's data.
+    Same rule as the Traceability Workbench (TraceAccess): global super admin /
+    admin, or indent.VIEW / EDIT / APPROVER on the indent's own project,
+    resolved from the database so a token for another project cannot read it.
     """
-    if _user_is_super_admin(user_id):
-        return True
-
-    from app.modules.setting.permission_service import get_user_permissions
-
-    perms = get_user_permissions(project_id, user_id) or {}
-    return any(perms.get(f"indent.{a}") for a in ("VIEW", "EDIT", "APPROVER"))
+    from app.modules.traceability.access import TraceAccess
+    return TraceAccess(user_id).can_view(("indent",), [project_code])
 
 
 def _party_name(order):
@@ -1016,8 +1004,7 @@ def get_indent_item_trace(indent_item_id, user_id):
         if not ii or not ii.indent:
             return res("Indent item not found", [], 404)
 
-        project = ii.indent.project
-        if not project or not user_can_view_indent(user_id, project.id):
+        if not user_can_view_indent(user_id, ii.indent.project_code):
             return res("Access denied", [], 403)
 
         return res("Item trace fetched successfully", build_indent_item_trace(ii), 200)
