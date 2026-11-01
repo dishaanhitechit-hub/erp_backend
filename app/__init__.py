@@ -117,6 +117,9 @@ def create_app():
     from .modules.billing.brr_billing.routes import brb_bp
     app.register_blueprint(brb_bp, url_prefix="/billing/brb")
 
+    from .modules.traceability.routes import traceability_bp
+    app.register_blueprint(traceability_bp, url_prefix="/traceability")
+
     from .modules.workflow.routes import workflow_bp
     app.register_blueprint(workflow_bp, url_prefix="/workflow")
 
