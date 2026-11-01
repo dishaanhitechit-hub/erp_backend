@@ -73,6 +73,16 @@ class CCCode(db.Model):
         lazy=True
     )
 
+    # Denormalised from GroupMaster.head_under for join-free filtering.
+    # "Profit & Loss" | "Balance Sheet" | None (legacy rows)
+    head_under = db.Column(db.String(100), nullable=True)
+
+    # Only meaningful when head_under == "Balance Sheet".
+    # True  → Non-Ledger  (will NOT be used for ledger connection)
+    # False → Ledger Head (WILL be used for ledger connection)
+    # None  → P&L group or not yet set
+    is_non_ledger = db.Column(db.Boolean, nullable=True)
+
     # =====================================
     # STATUS + AUDIT
     # =====================================

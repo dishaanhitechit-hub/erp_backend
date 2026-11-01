@@ -590,6 +590,22 @@ def _sub_group_fields(cc):
     return sub_group_path_fields(cc.sub_group)
 
 
+def _cc_row(cc):
+    """Shared response dict for a CC code record."""
+    return {
+        "ccId": cc.id,
+        "ccCode": cc.cc_code,
+        "ccName": cc.cc_name,
+        "ccGroupId": cc.group_id,
+        "ccGroupName": cc.group.group_name if cc.group else None,
+        "ccCategoryId": cc.category_code,
+        "ccCategoryName": cc.category.category_name if cc.category else None,
+        "headUnder": cc.head_under,
+        "isNonLedger": cc.is_non_ledger,
+        **_sub_group_fields(cc),
+    }
+
+
 def create_cc_code(data, createdBy=None):
     existing = CCCode.query.filter_by(
         cc_code=data.get("ccCode")
@@ -598,16 +614,16 @@ def create_cc_code(data, createdBy=None):
     if existing:
         return res("CC Code already exists", [], 400)
 
-    # category = CategoryMaster.query.filter_by(
-    #     fixed_code=data.get("categoryFixedCode")
-    # ).first()
-    #
-    # if not category:
-    #     return res("Invalid Category Fixed Code", [], 400)
-
     sub, err = _check_sub_group(data.get("subGroupId"), data.get("groupId"))
     if err:
         return res(err, [], 400)
+
+    group = GroupMaster.query.get(data.get("groupId"))
+    head_under = group.head_under if group else None
+    is_non_ledger = None
+    if head_under == "Balance Sheet":
+        raw = data.get("isNonLedger")
+        is_non_ledger = bool(raw) if raw is not None else False
 
     ccCode = CCCode(
         cc_code=data.get("ccCode"),
@@ -615,26 +631,15 @@ def create_cc_code(data, createdBy=None):
         group_id=data.get("groupId"),
         category_code=data.get("categoryId"),
         sub_group_id=sub.id if sub else None,
+        head_under=head_under,
+        is_non_ledger=is_non_ledger,
         created_by=createdBy
     )
     try:
         db.session.add(ccCode)
         db.session.commit()
-
-        data = [{
-        "ccId": ccCode.id,
-        "ccCode": ccCode.cc_code,
-        "ccName": ccCode.cc_name,
-        "ccGroupId": ccCode.group_id,
-        # "ccCategoryId": ccCode.category_id,
-        "ccCategoryName": ccCode.category.category_name,
-        "ccCategoryId": ccCode.category_code,
-        "ccGroupName": ccCode.group.group_name,
-        **_sub_group_fields(ccCode)
-        }]
-
-        return res("CC Code created successfully",data,201)
-    except Exception as e :
+        return res("CC Code created successfully", [_cc_row(ccCode)], 201)
+    except Exception as e:
         db.session.rollback()
         print(e)
         return res("Something went wrong", [], 500)
@@ -725,35 +730,9 @@ def get_all_cc_codes(data):
     ).all()
 
 
-    data=[]
-
-    for cc in ccCodes:
-
-        data.append({
-
-            "ccId":cc.id,
-            "ccCode":cc.cc_code,
-            "ccName":cc.cc_name,
-
-            "ccGroupId":cc.group_id,
-
-            "ccCategoryId":cc.category_code,
-
-            "ccCategoryName":
-            cc.category.category_name
-            if cc.category else None,
-
-            "ccGroupName":
-            cc.group.group_name
-            if cc.group else None,
-
-            **_sub_group_fields(cc)
-
-        })
-
     return res(
         "CC Code list fetched successfully",
-        data,
+        [_cc_row(cc) for cc in ccCodes],
         200
     )
 
@@ -763,19 +742,9 @@ def get_cc_code_by_id(ccId):
     if not cc:
         return res("CC Code not found", [], 404)
 
-    data = [{
-        "ccId": cc.id,
-        "ccCode": cc.cc_code,
-        "ccName": cc.cc_name,
-        "ccGroupId": cc.group_id,
-        "ccCategoryId": cc.category_code,
-        "ccCategoryFixedCode": cc.category.fixed_code,
-        "ccCategoryName": cc.category.category_name if cc.category else None,
-        "ccGroupName": cc.group.group_name if cc.group else None,
-        **_sub_group_fields(cc)
-    }]
-
-    return res("CC Code fetched successfully", data, 200)
+    row = _cc_row(cc)
+    row["ccCategoryFixedCode"] = cc.category.fixed_code if cc.category else None
+    return res("CC Code fetched successfully", [row], 200)
 
 
 def update_cc_code(ccId, data):
@@ -787,7 +756,7 @@ def update_cc_code(ccId, data):
     newCcCode = data.get("ccCode", cc.cc_code)
 
     existing = CCCode.query.filter(
-        CCCode.cc_code == newCcCode ,
+        CCCode.cc_code == newCcCode,
         CCCode.id != ccId
     ).first()
 
@@ -802,28 +771,29 @@ def update_cc_code(ccId, data):
     if err:
         return res(err, [], 400)
 
+    group = GroupMaster.query.get(newGroupId)
+    new_head_under = group.head_under if group else cc.head_under
+    new_is_non_ledger = cc.is_non_ledger
+    if new_head_under == "Balance Sheet":
+        if "isNonLedger" in data:
+            raw = data.get("isNonLedger")
+            new_is_non_ledger = bool(raw) if raw is not None else False
+        elif new_head_under != cc.head_under:
+            new_is_non_ledger = False
+    else:
+        new_is_non_ledger = None
+
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = newGroupId
     cc.category_code = newCategory
     cc.sub_group_id = sub.id if sub else None
     cc.cc_code = newCcCode
+    cc.head_under = new_head_under
+    cc.is_non_ledger = new_is_non_ledger
     try:
         db.session.commit()
-        data=[{
-        "ccId": cc.id,
-        "ccCode": cc.cc_code ,
-        "ccName": cc.cc_name,
-        "ccGroupId": cc.group_id,
-        "ccCategoryId": cc.category_code,
-        "ccCategoryName": cc.category.category_name if cc.category else None,
-        "ccGroupName": cc.group.group_name if cc.group else None,
-        **_sub_group_fields(cc)}]
-        return res(
-        "CC Code updated successfully",
-        data,
-        200
-        )
-    except Exception :
+        return res("CC Code updated successfully", [_cc_row(cc)], 200)
+    except Exception:
         db.session.rollback()
         return res("Something went wrong", [], 500)
 
