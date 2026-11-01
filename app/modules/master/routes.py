@@ -227,6 +227,42 @@ def group_update(groupId):
 
 
 
+# SUB GROUP ROUTES
+
+
+@master_bp.route("/sub-group/create", methods=["POST"])
+@login_required
+@require_admin
+def sub_group_create():
+    return create_sub_group(request.json or {})
+
+
+@master_bp.route("/sub-group/list", methods=["GET"])
+@login_required
+def sub_group_list():
+    return get_all_sub_groups(request.args.to_dict() if request.args else {})
+
+
+@master_bp.route("/sub-group/<int:subGroupId>", methods=["GET"])
+@login_required
+def sub_group_detail(subGroupId):
+    return get_sub_group_by_id(subGroupId)
+
+
+@master_bp.route("/sub-group/update/<int:subGroupId>", methods=["PUT"])
+@login_required
+@require_admin
+def sub_group_update(subGroupId):
+    return update_sub_group(subGroupId, request.json or {})
+
+
+@master_bp.route("/sub-group/delete/<int:subGroupId>", methods=["DELETE"])
+@login_required
+@require_admin
+def sub_group_delete(subGroupId):
+    return delete_sub_group(subGroupId)
+
+
 # CATEGORY ROUTES
 
 

@@ -195,3 +195,49 @@ These read Category Master to turn a `fixed_code` into a name:
 4. **Hardcoded group names** (`Fixed Asset`, `Direct Expenses`, …) in CC code list and indent item filters. Renaming a group in the UI will silently break these filters.
 5. **`/category/list`** accepts query params but does not filter by them.
 6. **Naming mismatch:** APIs call the field `categoryId`, but it holds the `fixed_code` string.
+
+---
+
+## 7. Sub Group (new)
+
+Added on top of the existing structure. Nothing old was changed or removed.
+
+```
+Group (group_master)            e.g. Assets, Indirect Expenses   + head_under (Balance Sheet / Profit & Loss)
+  └── Sub Group (sub_group_master)   many per Group                e.g. Fixed Asset, Project Overhead
+        ├── optional Category link    (category_master.fixed_code)  e.g. MAT_001
+        └── CC Code (cc_codes.sub_group_id, optional)
+```
+
+### Table `sub_group_master`
+
+| Column          | Notes |
+|-----------------|-------|
+| `id`            | PK |
+| `fixed_code`    | Unique, stable code for logic (e.g. `FIXED_ASSET`) |
+| `sub_group_name`| Unique **inside one group** (same name allowed under a different group) |
+| `group_id`      | FK → `group_master.id` (required) |
+| `category_code` | FK → `category_master.fixed_code` (optional) |
+| `status`, audit | |
+
+`cc_codes.sub_group_id` → FK `sub_group_master.id`, **nullable** (old CC codes keep working without it).
+
+### Rules checked by the API
+- CC code's sub group must belong to the CC code's group.
+- If the sub group has a category, the CC code must use that category.
+- A sub group used by CC codes cannot be deleted.
+- A sub group cannot change category / group if that would break already-linked CC codes.
+
+### APIs (`app/modules/master/routes.py`)
+
+| Method | URL | Body / Params |
+|--------|-----|---------------|
+| POST   | `/sub-group/create` | `{ subGroupCode, subGroupName, groupId, categoryId? }` |
+| GET    | `/sub-group/list` | `?groupId=&categoryId=&status=` |
+| GET    | `/sub-group/<id>` | – |
+| PUT    | `/sub-group/update/<id>` | any of the create fields, `status` |
+| DELETE | `/sub-group/delete/<id>` | blocked if used |
+
+CC code APIs now also accept `subGroupId` (optional) on create / update, accept `?groupId=&subGroupId=` on list, and return `ccSubGroupId`, `ccSubGroupName`, `ccSubGroupCode`.
+
+Migration: `migrations/versions/b1d4e6f8a902_add_sub_group_master.py` (run `flask db upgrade`).

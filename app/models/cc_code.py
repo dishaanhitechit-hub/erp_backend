@@ -44,6 +44,13 @@ class CCCode(db.Model):
         nullable=False
     )
 
+    # Optional sub group (must belong to group_id)
+    sub_group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sub_group_master.id"),
+        nullable=True
+    )
+
     # =====================================
     # RELATIONSHIPS
     # =====================================
@@ -56,6 +63,12 @@ class CCCode(db.Model):
 
     category = db.relationship(
         "CategoryMaster",
+        backref="cc_codes",
+        lazy=True
+    )
+
+    sub_group = db.relationship(
+        "SubGroupMaster",
         backref="cc_codes",
         lazy=True
     )

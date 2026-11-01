@@ -572,6 +572,29 @@ def delete_item(itemId):
     return res("Item deleted successfully", [], 200)
 
 
+def _check_sub_group(sub_group_id, group_id, category_code):
+    """Return (sub_group, error_message). Sub group is optional."""
+    if not sub_group_id:
+        return None, None
+    sub = SubGroupMaster.query.get(sub_group_id)
+    if not sub:
+        return None, "Sub Group not found"
+    if group_id and int(sub.group_id) != int(group_id):
+        return None, "Sub Group does not belong to the selected Group"
+    if sub.category_code and category_code and sub.category_code != category_code:
+        return None, f"Sub Group '{sub.sub_group_name}' only allows category {sub.category_code}"
+    return sub, None
+
+
+def _sub_group_fields(cc):
+    sub = cc.sub_group
+    return {
+        "ccSubGroupId": cc.sub_group_id,
+        "ccSubGroupName": sub.sub_group_name if sub else None,
+        "ccSubGroupCode": sub.fixed_code if sub else None,
+    }
+
+
 def create_cc_code(data, createdBy=None):
     existing = CCCode.query.filter_by(
         cc_code=data.get("ccCode")
@@ -587,11 +610,18 @@ def create_cc_code(data, createdBy=None):
     # if not category:
     #     return res("Invalid Category Fixed Code", [], 400)
 
+    sub, err = _check_sub_group(
+        data.get("subGroupId"), data.get("groupId"), data.get("categoryId")
+    )
+    if err:
+        return res(err, [], 400)
+
     ccCode = CCCode(
         cc_code=data.get("ccCode"),
         cc_name=data.get("ccName"),
         group_id=data.get("groupId"),
         category_code=data.get("categoryId"),
+        sub_group_id=sub.id if sub else None,
         created_by=createdBy
     )
     try:
@@ -606,7 +636,8 @@ def create_cc_code(data, createdBy=None):
         # "ccCategoryId": ccCode.category_id,
         "ccCategoryName": ccCode.category.category_name,
         "ccCategoryId": ccCode.category_code,
-        "ccGroupName": ccCode.group.group_name
+        "ccGroupName": ccCode.group.group_name,
+        **_sub_group_fields(ccCode)
         }]
 
         return res("CC Code created successfully",data,201)
@@ -620,8 +651,16 @@ def get_all_cc_codes(data):
     categoryCode = data.get("categoryId")
     search = data.get("search", "").strip()
     key = data.get("key")
+    groupId = data.get("groupId")
+    subGroupId = data.get("subGroupId")
 
     query = CCCode.query
+
+    # optional group / sub group filters
+    if groupId:
+        query = query.filter(CCCode.group_id == groupId)
+    if subGroupId:
+        query = query.filter(CCCode.sub_group_id == subGroupId)
 
     # -------------------------
     # category filter (always)
@@ -713,7 +752,9 @@ def get_all_cc_codes(data):
 
             "ccGroupName":
             cc.group.group_name
-            if cc.group else None
+            if cc.group else None,
+
+            **_sub_group_fields(cc)
 
         })
 
@@ -737,7 +778,8 @@ def get_cc_code_by_id(ccId):
         "ccCategoryId": cc.category_code,
         "ccCategoryFixedCode": cc.category.fixed_code,
         "ccCategoryName": cc.category.category_name if cc.category else None,
-        "ccGroupName": cc.group.group_name if cc.group else None
+        "ccGroupName": cc.group.group_name if cc.group else None,
+        **_sub_group_fields(cc)
     }]
 
     return res("CC Code fetched successfully", data, 200)
@@ -759,9 +801,18 @@ def update_cc_code(ccId, data):
     if existing:
         return res("CC Code already exists", [], 400)
 
+    newGroupId = data.get("groupId", cc.group_id)
+    newCategory = data.get("categoryId", cc.category_code)
+    newSubGroupId = data["subGroupId"] if "subGroupId" in data else cc.sub_group_id
+
+    sub, err = _check_sub_group(newSubGroupId, newGroupId, newCategory)
+    if err:
+        return res(err, [], 400)
+
     cc.cc_name = data.get("ccName", cc.cc_name)
-    cc.group_id = data.get("groupId", cc.group_id)
-    cc.category_code = data.get("categoryId", cc.category_code)
+    cc.group_id = newGroupId
+    cc.category_code = newCategory
+    cc.sub_group_id = sub.id if sub else None
     cc.cc_code = newCcCode
     try:
         db.session.commit()
@@ -772,7 +823,8 @@ def update_cc_code(ccId, data):
         "ccGroupId": cc.group_id,
         "ccCategoryId": cc.category_code,
         "ccCategoryName": cc.category.category_name if cc.category else None,
-        "ccGroupName": cc.group.group_name if cc.group else None}]
+        "ccGroupName": cc.group.group_name if cc.group else None,
+        **_sub_group_fields(cc)}]
         return res(
         "CC Code updated successfully",
         data,
@@ -933,6 +985,141 @@ def update_category(categoryId, data):
             [],
             500
         )
+
+
+
+# SUB GROUP (many per Group, optional Category link)
+
+
+def _sub_group_row(sub):
+    return {
+        "subGroupId": sub.id,
+        "subGroupCode": sub.fixed_code,
+        "subGroupName": sub.sub_group_name,
+        "groupId": sub.group_id,
+        "groupName": sub.group.group_name if sub.group else None,
+        "headUnder": sub.group.head_under if sub.group else None,
+        "categoryId": sub.category_code,
+        "categoryName": sub.category.category_name if sub.category else None,
+        "status": sub.status,
+    }
+
+
+def _validate_sub_group_links(group_id, category_code):
+    if not group_id or not GroupMaster.query.get(group_id):
+        return "Valid groupId is required"
+    if category_code and not CategoryMaster.query.filter_by(fixed_code=category_code).first():
+        return "Category not found"
+    return None
+
+
+def create_sub_group(data):
+    code = (data.get("subGroupCode") or "").strip()
+    name = (data.get("subGroupName") or "").strip()
+    group_id = data.get("groupId")
+    category_code = data.get("categoryId") or None
+
+    if not code or not name:
+        return res("subGroupCode and subGroupName are required", [], 400)
+
+    err = _validate_sub_group_links(group_id, category_code)
+    if err:
+        return res(err, [], 400)
+
+    if SubGroupMaster.query.filter_by(fixed_code=code).first():
+        return res("Sub Group code already exists", [], 400)
+    if SubGroupMaster.query.filter_by(group_id=group_id, sub_group_name=name).first():
+        return res("Sub Group already exists in this Group", [], 400)
+
+    createdBy = g.current_user.get("id") if hasattr(g, "current_user") else None
+    sub = SubGroupMaster(
+        fixed_code=code,
+        sub_group_name=name,
+        group_id=group_id,
+        category_code=category_code,
+        created_by=createdBy,
+    )
+    try:
+        db.session.add(sub)
+        db.session.commit()
+        return res("Sub Group created successfully", [_sub_group_row(sub)], 201)
+    except Exception:
+        db.session.rollback()
+        return res("Failed to create sub group", [], 500)
+
+
+def update_sub_group(subGroupId, data):
+    sub = SubGroupMaster.query.get(subGroupId)
+    if not sub:
+        return res("Sub Group not found", [], 404)
+
+    code = (data.get("subGroupCode") or sub.fixed_code).strip()
+    name = (data.get("subGroupName") or sub.sub_group_name).strip()
+    group_id = data.get("groupId", sub.group_id)
+    category_code = (data["categoryId"] or None) if "categoryId" in data else sub.category_code
+
+    err = _validate_sub_group_links(group_id, category_code)
+    if err:
+        return res(err, [], 400)
+
+    if SubGroupMaster.query.filter(SubGroupMaster.fixed_code == code, SubGroupMaster.id != sub.id).first():
+        return res("Sub Group code already exists", [], 400)
+    if SubGroupMaster.query.filter(
+        SubGroupMaster.group_id == group_id,
+        SubGroupMaster.sub_group_name == name,
+        SubGroupMaster.id != sub.id,
+    ).first():
+        return res("Sub Group already exists in this Group", [], 400)
+
+    # CC codes already linked must stay consistent
+    linked = CCCode.query.filter_by(sub_group_id=sub.id)
+    if int(group_id) != int(sub.group_id) and linked.filter(CCCode.group_id != group_id).first():
+        return res("Cannot move Sub Group: CC codes linked to it are in another Group", [], 400)
+    if category_code and linked.filter(CCCode.category_code != category_code).first():
+        return res("Cannot set category: some linked CC codes use a different category", [], 400)
+
+    sub.fixed_code = code
+    sub.sub_group_name = name
+    sub.group_id = group_id
+    sub.category_code = category_code
+    if data.get("status"):
+        sub.status = data.get("status")
+    try:
+        db.session.commit()
+        return res("Sub Group updated successfully", [_sub_group_row(sub)], 200)
+    except Exception:
+        db.session.rollback()
+        return res("Failed to update sub group", [], 500)
+
+
+def get_all_sub_groups(data):
+    query = SubGroupMaster.query
+    if data.get("groupId"):
+        query = query.filter(SubGroupMaster.group_id == data.get("groupId"))
+    if data.get("categoryId"):
+        query = query.filter(SubGroupMaster.category_code == data.get("categoryId"))
+    if data.get("status"):
+        query = query.filter(SubGroupMaster.status == data.get("status"))
+    subs = query.order_by(SubGroupMaster.group_id, SubGroupMaster.sub_group_name).all()
+    return res("Sub Group list fetched successfully", [_sub_group_row(s) for s in subs], 200)
+
+
+def get_sub_group_by_id(subGroupId):
+    sub = SubGroupMaster.query.get(subGroupId)
+    if not sub:
+        return res("Sub Group not found", [], 404)
+    return res("Sub Group fetched successfully", [_sub_group_row(sub)], 200)
+
+
+def delete_sub_group(subGroupId):
+    sub = SubGroupMaster.query.get(subGroupId)
+    if not sub:
+        return res("Sub Group not found", [], 404)
+    if CCCode.query.filter_by(sub_group_id=sub.id).first():
+        return res("Sub Group is used by CC codes and cannot be deleted", [], 400)
+    db.session.delete(sub)
+    db.session.commit()
+    return res("Sub Group deleted successfully", [], 200)
 
 
 

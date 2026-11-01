@@ -7,7 +7,7 @@ from .companies import Company
 from .vendor import Vendor
 from .item import Item
 from .cc_code import CCCode
-from .category_group import GroupMaster, CategoryMaster
+from .category_group import GroupMaster, CategoryMaster, SubGroupMaster
 from .indent_item import *
 from .indent_master import *
 from .enquiry_item import *

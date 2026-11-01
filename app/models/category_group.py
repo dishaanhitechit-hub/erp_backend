@@ -105,3 +105,47 @@ class CategoryMaster(db.Model):
 
     def __repr__(self):
         return f"<CategoryMaster {self.category_name}>"
+
+# =========================================
+# SUB GROUP MASTER
+# One Group can have many Sub Groups.
+# Each Sub Group belongs to one Group and can
+# optionally be tied to one Category.
+# =========================================
+
+class SubGroupMaster(db.Model):
+    __tablename__ = "sub_group_master"
+    __table_args__ = (
+        db.UniqueConstraint("group_id", "sub_group_name", name="uq_sub_group_group_name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Stable code used by logic/filters, e.g. FIXED_ASSET, PROJECT_OH
+    fixed_code = db.Column(db.String(50), unique=True, nullable=False)
+
+    sub_group_name = db.Column(db.String(150), nullable=False)
+
+    group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("group_master.id"),
+        nullable=False
+    )
+
+    # Optional: if set, CC codes in this sub group must use this category
+    category_code = db.Column(
+        db.String(50),
+        db.ForeignKey("category_master.fixed_code"),
+        nullable=True
+    )
+
+    status = db.Column(db.String(30), default="Active")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, nullable=True)
+
+    group = db.relationship("GroupMaster", backref="sub_groups", lazy=True)
+    category = db.relationship("CategoryMaster", backref="sub_groups", lazy=True)
+
+    def __repr__(self):
+        return f"<SubGroupMaster {self.sub_group_name}>"
