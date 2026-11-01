@@ -280,6 +280,30 @@ def update_group_info(conv_id):
     return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "Forbidden"}), 403)
 
 
+@comm_bp.route("/conversations/<int:conv_id>/invite", methods=["POST"])
+@jwt_required()
+def invite_members(conv_id):
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    res = group_service.invite_members(conv_id, user_id, data.get("userIds", []), data.get("name"))
+    return (jsonify(res), 200) if res is not None else (jsonify({"error": "Forbidden"}), 403)
+
+
+@comm_bp.route("/invites", methods=["GET"])
+@jwt_required()
+def my_invites():
+    return jsonify(group_service.get_my_invites(int(get_jwt_identity()))), 200
+
+
+@comm_bp.route("/invites/<int:conv_id>/<action>", methods=["POST"])
+@jwt_required()
+def respond_invite(conv_id, action):
+    if action not in ("accept", "decline"):
+        return jsonify({"error": "Bad action"}), 400
+    ok = group_service.respond_invite(conv_id, int(get_jwt_identity()), action == "accept")
+    return (jsonify({"ok": True}), 200) if ok else (jsonify({"error": "No invite"}), 404)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PINGS / NUDGES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -476,6 +500,15 @@ def start_call():
 def turn_credentials():
     user_id = int(get_jwt_identity())
     return jsonify(voice_call_service.turn_credentials(user_id)), 200
+
+
+@comm_bp.route("/calls/<int:call_id>/invite", methods=["POST"])
+@jwt_required()
+def invite_to_call(call_id):
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    added   = voice_call_service.invite_to_call(call_id, user_id, data.get("userIds", []))
+    return (jsonify({"added": added}), 200) if added is not None else (jsonify({"error": "Forbidden"}), 403)
 
 
 @comm_bp.route("/calls/<int:call_id>/answer", methods=["POST"])

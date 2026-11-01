@@ -75,15 +75,29 @@ def create_group_conversation(
         role            = "admin",
     ))
 
-    for uid in member_ids:
+    invited = []
+    for uid in {int(u) for u in member_ids if u}:
         if uid != creator_id:
             db.session.add(CommConversationMember(
                 conversation_id = conv.id,
                 user_id         = uid,
                 role            = "member",
+                status          = "invited",
+                invited_by      = creator_id,
             ))
+            invited.append(uid)
 
     db.session.commit()
+
+    from app.models.user import User
+    from app.modules.communication.chatting.notification_service import push_notification
+    creator = db.session.get(User, creator_id)
+    for uid in invited:
+        push_notification(
+            user_id=uid, notification_type="chat_invite",
+            title=f"{creator.username if creator else 'Someone'} invited you to {name}",
+            data={"conversationId": conv.id},
+        )
     return conv
 
 
@@ -133,7 +147,7 @@ def get_user_conversations(user_id: int) -> list:
 
     memberships = (
         CommConversationMember.query
-        .filter_by(user_id=user_id)
+        .filter_by(user_id=user_id, status="active")
         .filter(CommConversationMember.left_at == None)
         .all()
     )
@@ -221,7 +235,7 @@ def get_conversation_detail(conversation_id: int, requesting_user_id: int) -> di
 
     members = []
     for m in conv.members:
-        if m.left_at:
+        if m.left_at or m.status != "active":
             continue
         u = db.session.get(User, m.user_id)
         if u:
@@ -244,6 +258,7 @@ def get_conversation_detail(conversation_id: int, requesting_user_id: int) -> di
         "members":          members,
         "memberCount":      len(members),
         "myRole":           mem.role,
+        "myStatus":         mem.status,
         "isMuted":          mem.is_muted,
         "createdAt":        conv.created_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
