@@ -7,12 +7,14 @@ Read-only. All access goes through TraceAccess.
 from collections import defaultdict
 from decimal import Decimal
 
-from sqlalchemy import or_
+from sqlalchemy import or_, func, select, literal, cast, null, union_all, Date, DateTime, String
+from sqlalchemy.orm import aliased
 
 from app.extensions import db
 from app.response import res
 from app.models.item import Item
 from app.models.asset import Asset
+from app.models.unit import Unit
 from app.models.vendor import Vendor
 from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
@@ -83,93 +85,133 @@ def get_workbench_context(user_id):
 # search
 # ─────────────────────────────────────────────────────────────────
 
+def _as_date(col):
+    """Date columns as-is; datetime columns (e.g. enquiry_date) truncated with date(), valid in Postgres and SQLite."""
+    return func.date(col, type_=Date) if isinstance(col.type, DateTime) else col
+
+
+def _doc_select(dt, pattern, allowed, limit):
+    """
+    One SELECT for a document type, normalised to the same columns so all types
+    can be UNION ALL-ed into a single round trip. Each part keeps its own
+    ORDER BY id DESC LIMIT (newest first, uses the primary-key index).
+    """
+    meta = DOC_TYPES[dt]
+    model = meta["model"]
+    no_col = getattr(model, meta["no"])
+    vendor_fk = getattr(model, "vendor_id", None) or getattr(model, "from_vendor_id", None)
+    proj_cols = [getattr(model, c) for c in meta["projects"]]
+    project = proj_cols[0] if len(proj_cols) == 1 else func.coalesce(*reversed(proj_cols))
+
+    stmt = select(
+        literal(dt).label("doc_type"),
+        model.id.label("doc_id"),
+        no_col.label("doc_no"),
+        _as_date(getattr(model, meta["date"])).label("doc_date"),
+        model.workflow_status.label("status"),
+        cast(project, String).label("project_code"),
+        (Vendor.ledger_name if vendor_fk is not None else cast(null(), String)).label("party"),
+    )
+    if vendor_fk is not None:
+        stmt = stmt.select_from(model).outerjoin(Vendor, Vendor.id == vendor_fk)
+    if pattern:
+        stmt = stmt.where(no_col.ilike(pattern, escape="\\"))
+    pf = _project_filter(dt, allowed)
+    if pf is not None:
+        stmt = stmt.where(pf)
+    return stmt.order_by(model.id.desc()).limit(limit).subquery()
+
+
+def _item_lines(pattern, allowed, limit):
+    """Indent lines whose item / asset matches (or the newest ones when no pattern), names joined in."""
+    ItemUnit, AssetUnit = aliased(Unit), aliased(Unit)
+    q = (db.session.query(
+            IndentItem.id, IndentItem.is_asset, IndentItem.item_code, IndentItem.asset_code, IndentItem.qty,
+            IndentMaster.indent_no, IndentMaster.indent_date, IndentMaster.workflow_status,
+            IndentMaster.project_code,
+            Item.item_name, Item.item_display_code, Asset.asset_name,
+            ItemUnit.short_name.label("item_unit"), AssetUnit.short_name.label("asset_unit"))
+         .join(IndentMaster, IndentMaster.id == IndentItem.indent_id)
+         .outerjoin(Item, Item.item_code == IndentItem.item_code)
+         .outerjoin(Asset, Asset.asset_code == IndentItem.asset_code)
+         .outerjoin(ItemUnit, ItemUnit.id == Item.unit_id)
+         .outerjoin(AssetUnit, AssetUnit.id == Asset.unit_id))
+    if pattern:
+        q = q.filter(or_(
+            Item.item_code.ilike(pattern, escape="\\"), Item.item_name.ilike(pattern, escape="\\"),
+            Item.item_display_code.ilike(pattern, escape="\\"),
+            Asset.asset_code.ilike(pattern, escape="\\"), Asset.asset_name.ilike(pattern, escape="\\")))
+    if allowed is not None:
+        q = q.filter(IndentMaster.project_code.in_(allowed or ["__none__"]))
+    return q.order_by(IndentItem.id.desc()).limit(limit).all()
+
+
 def search_documents(user_id, q, doc_type=None, project_code=None):
+    """
+    Search (q given) or suggest (q empty: newest documents) in at most two
+    queries: one UNION ALL over every permitted document type, and one for
+    indent lines when items are included.
+    """
     try:
         q = (q or "").strip()
-        if len(q) < 2:
-            return res("Type at least 2 characters", [], 200)
         access = TraceAccess(user_id)
         if project_code and project_code not in access.project_codes():
             return res("Access denied", [], 403)
 
         doc_type = (doc_type or "").upper() or None
-        types = [doc_type] if doc_type in DOC_TYPES else (list(DOC_TYPES) if not doc_type else [])
-        pattern = _like(q)
-        results, vendor_ids = [], set()
+        single = doc_type is not None
+        types = [doc_type] if doc_type in DOC_TYPES else ([] if single else
+                                                          [t for t, m in DOC_TYPES.items() if not m.get("legacy")])
+        pattern = _like(q) if q else None
+        # more rows when one type is chosen; a few per type when browsing all
+        per_type = (SEARCH_LIMIT_PER_TYPE * 2 if single else SEARCH_LIMIT_PER_TYPE) if q else (15 if single else 3)
 
+        def allowed_for(pages):
+            allowed = access.projects_for_pages(pages)
+            if project_code:
+                allowed = [project_code] if allowed is None or project_code in allowed else []
+            return allowed
+
+        parts = []
         for dt in types:
-            meta = DOC_TYPES[dt]
-            allowed = access.projects_for_pages(meta["pages"])
+            allowed = allowed_for(DOC_TYPES[dt]["pages"])
             if allowed is not None and not allowed:
                 continue
-            if project_code:
-                allowed = [project_code] if allowed is None or project_code in allowed else []
-                if not allowed:
-                    continue
-            model = meta["model"]
-            query = model.query.filter(getattr(model, meta["no"]).ilike(pattern, escape="\\"))
-            pf = _project_filter(dt, allowed)
-            if pf is not None:
-                query = query.filter(pf)
-            for row in query.order_by(model.id.desc()).limit(SEARCH_LIMIT_PER_TYPE).all():
-                v = getattr(row, "vendor_id", None) or getattr(row, "from_vendor_id", None)
-                if v:
-                    vendor_ids.add(v)
-                results.append((dt, row))
+            parts.append(_doc_select(dt, pattern, allowed, per_type))
 
-        # Item search → indent lines (start an item-level trace)
-        item_hits = []
-        if doc_type in (None, "INDENT_ITEM"):
-            allowed = access.projects_for_pages(DOC_TYPES["INDENT"]["pages"])
-            if project_code:
-                allowed = [project_code] if allowed is None or project_code in allowed else []
-            if allowed is None or allowed:
-                codes = [r.item_code for r in Item.query.filter(or_(
-                    Item.item_code.ilike(pattern, escape="\\"), Item.item_name.ilike(pattern, escape="\\"),
-                    Item.item_display_code.ilike(pattern, escape="\\"))).limit(25).all()]
-                assets = [r.asset_code for r in Asset.query.filter(or_(
-                    Asset.asset_code.ilike(pattern, escape="\\"), Asset.asset_name.ilike(pattern, escape="\\"))).limit(25).all()]
-                if codes or assets:
-                    query = (db.session.query(IndentItem, IndentMaster)
-                             .join(IndentMaster, IndentMaster.id == IndentItem.indent_id)
-                             .filter(or_(IndentItem.item_code.in_(codes or ["__none__"]),
-                                         IndentItem.asset_code.in_(assets or ["__none__"]))))
-                    if allowed is not None:
-                        query = query.filter(IndentMaster.project_code.in_(allowed))
-                    item_hits = query.order_by(IndentMaster.indent_date.desc(), IndentItem.id.desc()).limit(12).all()
-
-        names = {}
-        if item_hits:
-            ic = {ii.item_code for ii, _ in item_hits if ii.item_code}
-            ac = {ii.asset_code for ii, _ in item_hits if ii.asset_code}
-            names.update({("I", i.item_code): (i.item_name, i.unit.short_name if i.unit else None)
-                          for i in Item.query.filter(Item.item_code.in_(ic or ["__none__"])).all()})
-            names.update({("A", a.asset_code): (a.asset_name, a.unit.short_name if a.unit else None)
-                          for a in Asset.query.filter(Asset.asset_code.in_(ac or ["__none__"])).all()})
-
-        vendors = {v.id: v.ledger_name for v in Vendor.query.filter(Vendor.id.in_(vendor_ids)).all()} if vendor_ids else {}
+        rows = []
+        if parts:
+            cols = lambda sq: select(sq.c.doc_type, sq.c.doc_id, sq.c.doc_no, sq.c.doc_date, sq.c.status,
+                                     sq.c.project_code, sq.c.party)
+            stmt = union_all(*[cols(sq) for sq in parts]) if len(parts) > 1 else cols(parts[0])
+            rows = db.session.execute(stmt).all()
 
         out = []
-        for dt, row in results:
-            meta = DOC_TYPES[dt]
-            v = getattr(row, "vendor_id", None) or getattr(row, "from_vendor_id", None)
-            projects = [p for p in doc_projects(dt, row) if p]
+        for r in rows:
+            meta = DOC_TYPES[r.doc_type]
             out.append({
-                "docType": dt, "typeLabel": meta["label"], "docId": row.id,
-                "docNo": getattr(row, meta["no"]), "date": _date(getattr(row, meta["date"])),
-                "status": row.workflow_status, "projectCode": projects[0] if projects else None,
-                "party": vendors.get(v), "stage": meta["stage"],
+                "docType": r.doc_type, "typeLabel": meta["label"], "docId": r.doc_id, "docNo": r.doc_no,
+                "date": _date(r.doc_date), "status": r.status, "projectCode": r.project_code,
+                "party": r.party, "stage": meta["stage"],
             })
-        for ii, im in item_hits:
-            k = ("A", ii.asset_code) if ii.is_asset else ("I", ii.item_code)
-            name, unit = names.get(k, (None, None))
-            out.append({
-                "docType": "INDENT_ITEM", "typeLabel": "Indent Item", "docId": ii.id,
-                "docNo": im.indent_no, "date": _date(im.indent_date), "status": im.workflow_status,
-                "projectCode": im.project_code, "party": None, "stage": "REQUISITION",
-                "itemCode": k[1], "itemName": name, "qty": _num(ii.qty, 4), "unit": unit,
-            })
-        return res("Search results", out, 200)
+        # newest first inside each type, types in lifecycle order
+        order = {t: i for i, t in enumerate(DOC_TYPES)}
+        out.sort(key=lambda x: (order[x["docType"]], -x["docId"]))
+
+        if doc_type in (None, "INDENT_ITEM"):
+            allowed = allowed_for(DOC_TYPES["INDENT"]["pages"])
+            if allowed is None or allowed:
+                limit = 15 if single else (12 if q else 5)
+                for ii in _item_lines(pattern, allowed, limit):
+                    code = ii.asset_code if ii.is_asset else (ii.item_display_code or ii.item_code)
+                    out.append({
+                        "docType": "INDENT_ITEM", "typeLabel": "Indent Item", "docId": ii.id,
+                        "docNo": ii.indent_no, "date": _date(ii.indent_date), "status": ii.workflow_status,
+                        "projectCode": ii.project_code, "party": None, "stage": "REQUISITION",
+                        "itemCode": code, "itemName": ii.asset_name if ii.is_asset else ii.item_name,
+                        "qty": _num(ii.qty, 4), "unit": ii.asset_unit if ii.is_asset else ii.item_unit,
+                    })
+        return res("Suggestions" if not q else "Search results", out, 200)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
