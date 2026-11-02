@@ -585,8 +585,9 @@ def get_order_lookup(data):
 
             claim_boq = BillingBoqItem.query.filter_by(billing_id=claim_bill.id).all()
 
-            pre_cert_items_map, pre_cert_boq_map = _get_pre_certified_by_item(
-                claim_bill.id
+            # Previous = all approved certified bills for the SAME ORDER (not just this claim bill)
+            pre_cert_items_map, pre_cert_boq_map = _get_certified_by_item_for_order(
+                claim_bill.og_sale_order_erp_no, project_code
             )
 
             claim_items = [
