@@ -600,7 +600,7 @@ def _cc_row(cc):
         "ccGroupName": cc.group.group_name if cc.group else None,
         "ccCategoryId": cc.category_code,
         "ccCategoryName": cc.category.category_name if cc.category else None,
-        "headUnder": cc.head_under,
+        "headUnder": cc.group.head_under,
         "isNonLedger": cc.is_non_ledger,
         **_sub_group_fields(cc),
     }
@@ -631,7 +631,7 @@ def create_cc_code(data, createdBy=None):
         group_id=data.get("groupId"),
         category_code=data.get("categoryId"),
         sub_group_id=sub.id if sub else None,
-        head_under=head_under,
+        # head_under=head_under,
         is_non_ledger=is_non_ledger,
         created_by=createdBy
     )
@@ -788,7 +788,7 @@ def update_cc_code(ccId, data):
     cc.category_code = newCategory
     cc.sub_group_id = sub.id if sub else None
     cc.cc_code = newCcCode
-    cc.head_under = new_head_under
+    # cc.head_under = new_head_under
     cc.is_non_ledger = new_is_non_ledger
     try:
         db.session.commit()

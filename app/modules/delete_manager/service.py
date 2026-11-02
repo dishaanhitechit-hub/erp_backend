@@ -353,6 +353,11 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
     ).all()
 
     for dr in pending_requests:
+        # Refresh in case a cascading auto_complete_check already processed this DR
+        db.session.refresh(dr)
+        if dr.status != "PENDING":
+            continue
+
         # Re-evaluate blocking children for this parent record
         config = DEPENDENCY_MAP.get(dr.module_code)
         if not config:
@@ -361,7 +366,16 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
         current_blocking = _check_children(dr.module_code, dr.record_id, config)
 
         if not current_blocking:
-            # All children are gone — notify requester to come and delete manually
+            # All blockers gone — perform the actual delete now
+            deleted_module = dr.module_code
+            deleted_id     = dr.record_id
+            try:
+                _do_delete_record(dr.module_code, dr.record_id, config)
+            except Exception:
+                db.session.rollback()
+
+            dr.status             = "COMPLETED"
+            dr.completed_at       = datetime.utcnow()
             dr.blocked_by_modules = "[]"
             dr.blocked_by_docs    = ""
             db.session.commit()
@@ -374,6 +388,9 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
                 project_code   = dr.project_code,
                 requester_user = requester,
             )
+
+            # Cascade: deleting this record may unblock further pending DRs
+            auto_complete_check(deleted_module, deleted_id)
         else:
             # Update the blocked_by snapshot
             blocked_modules = list({b["module_code"] for b in current_blocking})
