@@ -39,7 +39,9 @@ def vendor_create():
 @login_required
 # @require_admin
 def vendor_list():
-    return get_all_vendors()
+    from flask import request as req
+    ledger_type = req.args.get("type")  # "debtor" | "creditor" | None (all)
+    return get_all_vendors(ledger_type=ledger_type)
 
 
 @master_bp.route("/ledger/<int:vendorId>", methods=["GET"])

@@ -22,25 +22,26 @@ from app.modules.master.sub_group_service import sub_group_path_fields
 
 
 
-# Vendor Code generator
-def generate_ledger_code():
-    last_vendor = Vendor.query.order_by(
-        Vendor.id.desc()
-    ).first()
-
-    if not last_vendor:
-        return "260001"
-
-    try:
-        last_number = int(
-            last_vendor.ledger_code
-        )
-    except:
-        last_number = 260000
-
-    new_number = last_number + 1
-
-    return str(new_number)
+# Vendor Code generators
+def generate_ledger_code(is_debtor=False):
+    if is_debtor:
+        last = Vendor.query.filter(Vendor.is_debtor == True).order_by(Vendor.id.desc()).first()
+        if not last:
+            return "270001"
+        try:
+            last_num = int(last.ledger_code)
+        except:
+            last_num = 270000
+        return str(max(last_num + 1, 270001))
+    else:
+        last = Vendor.query.filter(Vendor.is_debtor.isnot(True)).order_by(Vendor.id.desc()).first()
+        if not last:
+            return "260001"
+        try:
+            last_num = int(last.ledger_code)
+        except:
+            last_num = 260000
+        return str(max(last_num + 1, 260001))
 
 def generate_item_code():
     last_item = Item.query.order_by(
@@ -81,8 +82,11 @@ def create_vendor(request):
     data = request.form
     files = request.files
 
+    is_debtor = data.get("isDebtor", "false").lower() == "true"
+
     vendor = Vendor(
-        ledger_code=generate_ledger_code(),
+        ledger_code=generate_ledger_code(is_debtor=is_debtor),
+        is_debtor=is_debtor,
         ledger_name=data.get("ledgerName"),
         registered_address=data.get("registeredAddress"),
         corporate_address=data.get("corporateAddress"),
@@ -160,8 +164,9 @@ def create_vendor(request):
     db.session.add(vendor)
     db.session.flush()
 
-    existing_supplier_id = data.get("supplierId")
-    auto_create_or_link_supplier(vendor, int(existing_supplier_id) if existing_supplier_id else None)
+    if not is_debtor:
+        existing_supplier_id = data.get("supplierId")
+        auto_create_or_link_supplier(vendor, int(existing_supplier_id) if existing_supplier_id else None)
     db.session.commit()
 
     data = [{
@@ -188,8 +193,13 @@ def create_vendor(request):
     return res("ledger  created successfully", data, 201)
 
 
-def get_all_vendors():
-    vendors = Vendor.query.order_by(Vendor.id.desc()).all()
+def get_all_vendors(ledger_type=None):
+    q = Vendor.query
+    if ledger_type == "debtor":
+        q = q.filter(Vendor.is_debtor == True)
+    elif ledger_type == "creditor":
+        q = q.filter(Vendor.is_debtor.isnot(True))
+    vendors = q.order_by(Vendor.id.desc()).all()
 
     data = []
 
@@ -198,6 +208,7 @@ def get_all_vendors():
         "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
+        "isDebtor": bool(vendor.is_debtor),
         "registeredAddress": vendor.registered_address,
         "corporateAddress": vendor.corporate_address,
 
@@ -250,6 +261,7 @@ def get_vendor_by_id(ledgerId):
         "ledgerId": vendor.id,
         "ledgerCode": vendor.ledger_code,
         "ledgerName": vendor.ledger_name,
+        "isDebtor": bool(vendor.is_debtor),
         "registeredAddress": vendor.registered_address,
         "corporateAddress": vendor.corporate_address,
 
@@ -386,8 +398,9 @@ def update_vendor(vendorId, request):
         fileName="bank_details"
     )
 
-    sync_vendor_to_suppliers(vendor)
-    auto_create_or_link_supplier(vendor)
+    if not vendor.is_debtor:
+        sync_vendor_to_suppliers(vendor)
+        auto_create_or_link_supplier(vendor)
     db.session.commit()
 
     return res(
