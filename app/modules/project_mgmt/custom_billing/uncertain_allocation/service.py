@@ -463,18 +463,23 @@ def get_certified_bill_items_for_ua(billing_id):
 
         og_so = bill.og_so
 
+        # Build claim qty lookup from the parent claim bill so Claim Qty ≠ Certified Qty
+        claim_qty_map = {}  # (item_type, item_code) -> claim_qty
+        if bill.claim_bill_id:
+            cb = BillingMaster.query.get(bill.claim_bill_id)
+            if cb:
+                for ci in cb.items:
+                    claim_qty_map[("item", ci.item_code)] = float(ci.claim_qty or 0)
+                for ci in BillingBoqItem.query.filter_by(billing_id=cb.id).all():
+                    claim_qty_map[("boq_item", ci.item_code)] = float(ci.claim_qty or 0)
+
         result = []
 
-        def _cert_qty(cert_amt, rate):
-            r = Decimal(str(rate or 0))
-            return float(cert_amt / r) if r else 0.0
-
         for item in bill.items:
-            claim_qty  = float(item.claim_qty or 0)
-            order_qty  = float(item.order_qty or 0)
-            unit_rate  = float(item.rate      or 0)
+            # claim_qty in a cert bill's BillingItem stores the CERTIFIED qty
+            cert_qty   = float(item.claim_qty or 0)
             cert_amt_f = float(item.amount    or 0)
-            cert_qty   = _cert_qty(item.amount, item.rate)
+            claim_qty  = claim_qty_map.get(("item", item.item_code), cert_qty)
             result.append({
                 "billingItemId": item.id,
                 "itemType":      "item",
@@ -483,17 +488,18 @@ def get_certified_bill_items_for_ua(billing_id):
                 "itemName":      item.item_name,
                 "itemNameDesc":  item.item_name_desc,
                 "unit":          item.unit,
-                "orderQty":      order_qty,
+                "orderQty":      float(item.order_qty or 0),
                 "claimQty":      claim_qty,
                 "certifiedQty":  round(cert_qty, 4),
-                "unitRate":      unit_rate,
+                "unitRate":      float(item.rate      or 0),
                 "certifiedAmount": cert_amt_f,
             })
 
         boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
         for item in boq_items:
-            cert_amt_f = float(item.amount or 0)
-            cert_qty   = _cert_qty(item.amount, item.rate)
+            cert_qty   = float(item.claim_qty or 0)
+            cert_amt_f = float(item.amount    or 0)
+            claim_qty  = claim_qty_map.get(("boq_item", item.item_code), cert_qty)
             result.append({
                 "billingItemId": item.id,
                 "itemType":      "boq_item",
@@ -503,7 +509,7 @@ def get_certified_bill_items_for_ua(billing_id):
                 "itemNameDesc":  item.item_name_desc,
                 "unit":          item.unit,
                 "orderQty":      float(item.order_qty or 0),
-                "claimQty":      float(item.claim_qty or 0),
+                "claimQty":      claim_qty,
                 "certifiedQty":  round(cert_qty, 4),
                 "unitRate":      float(item.rate      or 0),
                 "certifiedAmount": cert_amt_f,
