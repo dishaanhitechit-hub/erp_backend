@@ -55,12 +55,14 @@ def _fmt_date(d):
 
 
 def _get_prev_claimed_by_item(og_sale_order_no, project_code, exclude_id=None):
-    """Per-item sum of claim_qty from Approved claim bills for the same order.
-    Pass exclude_id to skip one bill (self). Returns {sl_no: Decimal}."""
+    """Per-item sum of claim_qty/amount from Approved claim bills for the same order.
+    Returns {sl_no: {'qty': Decimal, 'amount': Decimal}} — same shape as
+    _get_certified_by_item_for_order."""
     def _query_model(model_class):
         q = (
             db.session.query(
                 model_class.sl_no,
+                func.sum(model_class.amount),
                 func.sum(model_class.claim_qty),
             )
             .join(BillingMaster, BillingMaster.id == model_class.billing_id)
@@ -74,7 +76,10 @@ def _get_prev_claimed_by_item(og_sale_order_no, project_code, exclude_id=None):
         )
         if exclude_id:
             q = q.filter(BillingMaster.id != exclude_id)
-        return {row[0]: Decimal(str(row[1] or 0)) for row in q.all()}
+        return {
+            row[0]: {"amount": Decimal(str(row[1] or 0)), "qty": Decimal(str(row[2] or 0))}
+            for row in q.all()
+        }
 
     return _query_model(BillingItem), _query_model(BillingBoqItem)
 
@@ -442,9 +447,9 @@ def _build_detail_payload(bill):
                     "amount":          float(item.amount      or 0),
                     "gstPercent":      float(item.gst_percent or 0),
                     "gstAmount":       float(item.gst_amount  or 0),
-                    # "Previous" column in certification statement
-                    "certifiedQty":    float(p_map.get(item.sl_no, 0)),
-                    "certifiedAmount": float(p_map.get(item.sl_no, 0)) * float(item.rate or 0),
+                    # "Previous" column — p_map has {"qty": ..., "amount": ...}
+                    "certifiedQty":    float(p_map.get(item.sl_no, {}).get("qty", 0)),
+                    "certifiedAmount": float(p_map.get(item.sl_no, {}).get("amount", 0)),
                 }
                 for item in rows
             ]
@@ -652,11 +657,8 @@ def get_order_lookup(data):
             )
         else:
             cert_items_map, cert_boq_map = _get_prev_claimed_by_item(
-                og_sale_order_no, project_code, exclude_id=None
+                og_sale_order_no, project_code
             )
-            # Convert plain Decimal to the {amount, qty} dict format expected below
-            cert_items_map = {sl: {"qty": qty, "amount": Decimal("0")} for sl, qty in cert_items_map.items()}
-            cert_boq_map   = {sl: {"qty": qty, "amount": Decimal("0")} for sl, qty in cert_boq_map.items()}
 
         og_items = [
             {
