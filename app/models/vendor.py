@@ -46,7 +46,9 @@ class Vendor(db.Model):
         db.Text,
         nullable=True
     )
-
+    is_debtor = db.Column(
+        db.Boolean, default=False,nullable=True
+    )
     # =====================================
     # VENDOR CATEGORY FROM CATEGORY MASTER
     # =====================================
