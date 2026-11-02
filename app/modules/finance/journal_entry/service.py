@@ -195,11 +195,12 @@ def create_journal_entry(data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            debit     = Decimal(str(row.get("debitAmount")  or 0))
-            credit    = Decimal(str(row.get("creditAmount") or 0))
-            cc_id     = row.get("ccId")
-            vendor_id = row.get("vendorId")
-            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
+            debit        = Decimal(str(row.get("debitAmount")  or 0))
+            credit       = Decimal(str(row.get("creditAmount") or 0))
+            cc_id        = row.get("ccId")
+            vendor_id    = row.get("vendorId")
+            customer_ref = row.get("customerRef") or None
+            acc_type     = "CC" if cc_id else "Vendor" if vendor_id else ("Customer" if customer_ref else None)
             db.session.add(JournalEntryLine(
                 journal_id    = entry.id,
                 sl_no         = row.get("slNo") or idx,
@@ -207,6 +208,7 @@ def create_journal_entry(data, user_id):
                 dr_cr         = row.get("drCr"),
                 cc_id         = cc_id,
                 vendor_id     = vendor_id,
+                customer_ref  = customer_ref,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
@@ -353,11 +355,12 @@ def edit_journal_entry(entry_id, data, user_id):
         db.session.flush()
 
         for idx, row in enumerate(lines_data, start=1):
-            debit     = Decimal(str(row.get("debitAmount")  or 0))
-            credit    = Decimal(str(row.get("creditAmount") or 0))
-            cc_id     = row.get("ccId")
-            vendor_id = row.get("vendorId")
-            acc_type  = "CC" if cc_id else "Vendor" if vendor_id else None
+            debit        = Decimal(str(row.get("debitAmount")  or 0))
+            credit       = Decimal(str(row.get("creditAmount") or 0))
+            cc_id        = row.get("ccId")
+            vendor_id    = row.get("vendorId")
+            customer_ref = row.get("customerRef") or None
+            acc_type     = "CC" if cc_id else "Vendor" if vendor_id else ("Customer" if customer_ref else None)
             db.session.add(JournalEntryLine(
                 journal_id   = entry.id,
                 sl_no        = row.get("slNo") or idx,
@@ -365,6 +368,7 @@ def edit_journal_entry(entry_id, data, user_id):
                 dr_cr        = row.get("drCr"),
                 cc_id        = cc_id,
                 vendor_id    = vendor_id,
+                customer_ref = customer_ref,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
