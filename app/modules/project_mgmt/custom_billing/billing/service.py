@@ -84,9 +84,15 @@ def _get_prev_claimed_by_item(og_sale_order_no, project_code, exclude_id=None):
     return _query_model(BillingItem), _query_model(BillingBoqItem)
 
 
-def _get_certified_by_item_for_order(og_sale_order_no, project_code, exclude_id=None):
+def _get_certified_by_item_for_order(
+    og_sale_order_no, project_code,
+    exclude_id=None, exclude_claim_bill_id=None,
+):
     """Return (items_map, boq_map) {sl_no: {'amount', 'qty'}} summed across all
-    Approved certified bills for the order. Pass exclude_id to skip one bill (self)."""
+    Approved certified bills for the order.
+    exclude_id: skip a specific cert bill (self, for certified bill detail).
+    exclude_claim_bill_id: skip cert bills whose parent is this claim bill
+                           (used in claim bill detail so own cert bills don't show as Previous)."""
     def _query_model(model_class):
         q = (
             db.session.query(
@@ -105,6 +111,8 @@ def _get_certified_by_item_for_order(og_sale_order_no, project_code, exclude_id=
         )
         if exclude_id:
             q = q.filter(BillingMaster.id != exclude_id)
+        if exclude_claim_bill_id:
+            q = q.filter(BillingMaster.claim_bill_id != exclude_claim_bill_id)
         return {
             row[0]: {"amount": Decimal(str(row[1] or 0)), "qty": Decimal(str(row[2] or 0))}
             for row in q.all()
@@ -417,16 +425,20 @@ def _build_detail_payload(bill):
         boq_items_serialized = serialize(boq_items, _boq=True)
     elif bill.mode == "sale_claim_bill":
         # "Previous": use certified qty if any certified bills exist, else prev claimed qty
+        # Only count cert bills from OTHER claim bills (not this one)
         cert_exists = BillingMaster.query.filter(
             BillingMaster.og_sale_order_erp_no == bill.og_sale_order_erp_no,
             BillingMaster.project_code         == bill.project_code,
             BillingMaster.mode                 == "sale_certified_bill",
             BillingMaster.workflow_status      == "Approved",
+            BillingMaster.claim_bill_id        != bill.id,
         ).first() is not None
 
         if cert_exists:
+            # exclude cert bills derived from THIS claim bill — they are not "previous"
             prev_items_map, prev_boq_map = _get_certified_by_item_for_order(
-                bill.og_sale_order_erp_no, bill.project_code
+                bill.og_sale_order_erp_no, bill.project_code,
+                exclude_claim_bill_id=bill.id,
             )
         else:
             prev_items_map, prev_boq_map = _get_prev_claimed_by_item(
