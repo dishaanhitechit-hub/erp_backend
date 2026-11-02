@@ -328,6 +328,11 @@ def _build_detail_payload(bill):
     order_basic = Decimal(str(order_fin["basicAmount"])) if order_fin else Decimal('0')
     job_balance = float(order_basic - billed)
 
+    # Compute dynamically so deleting a sibling bill reflects immediately
+    pre_certified_amount = _get_pre_certified(
+        bill.og_sale_order_erp_no, bill.project_code, mode, exclude_id=bill.id
+    )
+
     claim_bill_erp_no = None
     claim_qty_by_slno = {}
     if bill.claim_bill_id:
@@ -426,7 +431,7 @@ def _build_detail_payload(bill):
         "note":                 bill.note,
         "jobLocation":          bill.job_location,
         "attachment":           bill.attachment,
-        "preCertifiedAmount":   float(bill.pre_certified_amount or 0),
+        "preCertifiedAmount":   float(pre_certified_amount),
         "thisBillClaim":        float(bill.this_bill_claim      or 0),
         "gstAmount":            float(bill.gst_amount           or 0),
         "totalClaim":           float(bill.total_claim          or 0),
