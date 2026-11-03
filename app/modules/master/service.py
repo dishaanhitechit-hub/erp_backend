@@ -1650,6 +1650,7 @@ def delete_term(termId):
 
 from app.models.bankCash import BankCash, BankCashProject
 from app.models.project import Project
+from app.modules.master.sub_group_service import sub_group_path_for as _sg_path
 
 
 def _bank_cash_projects(r):
@@ -1687,6 +1688,8 @@ def create_bank_cash(data):
         branch_manager_name=data.get("branchManagerName"),
         branch_manager_contact=data.get("branchManagerContact"),
         branch_manager_email=data.get("branchManagerMailId"),
+        group_id=data.get("groupId") or None,
+        sub_group_id=data.get("subGroupId") or None,
     )
 
     if hasattr(g, "current_user"):
@@ -1735,6 +1738,9 @@ def get_all_bank_cash(type_filter=None, project_id=None):
         "branchManagerMailId": r.branch_manager_email,
         "status": r.status,
         "createdAt": r.created_at,
+        "groupId": r.group_id,
+        "groupName": r.group.group_name if r.group else None,
+        **_sg_path(r.sub_group, "bs"),
         "projects": _bank_cash_projects(r),
     } for r in records]
 
@@ -1764,6 +1770,9 @@ def get_bank_cash_by_id(record_id):
             "branchManagerContact": r.branch_manager_contact,
             "branchManagerMailId": r.branch_manager_email,
             "status": r.status,
+            "groupId": r.group_id,
+            "groupName": r.group.group_name if r.group else None,
+            **_sg_path(r.sub_group, "bs"),
             "projects": _bank_cash_projects(r),
         }],
         200
@@ -1787,6 +1796,10 @@ def update_bank_cash(record_id, data):
     r.branch_manager_name    = data.get("branchManagerName", r.branch_manager_name)
     r.branch_manager_contact = data.get("branchManagerContact", r.branch_manager_contact)
     r.branch_manager_email   = data.get("branchManagerMailId", r.branch_manager_email)
+    if "groupId" in data:
+        r.group_id = data.get("groupId") or None
+    if "subGroupId" in data:
+        r.sub_group_id = data.get("subGroupId") or None
 
     if "projectIds" in data:
         _set_project_links(r, data["projectIds"])

@@ -104,24 +104,30 @@ def _name_taken(group_id, parent_id, name, exclude_id=None):
     return db.session.query(q.exists()).scalar()
 
 
-def sub_group_path_fields(node):
-    """Used by CC code responses."""
+def sub_group_path_for(node, prefix="cc"):
+    """Generic sub-group path serializer. prefix e.g. 'cc', 'bs', 'pl'."""
+    p = prefix
     if node is None:
         return {
-            "ccSubGroupId": None, "ccSubGroupName": None, "ccSubGroupCode": None,
-            "ccSubGroupPath": None, "ccSubGroupLevels": [],
+            f"{p}SubGroupId": None, f"{p}SubGroupName": None, f"{p}SubGroupCode": None,
+            f"{p}SubGroupPath": None, f"{p}SubGroupLevels": [],
         }
     path = node.path()
     return {
-        "ccSubGroupId": node.id,
-        "ccSubGroupName": node.sub_group_name,
-        "ccSubGroupCode": node.fixed_code,
-        "ccSubGroupPath": " > ".join(n.sub_group_name for n in path),
-        "ccSubGroupLevels": [
+        f"{p}SubGroupId": node.id,
+        f"{p}SubGroupName": node.sub_group_name,
+        f"{p}SubGroupCode": node.fixed_code,
+        f"{p}SubGroupPath": " > ".join(n.sub_group_name for n in path),
+        f"{p}SubGroupLevels": [
             {"subGroupId": n.id, "subGroupName": n.sub_group_name, "level": n.level, "levelLabel": level_label(n.level)}
             for n in path
         ],
     }
+
+
+def sub_group_path_fields(node):
+    """Used by CC code responses (cc prefix)."""
+    return sub_group_path_for(node, "cc")
 
 
 def row(sub):

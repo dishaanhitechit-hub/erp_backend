@@ -33,12 +33,18 @@ class BankCash(db.Model):
     branch_manager_contact = db.Column(db.String(20), nullable=True)
     branch_manager_email   = db.Column(db.String(200), nullable=True)
 
+    # Balance Sheet classification (same pattern as CCCode)
+    group_id     = db.Column(db.Integer, db.ForeignKey("group_master.id"), nullable=True)
+    sub_group_id = db.Column(db.Integer, db.ForeignKey("sub_group_master.id"), nullable=True)
+
     status     = db.Column(db.String(20), default="Active")
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    creator  = db.relationship("User", foreign_keys=[created_by])
-    projects = db.relationship("BankCashProject", backref="bank_cash",
+    creator   = db.relationship("User", foreign_keys=[created_by])
+    group     = db.relationship("GroupMaster", foreign_keys=[group_id], lazy=True)
+    sub_group = db.relationship("SubGroupMaster", foreign_keys=[sub_group_id], lazy=True)
+    projects  = db.relationship("BankCashProject", backref="bank_cash",
                                cascade="all, delete-orphan", lazy="joined",
                                order_by="BankCashProject.id")
