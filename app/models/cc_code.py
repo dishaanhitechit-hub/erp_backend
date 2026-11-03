@@ -57,6 +57,7 @@ class CCCode(db.Model):
 
     group = db.relationship(
         "GroupMaster",
+        foreign_keys=[group_id],
         backref="cc_codes",
         lazy=True
     )
@@ -69,6 +70,7 @@ class CCCode(db.Model):
 
     sub_group = db.relationship(
         "SubGroupMaster",
+        foreign_keys=[sub_group_id],
         backref="cc_codes",
         lazy=True
     )
@@ -82,6 +84,30 @@ class CCCode(db.Model):
     # False → Ledger Head (WILL be used for ledger connection)
     # None  → P&L group or not yet set
     is_non_ledger = db.Column(db.Boolean, nullable=True)
+
+    # =====================================
+    # PROFIT & LOSS LINK
+    # Every CC code sits in a Balance Sheet group (group_id / sub_group_id).
+    # Some also fall under Profit & Loss: then pl_group_id (a P&L group) and
+    # optionally pl_sub_group_id (a sub group of that P&L group) are set.
+    # =====================================
+
+    pl_linked = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+
+    pl_group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("group_master.id"),
+        nullable=True
+    )
+
+    pl_sub_group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sub_group_master.id"),
+        nullable=True
+    )
+
+    pl_group = db.relationship("GroupMaster", foreign_keys=[pl_group_id], lazy=True)
+    pl_sub_group = db.relationship("SubGroupMaster", foreign_keys=[pl_sub_group_id], lazy=True)
 
     # =====================================
     # STATUS + AUDIT

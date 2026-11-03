@@ -603,6 +603,57 @@ def _sub_group_fields(cc):
     return sub_group_path_fields(cc.sub_group)
 
 
+PL_HEAD = "Profit & Loss"
+
+
+def _pl_fields(cc):
+    """Profit & Loss link of a CC code (all keys present, None when not linked)."""
+    sub = {k.replace("ccSubGroup", "plSubGroup"): v for k, v in sub_group_path_fields(cc.pl_sub_group).items()}
+    return {
+        "plLinked": bool(cc.pl_linked),
+        "plGroupId": cc.pl_group_id,
+        "plGroupName": cc.pl_group.group_name if cc.pl_group else None,
+        **sub,
+    }
+
+
+def _resolve_pl_link(data, current=None):
+    """
+    Read plLinked / plGroupId / plSubGroupId from the request.
+    Returns ((linked, pl_group_id, pl_sub_group_id), error).
+    On update, missing keys keep the current values.
+    """
+    if current is not None and not any(k in data for k in ("plLinked", "plGroupId", "plSubGroupId")):
+        return (bool(current.pl_linked), current.pl_group_id, current.pl_sub_group_id), None
+
+    linked = bool(data.get("plLinked"))
+    if not linked:
+        return (False, None, None), None
+
+    pl_group_id = data.get("plGroupId")
+    if not pl_group_id:
+        return None, "Select the Profit & Loss group"
+    pl_group = GroupMaster.query.get(pl_group_id)
+    if not pl_group:
+        return None, "Profit & Loss group not found"
+    if pl_group.head_under != PL_HEAD:
+        return None, f"'{pl_group.group_name}' is not a Profit & Loss group"
+
+    sub, err = _check_sub_group(data.get("plSubGroupId"), pl_group.id)
+    if err:
+        return None, "Profit & Loss sub group does not belong to the selected Profit & Loss group" if "belong" in err else err
+    return (True, pl_group.id, sub.id if sub else None), None
+
+
+def _main_group_error(group):
+    """Every CC code sits in a Balance Sheet group."""
+    if group is None:
+        return "Group not found"
+    if group.head_under == PL_HEAD:
+        return f"'{group.group_name}' is a Profit & Loss group. Choose a Balance Sheet group; link Profit & Loss separately."
+    return None
+
+
 def _cc_row(cc):
     """Shared response dict for a CC code record."""
     return {
@@ -613,9 +664,10 @@ def _cc_row(cc):
         "ccGroupName": cc.group.group_name if cc.group else None,
         "ccCategoryId": cc.category_code,
         "ccCategoryName": cc.category.category_name if cc.category else None,
-        "headUnder": cc.group.head_under,
+        "headUnder": cc.group.head_under if cc.group else None,
         "isNonLedger": cc.is_non_ledger,
         **_sub_group_fields(cc),
+        **_pl_fields(cc),
     }
 
 
@@ -632,11 +684,18 @@ def create_cc_code(data, createdBy=None):
         return res(err, [], 400)
 
     group = GroupMaster.query.get(data.get("groupId"))
-    head_under = group.head_under if group else None
+    err = _main_group_error(group)
+    if err:
+        return res(err, [], 400)
+    head_under = group.head_under
     is_non_ledger = None
     if head_under == "Balance Sheet":
         raw = data.get("isNonLedger")
         is_non_ledger = bool(raw) if raw is not None else False
+
+    pl, err = _resolve_pl_link(data)
+    if err:
+        return res(err, [], 400)
 
     ccCode = CCCode(
         cc_code=data.get("ccCode"),
@@ -646,6 +705,9 @@ def create_cc_code(data, createdBy=None):
         sub_group_id=sub.id if sub else None,
         # head_under=head_under,
         is_non_ledger=is_non_ledger,
+        pl_linked=pl[0],
+        pl_group_id=pl[1],
+        pl_sub_group_id=pl[2],
         created_by=createdBy
     )
     try:
@@ -673,6 +735,14 @@ def get_all_cc_codes(data):
     if subGroupId:
         query = query.filter(CCCode.sub_group_id == subGroupId)
 
+    # Profit & Loss link filters
+    if data.get("plGroupId"):
+        query = query.filter(CCCode.pl_group_id == data.get("plGroupId"))
+    if data.get("plSubGroupId"):
+        query = query.filter(CCCode.pl_sub_group_id == data.get("plSubGroupId"))
+    if str(data.get("plLinked", "")).lower() in ("true", "1", "yes"):
+        query = query.filter(CCCode.pl_linked.is_(True))
+
     # -------------------------
     # category filter (always)
     # -------------------------
@@ -690,7 +760,7 @@ def get_all_cc_codes(data):
 
         query = (
             query
-            .join(GroupMaster)
+            .join(GroupMaster, CCCode.group_id == GroupMaster.id)
             .filter(
                 GroupMaster.group_name=="Fixed Asset"
             )
@@ -704,7 +774,7 @@ def get_all_cc_codes(data):
         if not categoryCode:
             query = (
                 query
-                .join(GroupMaster)
+                .join(GroupMaster, CCCode.group_id == GroupMaster.id)
                 .filter(
                     GroupMaster.group_name.in_([
                         "Direct Expenses",
@@ -785,16 +855,26 @@ def update_cc_code(ccId, data):
         return res(err, [], 400)
 
     group = GroupMaster.query.get(newGroupId)
-    new_head_under = group.head_under if group else cc.head_under
+    # only check a group that changes (old records may still sit in a P&L group)
+    if group is None or int(newGroupId) != int(cc.group_id):
+        err = _main_group_error(group)
+        if err:
+            return res(err, [], 400)
+    old_head_under = cc.group.head_under if cc.group else None
+    new_head_under = group.head_under if group else old_head_under
     new_is_non_ledger = cc.is_non_ledger
     if new_head_under == "Balance Sheet":
         if "isNonLedger" in data:
             raw = data.get("isNonLedger")
             new_is_non_ledger = bool(raw) if raw is not None else False
-        elif new_head_under != cc.head_under:
+        elif new_head_under != old_head_under:
             new_is_non_ledger = False
     else:
         new_is_non_ledger = None
+
+    pl, err = _resolve_pl_link(data, current=cc)
+    if err:
+        return res(err, [], 400)
 
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = newGroupId
@@ -803,6 +883,7 @@ def update_cc_code(ccId, data):
     cc.cc_code = newCcCode
     # cc.head_under = new_head_under
     cc.is_non_ledger = new_is_non_ledger
+    cc.pl_linked, cc.pl_group_id, cc.pl_sub_group_id = pl
     try:
         db.session.commit()
         return res("CC Code updated successfully", [_cc_row(cc)], 200)
