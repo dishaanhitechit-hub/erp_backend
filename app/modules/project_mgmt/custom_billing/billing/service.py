@@ -38,11 +38,12 @@ def _module_for(mode):
 def _upload_billing_attachment(file, billing_no):
     if not file or not file.filename:
         return None
+    import time as _time
     return upload_file_to_bunny(
         file=file,
         mainFolder="billing",
         subFolder=billing_no,
-        fileName="attachment",
+        fileName=f"attachment_{int(_time.time())}",
     )
 
 
@@ -830,6 +831,7 @@ def create_billing(req, user_id):
                 "billingUuid":  bill.billing_uuid,
                 "mode":         bill.mode,
                 "claimBillId":  claim_bill.id,
+                "attachment":   bill.attachment,
             }, 201)
 
         # ── CLAIM BILL ────────────────────────────────────────────
@@ -901,6 +903,7 @@ def create_billing(req, user_id):
             "billingNo":   bill.billing_no,
             "billingUuid": bill.billing_uuid,
             "mode":        bill.mode,
+            "attachment":  bill.attachment,
         }, 201)
 
     except ValueError as e:
@@ -1037,6 +1040,8 @@ def edit_billing(bill_id, req, user_id):
 
         new_file = req.files.get("attachment")
         if new_file and new_file.filename:
+            if bill.attachment:
+                delete_file_from_storage(bill.attachment)
             bill.attachment = _upload_billing_attachment(new_file, bill.billing_no or bill.erp_no)
         elif req.form.get("clearAttachment") == "true":
             delete_file_from_storage(bill.attachment)
@@ -1084,9 +1089,10 @@ def edit_billing(bill_id, req, user_id):
         db.session.commit()
 
         return res("Billing record updated", {
-            "id":        bill.id,
-            "erpNo":     bill.erp_no,
-            "billingNo": bill.billing_no,
+            "id":         bill.id,
+            "erpNo":      bill.erp_no,
+            "billingNo":  bill.billing_no,
+            "attachment": bill.attachment,
         }, 200)
 
     except ValueError as e:

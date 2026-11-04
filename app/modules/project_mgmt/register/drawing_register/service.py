@@ -311,7 +311,7 @@ def edit_drawing_register(dr_id, data, user_id, files=None):
 
         return res(
             "Drawing Register updated successfully",
-            {"drId": dr.id, "drNo": dr.dr_no},
+            {"drId": dr.id, "drNo": dr.dr_no, "attachment": dr.attachment},
             200
         )
 
