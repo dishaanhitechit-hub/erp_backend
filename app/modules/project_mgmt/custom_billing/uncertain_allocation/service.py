@@ -480,19 +480,23 @@ def get_certified_bill_items_for_ua(billing_id):
             cert_qty   = float(item.claim_qty or 0)
             cert_amt_f = float(item.amount    or 0)
             claim_qty  = claim_qty_map.get(("item", item.item_code), cert_qty)
+            rate       = float(item.rate      or 0)
+            claim_amt  = round(claim_qty * rate, 2)
             result.append({
-                "billingItemId": item.id,
-                "itemType":      "item",
-                "boqSlNo":       item.sl_no,
-                "itemCode":      item.item_code,
-                "itemName":      item.item_name,
-                "itemNameDesc":  item.item_name_desc,
-                "unit":          item.unit,
-                "orderQty":      float(item.order_qty or 0),
-                "claimQty":      claim_qty,
-                "certifiedQty":  round(cert_qty, 4),
-                "unitRate":      float(item.rate      or 0),
+                "billingItemId":   item.id,
+                "itemType":        "item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        float(item.order_qty or 0),
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        rate,
+                "claimAmount":     claim_amt,
                 "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
             })
 
         boq_items = BillingBoqItem.query.filter_by(billing_id=billing_id).order_by(BillingBoqItem.sl_no).all()
@@ -500,19 +504,23 @@ def get_certified_bill_items_for_ua(billing_id):
             cert_qty   = float(item.claim_qty or 0)
             cert_amt_f = float(item.amount    or 0)
             claim_qty  = claim_qty_map.get(("boq_item", item.item_code), cert_qty)
+            rate       = float(item.rate      or 0)
+            claim_amt  = round(claim_qty * rate, 2)
             result.append({
-                "billingItemId": item.id,
-                "itemType":      "boq_item",
-                "boqSlNo":       item.sl_no,
-                "itemCode":      item.item_code,
-                "itemName":      item.item_name,
-                "itemNameDesc":  item.item_name_desc,
-                "unit":          item.unit,
-                "orderQty":      float(item.order_qty or 0),
-                "claimQty":      claim_qty,
-                "certifiedQty":  round(cert_qty, 4),
-                "unitRate":      float(item.rate      or 0),
+                "billingItemId":   item.id,
+                "itemType":        "boq_item",
+                "boqSlNo":         item.sl_no,
+                "itemCode":        item.item_code,
+                "itemName":        item.item_name,
+                "itemNameDesc":    item.item_name_desc,
+                "unit":            item.unit,
+                "orderQty":        float(item.order_qty or 0),
+                "claimQty":        claim_qty,
+                "certifiedQty":    round(cert_qty, 4),
+                "unitRate":        rate,
+                "claimAmount":     claim_amt,
                 "certifiedAmount": cert_amt_f,
+                "difference":      round(claim_amt - cert_amt_f, 2),
             })
 
         return res("Certified bill items fetched", {
