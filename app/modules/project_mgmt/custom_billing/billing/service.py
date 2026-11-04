@@ -1035,15 +1035,6 @@ def edit_billing(bill_id, req, user_id):
         if req.form.get("billingNo") and bill.mode == "sale_claim_bill":
             bill.billing_no = req.form.get("billingNo").strip()
 
-        if bill.mode == "sale_certified_bill" and req.form.get("claimBillId"):
-            new_claim_id = int(req.form.get("claimBillId"))
-            if new_claim_id != bill.claim_bill_id:
-                new_cb = BillingMaster.query.get(new_claim_id)
-                if not new_cb:
-                    return res("Claim bill not found", [], 400)
-                bill.claim_bill_id = new_claim_id
-                bill.billing_no    = new_cb.billing_no
-
         new_file = req.files.get("attachment")
         if new_file and new_file.filename:
             bill.attachment = _upload_billing_attachment(new_file, bill.billing_no or bill.erp_no)
@@ -1093,10 +1084,9 @@ def edit_billing(bill_id, req, user_id):
         db.session.commit()
 
         return res("Billing record updated", {
-            "id":          bill.id,
-            "erpNo":       bill.erp_no,
-            "billingNo":   bill.billing_no,
-            "claimBillId": bill.claim_bill_id,
+            "id":        bill.id,
+            "erpNo":     bill.erp_no,
+            "billingNo": bill.billing_no,
         }, 200)
 
     except ValueError as e:
