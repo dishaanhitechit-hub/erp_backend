@@ -897,8 +897,18 @@ def delete_cc_code(ccId):
     if not cc:
         return res("CC Code not found", [], 404)
 
-    db.session.delete(cc)
-    db.session.commit()
+    # deletes only this CC code row (no cascade)
+    try:
+        db.session.delete(cc)
+        db.session.commit()
+    except Exception:
+        # the database refuses when other records still point to this CC code
+        db.session.rollback()
+        return res(
+            "This CC code is still used by other records (items, assets, bills or entries), so the database did not delete it.",
+            [],
+            409,
+        )
 
     return res("CC Code deleted successfully", [], 200)
 
