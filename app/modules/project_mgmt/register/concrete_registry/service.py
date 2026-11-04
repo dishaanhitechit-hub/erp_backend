@@ -206,13 +206,15 @@ def update_registry(registry_id, request, user_id=None):
 
         attach_file = file.get("attachBatchFile")
         if attach_file:
-            batch_file = upload_file_to_bunny(
+            if registry.attach_batch_file:
+                delete_file_from_storage(registry.attach_batch_file)
+            import time as _time
+            registry.attach_batch_file = upload_file_to_bunny(
                 file=attach_file,
                 mainFolder="concrete_register",
                 subFolder=registry.reference_order_no,
-                fileName="attach_file"
+                fileName=f"attach_file_{int(_time.time())}"
             )
-            registry.attach_batch_file = batch_file
         elif data.get("clearAttachBatchFile") == "true":
             delete_file_from_storage(registry.attach_batch_file)
             registry.attach_batch_file = None

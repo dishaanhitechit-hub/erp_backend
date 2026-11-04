@@ -282,18 +282,20 @@ def edit_hindrance_register(hr_id, data, user_id, files=None):
                 hr.materials_amount
             )
 
-        if files:
-            att_file = files.get("attachment")
-            if att_file:
-                hr.attachment = upload_file_to_bunny(
-                    file=att_file,
-                    mainFolder="hindrance_register",
-                    subFolder=hr.hindrance_no,
-                    fileName="attachment"
-                )
-            elif data.get("clearAttachment") == "true":
+        att_file = files.get("attachment") if files else None
+        if att_file:
+            if hr.attachment:
                 delete_file_from_storage(hr.attachment)
-                hr.attachment = None
+            import time as _time
+            hr.attachment = upload_file_to_bunny(
+                file=att_file,
+                mainFolder="hindrance_register",
+                subFolder=hr.hindrance_no,
+                fileName=f"attachment_{int(_time.time())}"
+            )
+        elif data.get("clearAttachment") == "true":
+            delete_file_from_storage(hr.attachment)
+            hr.attachment = None
 
         hr.updated_by = user_id
         hr.updated_at = datetime.utcnow()

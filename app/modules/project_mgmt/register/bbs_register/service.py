@@ -268,18 +268,20 @@ def edit_bbs_register(bbs_id, data, user_id, files=None):
         if "receivedTime" in data:
             bbs.received_time = data["receivedTime"] or None
 
-        if files:
-            att_file = files.get("attachment")
-            if att_file:
-                bbs.attachment = upload_file_to_bunny(
-                    file=att_file,
-                    mainFolder="bbs_register",
-                    subFolder=bbs.bbs_no,
-                    fileName="attachment"
-                )
-            elif data.get("clearAttachment") == "true":
+        att_file = files.get("attachment") if files else None
+        if att_file:
+            if bbs.attachment:
                 delete_file_from_storage(bbs.attachment)
-                bbs.attachment = None
+            import time as _time
+            bbs.attachment = upload_file_to_bunny(
+                file=att_file,
+                mainFolder="bbs_register",
+                subFolder=bbs.bbs_no,
+                fileName=f"attachment_{int(_time.time())}"
+            )
+        elif data.get("clearAttachment") == "true":
+            delete_file_from_storage(bbs.attachment)
+            bbs.attachment = None
 
         bbs.updated_by = user_id
         bbs.updated_at = datetime.utcnow()

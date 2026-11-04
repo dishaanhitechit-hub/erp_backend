@@ -937,18 +937,20 @@ def edit_gin(gin_id, data, user_id, files=None):
         if data.get("handedOverTo"):
             gin.handed_over_to = data.get("handedOverTo")
 
-        if files:
-            doc_file = files.get("attachedDoc")
-            if doc_file:
-                gin.attached_doc = upload_file_to_bunny(
-                    file=doc_file,
-                    mainFolder="gin",
-                    subFolder=gin.gin_no,
-                    fileName="attached_doc"
-                )
-            elif data.get("clearAttachedDoc") == "true":
+        doc_file = files.get("attachedDoc") if files else None
+        if doc_file:
+            if gin.attached_doc:
                 delete_file_from_storage(gin.attached_doc)
-                gin.attached_doc = None
+            import time as _time
+            gin.attached_doc = upload_file_to_bunny(
+                file=doc_file,
+                mainFolder="gin",
+                subFolder=gin.gin_no,
+                fileName=f"attached_doc_{int(_time.time())}"
+            )
+        elif data.get("clearAttachedDoc") == "true":
+            delete_file_from_storage(gin.attached_doc)
+            gin.attached_doc = None
 
         # wipe old items & rebuild
         GinItem.query.filter_by(gin_id=gin.id).delete()

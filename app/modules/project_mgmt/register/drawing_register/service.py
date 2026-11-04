@@ -286,18 +286,20 @@ def edit_drawing_register(dr_id, data, user_id, files=None):
             dr.delivery_reference = data.get("deliveryReference")
 
         # File
-        if files:
-            att_file = files.get("attachment")
-            if att_file:
-                dr.attachment = upload_file_to_bunny(
-                    file=att_file,
-                    mainFolder="drawing_register",
-                    subFolder=dr.dr_no,
-                    fileName="attachment"
-                )
-            elif data.get("clearAttachment") == "true":
+        att_file = files.get("attachment") if files else None
+        if att_file:
+            if dr.attachment:
                 delete_file_from_storage(dr.attachment)
-                dr.attachment = None
+            import time as _time
+            dr.attachment = upload_file_to_bunny(
+                file=att_file,
+                mainFolder="drawing_register",
+                subFolder=dr.dr_no,
+                fileName=f"attachment_{int(_time.time())}"
+            )
+        elif data.get("clearAttachment") == "true":
+            delete_file_from_storage(dr.attachment)
+            dr.attachment = None
 
         if dr.workflow_status == "Reback":
             dr.correction_sent_at = None

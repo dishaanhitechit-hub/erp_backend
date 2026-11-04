@@ -2194,18 +2194,19 @@ def edit_order(order_id, data, user_id, files=None):
 
 
         # ── file update ───────────────────────────────────────
-        if files:
-            order_file = files.get("orderFile")
-            if order_file:
-                order.supporting_file = upload_file_to_bunny(
-                    file=order_file,
-                    mainFolder="order",
-                    subFolder=order.id,
-                    fileName="support"
-                )
-            elif data.get("clearOrderFile") == "true":
+        order_file = files.get("orderFile") if files else None
+        if order_file:
+            if order.supporting_file:
                 delete_file_from_storage(order.supporting_file)
-                order.supporting_file = None
+            order.supporting_file = upload_file_to_bunny(
+                file=order_file,
+                mainFolder="order",
+                subFolder=order.id,
+                fileName=f"support_{int(time.time())}"
+            )
+        elif data.get("clearOrderFile") == "true":
+            delete_file_from_storage(order.supporting_file)
+            order.supporting_file = None
 
         # ── wipe old items & terms ────────────────────────────
         # Delete first so previous_qty query below excludes this order cleanly

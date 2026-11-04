@@ -528,18 +528,20 @@ def edit_brr(brr_id, data, user_id, files=None):
             brr.total_amount = basic + gst
 
         # ── file update ────────────────────────────────────────
-        if files:
-            doc_file = files.get("attachedDoc")
-            if doc_file:
-                brr.attached_doc = upload_file_to_bunny(
-                    file       = doc_file,
-                    mainFolder = "brr",
-                    subFolder  = brr.brr_no,
-                    fileName   = "attached_doc"
-                )
-            elif data.get("clearAttachedDoc") == "true":
+        doc_file = files.get("attachedDoc") if files else None
+        if doc_file:
+            if brr.attached_doc:
                 delete_file_from_storage(brr.attached_doc)
-                brr.attached_doc = None
+            import time as _time
+            brr.attached_doc = upload_file_to_bunny(
+                file       = doc_file,
+                mainFolder = "brr",
+                subFolder  = brr.brr_no,
+                fileName   = f"attached_doc_{int(_time.time())}"
+            )
+        elif data.get("clearAttachedDoc") == "true":
+            delete_file_from_storage(brr.attached_doc)
+            brr.attached_doc = None
 
         if brr.workflow_status == "Reback":
             brr.correction_sent_at = None

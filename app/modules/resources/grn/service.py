@@ -1103,11 +1103,14 @@ def edit_grn(grn_id, data, user_id, files=None):
         elif files:
             doc_file = files.get("attachedDoc")
             if doc_file:
+                if grn.attached_doc:
+                    delete_file_from_storage(grn.attached_doc)
+                import time as _time
                 grn.attached_doc = upload_file_to_bunny(
                     file=doc_file,
                     mainFolder="grn",
                     subFolder=grn.grn_no,
-                    fileName="attached_doc"
+                    fileName=f"attached_doc_{int(_time.time())}"
                 )
 
         # ── wipe old items & rebuild ───────────────────────────

@@ -524,18 +524,20 @@ def edit_pw_order(order_id, data, user_id, files=None):
                 order.sub_codes = json.dumps(new_sub_codes)
 
         # ── file update ───────────────────────────────────────────
-        if files:
-            order_file = files.get("orderFile")
-            if order_file:
-                order.supporting_file = upload_file_to_bunny(
-                    file=order_file,
-                    mainFolder="pw_order",
-                    subFolder=order.id,
-                    fileName="support",
-                )
-            elif data.get("clearOrderFile") == "true":
+        order_file = files.get("orderFile") if files else None
+        if order_file:
+            if order.supporting_file:
                 delete_file_from_storage(order.supporting_file)
-                order.supporting_file = None
+            import time as _time
+            order.supporting_file = upload_file_to_bunny(
+                file=order_file,
+                mainFolder="pw_order",
+                subFolder=order.id,
+                fileName=f"support_{int(_time.time())}",
+            )
+        elif data.get("clearOrderFile") == "true":
+            delete_file_from_storage(order.supporting_file)
+            order.supporting_file = None
 
         # ── wipe old items & terms (flush so subquery excludes them)
         ProjectWorkOrderItem.query.filter_by(order_id=order.id).delete()

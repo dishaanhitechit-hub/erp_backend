@@ -943,18 +943,20 @@ def edit_srn(srn_id, data, user_id, files=None):
         if data.get("physicallyVerifiedBy"):
             srn.physically_verified_by = data.get("physicallyVerifiedBy")
 
-        if files:
-            doc_file = files.get("attachedDoc")
-            if doc_file:
-                srn.attached_doc = upload_file_to_bunny(
-                    file=doc_file,
-                    mainFolder="srn",
-                    subFolder=srn.srn_no,
-                    fileName="attached_doc"
-                )
-            elif data.get("clearAttachedDoc") == "true":
+        doc_file = files.get("attachedDoc") if files else None
+        if doc_file:
+            if srn.attached_doc:
                 delete_file_from_storage(srn.attached_doc)
-                srn.attached_doc = None
+            import time as _time
+            srn.attached_doc = upload_file_to_bunny(
+                file=doc_file,
+                mainFolder="srn",
+                subFolder=srn.srn_no,
+                fileName=f"attached_doc_{int(_time.time())}"
+            )
+        elif data.get("clearAttachedDoc") == "true":
+            delete_file_from_storage(srn.attached_doc)
+            srn.attached_doc = None
 
         # wipe old items & rebuild
         SrnItem.query.filter_by(srn_id=srn.id).delete()

@@ -686,35 +686,20 @@ def update_indent(indent_id, data, files=None, updated_by=None):
         # UPDATE FILE OPTIONAL
         # ==========================================
 
-        if files:
+        indent_file = files.get("indentFile") if files else None
 
-            indent_file = files.get(
-                "indentFile"
-            )
-
-            if indent_file:
-                indent.supporting_file = (
-
-                    upload_file_to_bunny(
-
-                        file=
-                        indent_file,
-
-                        mainFolder=
-                        "indent",
-
-                        subFolder=
-                        indent.indent_no,
-
-                        fileName=
-                        "support"
-
-                    )
-
-                )
-            elif data.get("clearIndentFile") == "true":
+        if indent_file:
+            if indent.supporting_file:
                 delete_file_from_storage(indent.supporting_file)
-                indent.supporting_file = None
+            indent.supporting_file = upload_file_to_bunny(
+                file=indent_file,
+                mainFolder="indent",
+                subFolder=indent.indent_no,
+                fileName=f"support_{int(__import__('time').time())}",
+            )
+        elif data.get("clearIndentFile") == "true":
+            delete_file_from_storage(indent.supporting_file)
+            indent.supporting_file = None
         # ==========================================
         # UPDATE ITEMS ONLY IF SENT
         # ==========================================

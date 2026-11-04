@@ -432,18 +432,19 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
                     return res("Referenced budget must be Approved", [], 400)
             voucher.budget_id = budget_id
 
-        if files:
-            f = files.get("attachment")
-            if f:
-                voucher.attachment = upload_file_to_bunny(
-                    file=f,
-                    mainFolder="petty_cash",
-                    subFolder="docket_voucher",
-                    fileName=str(_uuid.uuid4()),
-                )
-            elif data.get("clearAttachment") == "true":
+        att_file = files.get("attachment") if files else None
+        if att_file:
+            if voucher.attachment:
                 delete_file_from_storage(voucher.attachment)
-                voucher.attachment = None
+            voucher.attachment = upload_file_to_bunny(
+                file=att_file,
+                mainFolder="petty_cash",
+                subFolder="docket_voucher",
+                fileName=str(_uuid.uuid4()),
+            )
+        elif data.get("clearAttachment") == "true":
+            delete_file_from_storage(voucher.attachment)
+            voucher.attachment = None
 
         PettyCashDocketVoucherDetail.query.filter_by(voucher_id=voucher.id).delete()
         db.session.flush()
