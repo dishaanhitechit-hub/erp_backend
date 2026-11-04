@@ -6,7 +6,7 @@ from datetime import datetime, date
 import uuid as _uuid
 import json
 
-from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst
+from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst, PurchaseBillSource
 from app.models.brrMaster import BrrMaster
 from app.models.brbMaster import BrbMaster, BrbItem
 from app.models.orderMaster import OrderMaster, OrderItem
@@ -116,6 +116,9 @@ def _build_detail_payload(bill):
     elif bill.pw_order:
         order_no = bill.pw_order.order_no
 
+    # Build source index map for items
+    source_id_to_index = {s.id: idx for idx, s in enumerate(bill.sources)}
+
     return {
         "id":                  bill.id,
         "purchaseBillNo":      bill.purchase_bill_no,
@@ -125,6 +128,7 @@ def _build_detail_payload(bill):
         "projectCode":         bill.project_code,
         "vendorId":            bill.vendor_id,
         "vendorName":          bill.vendor.ledger_name if bill.vendor else None,
+        # Legacy single-source fields (kept for backward compat)
         "orderType":           bill.order_type,
         "orderId":             bill.order_id,
         "pwOrderId":           bill.pw_order_id,
@@ -151,6 +155,21 @@ def _build_detail_payload(bill):
         "finalApprovedAt":     _fmt_date(bill.final_approved_at),
         "rejectedBy":          bill.rejector.username  if bill.rejector  else None,
         "rejectedAt":          _fmt_date(bill.rejected_at),
+        # Multi-source list (new)
+        "sources": [
+            {
+                "id":          s.id,
+                "orderId":     s.order_id,
+                "pwOrderId":   s.pw_order_id,
+                "orderType":   s.order_type,
+                "orderNo":     s.order_no,
+                "brrId":       s.brr_id,
+                "brrNo":       s.brr_no,
+                "brrDate":     _fmt_date(s.brr_date),
+                "basicAmount": float(s.basic_amount or 0),
+            }
+            for s in bill.sources
+        ],
         "items": [
             {
                 "id":          i.id,
@@ -160,6 +179,8 @@ def _build_detail_payload(bill):
                 "description": i.description,
                 "hsnSac":      i.hsn_sac,
                 "basicAmount": float(i.basic_amount or 0),
+                "sourceId":    i.source_id,
+                "sourceIndex": source_id_to_index.get(i.source_id),
             }
             for i in bill.items
         ],
@@ -448,6 +469,56 @@ def get_brr_items_grouped(data):
 # 4. CREATE
 # ══════════════════════════════════════════════════════════════════
 
+def _resolve_purchase_sources(data, project_code):
+    """
+    Normalise incoming payload to a list of purchase source dicts.
+    Supports old single-source (brrId) and new multi-source (sources[]).
+    Returns (sources_data, first_brr_or_None, error_response_or_None).
+    """
+    raw_sources = data.get("sources")
+    if raw_sources:
+        if not isinstance(raw_sources, list) or len(raw_sources) == 0:
+            return None, None, res("sources must be a non-empty list", [], 400)
+    else:
+        brr_id = data.get("brrId")
+        if not brr_id:
+            return None, None, res("sources (or brrId) required", [], 400)
+        raw_sources = [{
+            "brrId":     brr_id,
+            "orderId":   data.get("orderId"),
+            "orderType": data.get("orderType"),
+        }]
+
+    validated = []
+    first_brr = None
+    seen_brr_ids = set()
+
+    for idx, src in enumerate(raw_sources):
+        brr_id = src.get("brrId")
+        if not brr_id:
+            return None, None, res(f"sources[{idx}].brrId required", [], 400)
+        if int(brr_id) in seen_brr_ids:
+            return None, None, res(f"Duplicate brrId {brr_id} in sources", [], 400)
+        seen_brr_ids.add(int(brr_id))
+
+        brr = BrrMaster.query.filter_by(
+            id=int(brr_id),
+            project_code=project_code,
+        ).first()
+        if not brr:
+            return None, None, res(f"BRR {brr_id} not found", [], 404)
+
+        if first_brr is None:
+            first_brr = brr
+
+        validated.append({
+            "brr":          brr,
+            "basic_amount": Decimal(str(src.get("basicAmount") or 0)),
+        })
+
+    return validated, first_brr, None
+
+
 def create_purchase_bill(data, user_id):
     try:
         project_code = data.get("projectCode")
@@ -462,16 +533,11 @@ def create_purchase_bill(data, user_id):
         if not allowed:
             return res("You are not authorized to create purchase bills", [], 403)
 
-        brr_id = data.get("brrId")
-        if not brr_id:
-            return res("brrId required", [], 400)
+        sources_data, first_brr, err = _resolve_purchase_sources(data, project_code)
+        if err:
+            return err
 
-        brr = BrrMaster.query.filter_by(
-            id           = int(brr_id),
-            project_code = project_code,
-        ).first()
-        if not brr:
-            return res("BRR not found", [], 404)
+        vendor_id = data.get("vendorId") or first_brr.vendor_id
 
         items = data.get("items", [])
         if not items:
@@ -491,21 +557,22 @@ def create_purchase_bill(data, user_id):
         purchase_bill_no   = _generate_purchase_bill_no()
         purchase_bill_uuid = str(_uuid.uuid4())
 
+        # Legacy single-source snapshot from first BRR
         bill = PurchaseBillMaster(
             purchase_bill_no   = purchase_bill_no,
             purchase_bill_uuid = purchase_bill_uuid,
             mode               = mode,
             processing_date    = parse_date(data.get("processingDate"), "processingDate") or date.today(),
             project_code       = project_code,
-            vendor_id          = brr.vendor_id,
-            order_type         = brr.order_type,
-            order_id           = brr.order_id,
-            pw_order_id        = brr.pw_order_id,
-            brr_id             = brr.id,
-            brr_no             = brr.brr_no,
-            brr_date           = brr.brr_date,
-            vendor_bill_no     = brr.party_bill_no,
-            vendor_bill_date   = brr.party_date,
+            vendor_id          = vendor_id,
+            order_type         = first_brr.order_type,
+            order_id           = first_brr.order_id,
+            pw_order_id        = first_brr.pw_order_id,
+            brr_id             = first_brr.id,
+            brr_no             = first_brr.brr_no,
+            brr_date           = first_brr.brr_date,
+            vendor_bill_no     = data.get("vendorBillNo") or first_brr.party_bill_no,
+            vendor_bill_date   = parse_date(data.get("vendorBillDate"), "vendorBillDate") or first_brr.party_date,
             remarks            = data.get("remarks"),
             basic_amount         = basic_total,
             gst_amount           = gst_total,
@@ -520,9 +587,31 @@ def create_purchase_bill(data, user_id):
         db.session.add(bill)
         db.session.flush()
 
+        # Create source rows and build index→id map
+        source_index_to_id = {}
+        for idx, src in enumerate(sources_data):
+            brr = src["brr"]
+            source_row = PurchaseBillSource(
+                purchase_bill_id = bill.id,
+                order_id         = brr.order_id,
+                pw_order_id      = brr.pw_order_id,
+                order_type       = brr.order_type,
+                order_no         = brr.order.order_no if brr.order else (brr.pw_order.order_no if brr.pw_order else None),
+                brr_id           = brr.id,
+                brr_no           = brr.brr_no,
+                brr_date         = brr.brr_date,
+                basic_amount     = src["basic_amount"],
+            )
+            db.session.add(source_row)
+            db.session.flush()
+            source_index_to_id[idx] = source_row.id
+
         for idx, row in enumerate(items, start=1):
+            source_index = row.get("sourceIndex")
+            source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(PurchaseBillItem(
                 purchase_bill_id = bill.id,
+                source_id        = source_id,
                 sl_no            = row.get("slNo") or idx,
                 cc_code          = row.get("ccCode"),
                 cc_name          = row.get("ccName"),
@@ -669,7 +758,39 @@ def edit_purchase_bill(bill_id, data, user_id):
 
         PurchaseBillItem.query.filter_by(purchase_bill_id=bill.id).delete()
         PurchaseBillGst.query.filter_by(purchase_bill_id=bill.id).delete()
+        PurchaseBillSource.query.filter_by(purchase_bill_id=bill.id).delete()
         db.session.flush()
+
+        # Rebuild sources if provided
+        source_index_to_id = {}
+        if data.get("sources"):
+            sources_data, first_brr, err = _resolve_purchase_sources(data, bill.project_code)
+            if err:
+                db.session.rollback()
+                return err
+            # Update legacy snapshot fields from first BRR
+            bill.order_type   = first_brr.order_type
+            bill.order_id     = first_brr.order_id
+            bill.pw_order_id  = first_brr.pw_order_id
+            bill.brr_id       = first_brr.id
+            bill.brr_no       = first_brr.brr_no
+            bill.brr_date     = first_brr.brr_date
+            for idx, src in enumerate(sources_data):
+                brr = src["brr"]
+                source_row = PurchaseBillSource(
+                    purchase_bill_id = bill.id,
+                    order_id         = brr.order_id,
+                    pw_order_id      = brr.pw_order_id,
+                    order_type       = brr.order_type,
+                    order_no         = brr.order.order_no if brr.order else (brr.pw_order.order_no if brr.pw_order else None),
+                    brr_id           = brr.id,
+                    brr_no           = brr.brr_no,
+                    brr_date         = brr.brr_date,
+                    basic_amount     = src["basic_amount"],
+                )
+                db.session.add(source_row)
+                db.session.flush()
+                source_index_to_id[idx] = source_row.id
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
@@ -680,8 +801,11 @@ def edit_purchase_bill(bill_id, data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
+            source_index = row.get("sourceIndex")
+            source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(PurchaseBillItem(
                 purchase_bill_id = bill.id,
+                source_id        = source_id,
                 sl_no            = row.get("slNo") or idx,
                 cc_code          = row.get("ccCode"),
                 cc_name          = row.get("ccName"),

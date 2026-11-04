@@ -82,6 +82,7 @@ class SaleBillMaster(db.Model):
     og_so          = db.relationship("OgSaleOrderMaster",   backref="sale_bills")
     certified_bill = db.relationship("BillingMaster",       backref="sale_bills")
     bank_account   = db.relationship("BankCash", foreign_keys=[bank_ac_id])
+    sources        = db.relationship("SaleBillSource", backref="sale_bill", cascade="all,delete-orphan", order_by="SaleBillSource.id", lazy=True)
     items          = db.relationship("SaleBillItem", backref="sale_bill", cascade="all,delete-orphan", order_by="SaleBillItem.sl_no")
     gst_lines      = db.relationship("SaleBillGst",  backref="sale_bill", cascade="all,delete-orphan", order_by="SaleBillGst.id")
     creator        = db.relationship("User", foreign_keys=[created_by])
@@ -91,6 +92,25 @@ class SaleBillMaster(db.Model):
     rejector       = db.relationship("User", foreign_keys=[rejected_by])
 
 
+class SaleBillSource(db.Model):
+    """One row per (sale order, certified bill) pair that contributes to this bill."""
+
+    __tablename__ = "sale_bill_sources"
+
+    id                = db.Column(db.Integer, primary_key=True)
+    sale_bill_id      = db.Column(db.Integer, db.ForeignKey("sale_bill_master.id", ondelete="CASCADE"), nullable=False)
+    sale_order_id     = db.Column(db.Integer, db.ForeignKey("og_sale_order_master.id"), nullable=True)
+    sale_order_no     = db.Column(db.String(50),  nullable=True)   # snapshot
+    certified_bill_id = db.Column(db.Integer, db.ForeignKey("billing_master.id"), nullable=True)
+    certified_bill_no = db.Column(db.String(50),  nullable=True)   # snapshot
+    billing_date      = db.Column(db.Date,         nullable=True)   # snapshot
+    basic_amount      = db.Column(db.Numeric(14, 2), default=0)
+    created_at        = db.Column(db.DateTime, default=datetime.utcnow)
+
+    og_so          = db.relationship("OgSaleOrderMaster", lazy=True)
+    certified_bill = db.relationship("BillingMaster", lazy=True)
+
+
 class SaleBillItem(db.Model):
     """BASIC section — one row per CC Code group."""
 
@@ -98,6 +118,7 @@ class SaleBillItem(db.Model):
 
     id           = db.Column(db.Integer, primary_key=True)
     sale_bill_id = db.Column(db.Integer, db.ForeignKey("sale_bill_master.id"), nullable=False)
+    source_id    = db.Column(db.Integer, db.ForeignKey("sale_bill_sources.id", ondelete="SET NULL"), nullable=True)
 
     sl_no        = db.Column(db.Integer, nullable=False)
     cc_code      = db.Column(db.String(50),  nullable=True)

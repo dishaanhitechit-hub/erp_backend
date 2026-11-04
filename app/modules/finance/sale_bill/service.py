@@ -5,7 +5,7 @@ from app.extensions import db
 from datetime import datetime
 import uuid as _uuid
 
-from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst
+from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst, SaleBillSource
 from app.models.billingMaster import BillingMaster, BillingBoqItem
 from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.cc_code import CCCode
@@ -98,6 +98,9 @@ def _group_by_cc(billing_items):
 
 
 def _build_detail_payload(bill):
+    # Build source index map for items
+    source_id_to_index = {s.id: idx for idx, s in enumerate(bill.sources)}
+
     return {
         "id":                  bill.id,
         "saleBillNo":          bill.sale_bill_no,
@@ -106,6 +109,7 @@ def _build_detail_payload(bill):
         "invoiceDate":         _fmt_date(bill.invoice_date),
         "referenceNo":         bill.reference_no,
         "referenceDate":       _fmt_date(bill.reference_date),
+        # Legacy single-source fields (kept for backward compat)
         "saleOrderNo":         bill.sale_order_no,
         "saleOrderId":         bill.sale_order_id,
         "certifiedBillId":     bill.certified_bill_id,
@@ -137,6 +141,19 @@ def _build_detail_payload(bill):
         "finalApprovedAt":     _fmt_date(bill.final_approved_at),
         "rejectedBy":          bill.rejector.username  if bill.rejector  else None,
         "rejectedAt":          _fmt_date(bill.rejected_at),
+        # Multi-source list (new)
+        "sources": [
+            {
+                "id":               s.id,
+                "saleOrderId":      s.sale_order_id,
+                "saleOrderNo":      s.sale_order_no,
+                "certifiedBillId":  s.certified_bill_id,
+                "certifiedBillNo":  s.certified_bill_no,
+                "billingDate":      _fmt_date(s.billing_date),
+                "basicAmount":      float(s.basic_amount or 0),
+            }
+            for s in bill.sources
+        ],
         "items": [
             {
                 "id":          i.id,
@@ -146,6 +163,8 @@ def _build_detail_payload(bill):
                 "description": i.description,
                 "hsnSac":      i.hsn_sac,
                 "basicAmount": float(i.basic_amount or 0),
+                "sourceId":    i.source_id,
+                "sourceIndex": source_id_to_index.get(i.source_id),
             }
             for i in bill.items
         ],
@@ -294,6 +313,63 @@ def get_certified_bill_items_grouped(data):
 # 3. CREATE
 # ══════════════════════════════════════════════════════════════════
 
+def _resolve_sources(data, project_code):
+    """
+    Normalise the incoming payload to a list of source dicts.
+    Supports both old single-source (certifiedBillId) and new multi-source (sources[]).
+    Returns (sources_data, first_cert_bill_or_None, error_response_or_None).
+    """
+    raw_sources = data.get("sources")
+    if raw_sources:
+        if not isinstance(raw_sources, list) or len(raw_sources) == 0:
+            return None, None, res("sources must be a non-empty list", [], 400)
+    else:
+        # backward-compat: wrap legacy single fields
+        cert_id = data.get("certifiedBillId")
+        if not cert_id:
+            return None, None, res("sources (or certifiedBillId) required", [], 400)
+        raw_sources = [{
+            "certifiedBillId": cert_id,
+            "certifiedBillNo": data.get("certifiedBillNo"),
+            "saleOrderId":     data.get("saleOrderId"),
+            "saleOrderNo":     data.get("saleOrderNo"),
+        }]
+
+    validated = []
+    first_cert_bill = None
+    seen_cert_ids = set()
+
+    for idx, src in enumerate(raw_sources):
+        cert_id = src.get("certifiedBillId")
+        if not cert_id:
+            return None, None, res(f"sources[{idx}].certifiedBillId required", [], 400)
+        if int(cert_id) in seen_cert_ids:
+            return None, None, res(f"Duplicate certifiedBillId {cert_id} in sources", [], 400)
+        seen_cert_ids.add(int(cert_id))
+
+        cert_bill = BillingMaster.query.filter_by(
+            id=int(cert_id),
+            mode="sale_certified_bill",
+            workflow_status="Approved",
+        ).first()
+        if not cert_bill:
+            return None, None, res(f"Approved certified bill {cert_id} not found", [], 404)
+        if cert_bill.project_code != project_code:
+            return None, None, res(f"Certified bill {cert_id} does not belong to this project", [], 403)
+
+        if first_cert_bill is None:
+            first_cert_bill = cert_bill
+
+        validated.append({
+            "cert_bill":     cert_bill,
+            "sale_order_id": src.get("saleOrderId") or cert_bill.og_sale_order_id,
+            "sale_order_no": src.get("saleOrderNo") or cert_bill.og_sale_order_erp_no,
+            "basic_amount":  Decimal(str(src.get("basicAmount") or 0)),
+        })
+
+    return validated, first_cert_bill, None
+
+
 def create_sale_bill(data, user_id):
     try:
         project_code = data.get("projectCode")
@@ -308,29 +384,24 @@ def create_sale_bill(data, user_id):
         if not allowed:
             return res("You are not authorized to create sale bills", [], 403)
 
-        certified_bill_id = data.get("certifiedBillId")
-        if not certified_bill_id:
-            return res("certifiedBillId required", [], 400)
+        sources_data, first_cert_bill, err = _resolve_sources(data, project_code)
+        if err:
+            return err
 
-        cert_bill = BillingMaster.query.filter_by(
-            id             = int(certified_bill_id),
-            mode           = "sale_certified_bill",
-            workflow_status= "Approved",
-        ).first()
-        if not cert_bill:
-            return res("Approved certified bill not found", [], 404)
-        if cert_bill.project_code != project_code:
-            return res("Certified bill does not belong to this project", [], 403)
-
-        existing = SaleBillMaster.query.filter(
-            SaleBillMaster.certified_bill_id == cert_bill.id,
-            SaleBillMaster.workflow_status   != "Rejected",
-        ).first()
-        if existing:
-            return res(
-                f"A sale bill ({existing.sale_bill_no}) already exists for this certified bill",
-                [], 400,
-            )
+        # Check no existing active sale bill for any of the cert bills
+        for src in sources_data:
+            existing = SaleBillMaster.query.join(
+                SaleBillSource,
+                SaleBillSource.sale_bill_id == SaleBillMaster.id,
+            ).filter(
+                SaleBillSource.certified_bill_id == src["cert_bill"].id,
+                SaleBillMaster.workflow_status   != "Rejected",
+            ).first()
+            if existing:
+                return res(
+                    f"A sale bill ({existing.sale_bill_no}) already exists for certified bill {src['cert_bill'].billing_no or src['cert_bill'].erp_no}",
+                    [], 400,
+                )
 
         items = data.get("items", [])
         if not items:
@@ -349,8 +420,9 @@ def create_sale_bill(data, user_id):
 
         invoice_date_val = parse_date(data.get("invoiceDate"), "invoiceDate")
         sale_bill_no     = generate_sale_bill_no(project_code, invoice_date_val)
-        sale_bill_uuid = str(_uuid.uuid4())
+        sale_bill_uuid   = str(_uuid.uuid4())
 
+        # Legacy single-source snapshot from first source (backward compat)
         bill = SaleBillMaster(
             sale_bill_no       = sale_bill_no,
             sale_bill_uuid     = sale_bill_uuid,
@@ -358,10 +430,10 @@ def create_sale_bill(data, user_id):
             invoice_date       = invoice_date_val,
             reference_no       = data.get("referenceNo"),
             reference_date     = parse_date(data.get("referenceDate"), "referenceDate"),
-            sale_order_no      = cert_bill.og_sale_order_erp_no,
-            sale_order_id      = cert_bill.og_sale_order_id,
-            certified_bill_id  = cert_bill.id,
-            certified_bill_no  = cert_bill.billing_no or cert_bill.erp_no,
+            sale_order_no      = sources_data[0]["sale_order_no"],
+            sale_order_id      = sources_data[0]["sale_order_id"],
+            certified_bill_id  = sources_data[0]["cert_bill"].id,
+            certified_bill_no  = sources_data[0]["cert_bill"].billing_no or sources_data[0]["cert_bill"].erp_no,
             project_code       = project_code,
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),
@@ -384,9 +456,29 @@ def create_sale_bill(data, user_id):
         db.session.add(bill)
         db.session.flush()
 
+        # Create source rows and build index→id map
+        source_index_to_id = {}
+        for idx, src in enumerate(sources_data):
+            cert_bill = src["cert_bill"]
+            source_row = SaleBillSource(
+                sale_bill_id      = bill.id,
+                sale_order_id     = src["sale_order_id"],
+                sale_order_no     = src["sale_order_no"],
+                certified_bill_id = cert_bill.id,
+                certified_bill_no = cert_bill.billing_no or cert_bill.erp_no,
+                billing_date      = cert_bill.billing_date,
+                basic_amount      = src["basic_amount"],
+            )
+            db.session.add(source_row)
+            db.session.flush()
+            source_index_to_id[idx] = source_row.id
+
         for idx, row in enumerate(items, start=1):
+            source_index = row.get("sourceIndex")
+            source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(SaleBillItem(
                 sale_bill_id = bill.id,
+                source_id    = source_id,
                 sl_no        = row.get("slNo") or idx,
                 cc_code      = row.get("ccCode"),
                 cc_name      = row.get("ccName"),
@@ -552,10 +644,38 @@ def edit_sale_bill(bill_id, data, user_id):
         if data.get("declaration") is not None:
             bill.declaration = data.get("declaration")
 
-        # Rebuild items and GST
+        # Rebuild sources, items and GST
         SaleBillItem.query.filter_by(sale_bill_id=bill.id).delete()
         SaleBillGst.query.filter_by(sale_bill_id=bill.id).delete()
+        SaleBillSource.query.filter_by(sale_bill_id=bill.id).delete()
         db.session.flush()
+
+        # Rebuild sources if provided
+        source_index_to_id = {}
+        if data.get("sources"):
+            sources_data, first_cert_bill, err = _resolve_sources(data, bill.project_code)
+            if err:
+                db.session.rollback()
+                return err
+            # Update legacy snapshot fields from first source
+            bill.sale_order_no     = sources_data[0]["sale_order_no"]
+            bill.sale_order_id     = sources_data[0]["sale_order_id"]
+            bill.certified_bill_id = sources_data[0]["cert_bill"].id
+            bill.certified_bill_no = sources_data[0]["cert_bill"].billing_no or sources_data[0]["cert_bill"].erp_no
+            for idx, src in enumerate(sources_data):
+                cert_bill = src["cert_bill"]
+                source_row = SaleBillSource(
+                    sale_bill_id      = bill.id,
+                    sale_order_id     = src["sale_order_id"],
+                    sale_order_no     = src["sale_order_no"],
+                    certified_bill_id = cert_bill.id,
+                    certified_bill_no = cert_bill.billing_no or cert_bill.erp_no,
+                    billing_date      = cert_bill.billing_date,
+                    basic_amount      = src["basic_amount"],
+                )
+                db.session.add(source_row)
+                db.session.flush()
+                source_index_to_id[idx] = source_row.id
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
         gst_total   = sum(
@@ -566,8 +686,11 @@ def edit_sale_bill(bill_id, data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
+            source_index = row.get("sourceIndex")
+            source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(SaleBillItem(
                 sale_bill_id = bill.id,
+                source_id    = source_id,
                 sl_no        = row.get("slNo") or idx,
                 cc_code      = row.get("ccCode"),
                 cc_name      = row.get("ccName"),
