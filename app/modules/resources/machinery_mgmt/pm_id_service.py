@@ -4,6 +4,7 @@ from app.extensions import db
 from app.response import res
 from app.models.pmMaster import PMMaster
 from app.cloudinary_uploader import upload_file_to_bunny
+from app.utils.audit_utils import audit_fields as _audit
 
 
 def _generate_pm_uid():
@@ -44,8 +45,7 @@ def _serialize(p: PMMaster):
         "purchasedBillDate":    p.purchased_bill_date.isoformat() if p.purchased_bill_date else None,
         "purchasedBillFile":    p.purchased_bill_file,
         "status":             p.status,
-        "createdAt":          p.created_at.isoformat() if p.created_at else None,
-        "updatedAt":          p.updated_at.isoformat() if p.updated_at else None,
+        **_audit(p),
     }
 
 

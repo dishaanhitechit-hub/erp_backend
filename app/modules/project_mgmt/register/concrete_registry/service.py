@@ -8,6 +8,7 @@ from app.models.project import Project
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.concrete_registry import ConcreteRegistry
 from app.models.user import User
+from app.utils.audit_utils import audit_fields as _audit
 from app.modules.communication import whatsapp_events as wa
 from app.utils.date_utils import parse_date, parse_time
 from app.modules.work_flow import (
@@ -56,6 +57,7 @@ def _registry_dict(r):
         "status": r.status,
         "currentLevel": r.current_level,
         "locked": r.locked,
+        **_audit(r),
     }
 
 

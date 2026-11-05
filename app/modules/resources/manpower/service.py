@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 from app.cloudinary_uploader import upload_file_to_bunny
 from app.modules.resources.manpower.constants import LABOUR_CATEGORY_LIST
 from app.modules.work_flow import is_creator
+from app.utils.audit_utils import audit_fields as _audit
 
 MODULE_CODE = "labour_id"
 
@@ -77,9 +78,7 @@ def _serialize(w: ManpowerWorker):
         "esicFile": w.esic_file,
         "bankDetailsFile": w.bank_details_file,
         "status": w.status,
-        "createdBy": w.created_by,
-        "createdAt": w.created_at.isoformat() if w.created_at else None,
-        "updatedAt": w.updated_at.isoformat() if w.updated_at else None,
+        **_audit(w),
     }
 
 
