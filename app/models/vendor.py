@@ -6,6 +6,21 @@ from app.extensions import db
 from datetime import datetime
 import uuid as _uuid
 
+
+class VendorProject(db.Model):
+    __tablename__ = "vendor_project"
+    __table_args__ = (
+        db.UniqueConstraint("vendor_id", "project_id", name="uq_vendor_project"),
+    )
+
+    id         = db.Column(db.Integer, primary_key=True)
+    vendor_id  = db.Column(db.Integer, db.ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship("Project", foreign_keys=[project_id])
+
+
 class Vendor(db.Model):
     __tablename__ = "vendors"
 
@@ -196,6 +211,14 @@ class Vendor(db.Model):
         foreign_keys=[supplier_id],
         backref="primary_vendors",
         lazy=True
+    )
+
+    projects = db.relationship(
+        "VendorProject",
+        backref="vendor",
+        cascade="all, delete-orphan",
+        lazy="joined",
+        order_by="VendorProject.id",
     )
 
     # =====================================
