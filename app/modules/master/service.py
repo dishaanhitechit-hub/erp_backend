@@ -19,6 +19,7 @@ from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
 from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
 from app.modules.master.sub_group_service import sub_group_path_fields
+from app.utils.audit_utils import audit_fields as _audit
 
 
 
@@ -297,7 +298,7 @@ def get_vendor_by_id(ledgerId):
         "serviceDescription": vendor.service_description,
 
         "status": vendor.status,
-        "createdAt": vendor.created_at
+        **_audit(vendor),
     }]
 
     return res("ledger  fetched successfully", data, 200)
@@ -535,7 +536,8 @@ def get_item_by_id(itemId):
         "hsnSac": item.hsn_sac,
         "gstPercentage": item.gst_percentage,
         "itemCategoryName": item.category.category_name,
-        "itemDisplayCode": f"{item.cc_code.cc_code}{item.item_code}" if item.cc_code else None
+        "itemDisplayCode": f"{item.cc_code.cc_code}{item.item_code}" if item.cc_code else None,
+        **_audit(item),
     }]
 
     return res("Item fetched successfully", data, 200)
@@ -668,6 +670,7 @@ def _cc_row(cc):
         "isNonLedger": cc.is_non_ledger,
         **_sub_group_fields(cc),
         **_pl_fields(cc),
+        **_audit(cc),
     }
 
 
@@ -1210,7 +1213,8 @@ def get_asset_by_id(assetId):
         "assetDisplayCode": (
             f"{asset.cc_code.cc_code}{asset.asset_code}"
             if asset.cc_code else None
-        )
+        ),
+        **_audit(asset),
     }]
 
     return res("Asset fetched successfully", data, 200)
@@ -1405,7 +1409,8 @@ def get_unit_by_id(unitId):
             "categoryId": unit.category_code,
             "categoryName": unit.category.category_name,
 
-            "status": unit.status
+            "status": unit.status,
+            **_audit(unit),
         }],
         200
     )
@@ -1529,6 +1534,7 @@ def _serialize_term(term):
         "module": term.module,
         "subModule": term.sub_module,
         "termType": term.term_type,
+        **_audit(term),
         "termGroups": [
             {
                 "groupId": g.group_id,
@@ -1784,6 +1790,7 @@ def get_bank_cash_by_id(record_id):
             "groupName": r.group.group_name if r.group else None,
             **_sg_path(r.sub_group, "bs"),
             "projects": _bank_cash_projects(r),
+            **_audit(r),
         }],
         200
     )

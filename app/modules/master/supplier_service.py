@@ -7,6 +7,7 @@ from app.models.supplier import Supplier, SupplierLedgerMap, SupplierProjectMap
 from app.models.vendor import Vendor
 from app.models.project import Project
 from app.modules.work_flow import is_creator
+from app.utils.audit_utils import audit_fields as _audit
 
 _SUPPLIER_MODULE_CODES = [
     "contact_dairy_work_force",
@@ -134,7 +135,7 @@ def _supplier_dict(supplier):
         "linkedLedgers": ledgers,
         "linkedProjects": projects,
         "status": supplier.status,
-        "createdAt": supplier.created_at,
+        **_audit(supplier),
     }
 
 
