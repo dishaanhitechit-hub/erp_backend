@@ -217,7 +217,7 @@ class Vendor(db.Model):
         "VendorProject",
         backref="vendor",
         cascade="all, delete-orphan",
-        lazy="joined",
+        lazy="select",
         order_by="VendorProject.id",
     )
 

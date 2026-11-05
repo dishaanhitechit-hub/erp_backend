@@ -20,6 +20,7 @@ from app.modules.helper import get_category_by_head_under,get_cc_code_list
 from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
 from app.modules.master.sub_group_service import sub_group_path_fields
 from app.utils.audit_utils import audit_fields as _audit
+from sqlalchemy.orm import joinedload, noload
 
 
 
@@ -208,65 +209,48 @@ def create_vendor(request):
 
 
 def get_all_vendors(ledger_type=None):
-    q = Vendor.query
+    q = (
+        Vendor.query
+        .options(
+            joinedload(Vendor.vendor_category),
+            joinedload(Vendor.linked_supplier),
+            noload(Vendor.projects),
+        )
+    )
     if ledger_type == "debtor":
         q = q.filter(Vendor.is_debtor == True)
     elif ledger_type == "creditor":
         q = q.filter(Vendor.is_debtor.isnot(True))
     vendors = q.order_by(Vendor.id.desc()).all()
 
-    data = []
+    data = [
+        {
+            "ledgerId":    v.id,
+            "ledgerCode":  v.ledger_code,
+            "ledgerName":  v.ledger_name,
+            "isDebtor":    bool(v.is_debtor),
+            "categoryName": (v.vendor_category.category_name if v.vendor_category else None),
+            "whatsappNumber": v.whatsapp_number,
+            "supplierTypes":  v.supplier_types or [],
+            "supplierCode":   v.linked_supplier.supplier_code if v.linked_supplier else None,
+            "status":      v.status,
+        }
+        for v in vendors
+    ]
 
-    for vendor in vendors:
-        data.append({
-        "ledgerId": vendor.id,
-        "ledgerCode": vendor.ledger_code,
-        "ledgerName": vendor.ledger_name,
-        "isDebtor": bool(vendor.is_debtor),
-        "registeredAddress": vendor.registered_address,
-        "corporateAddress": vendor.corporate_address,
-
-        "categoryName": (
-            vendor.vendor_category.category_name
-            if vendor.vendor_category else None
-        ),
-        "categoryId": vendor.category_code,
-        "pan": vendor.pan,
-        "gstin": vendor.gstin,
-        "stateCode": vendor.state_code,
-        "stateName": vendor.state_name,
-
-        "primaryContactPerson": vendor.primary_contact_person,
-        "primaryContactNumber": vendor.primary_contact_number,
-        "designation": vendor.designation,
-        "whatsappNumber": vendor.whatsapp_number,
-
-        "bankAccountNumber": vendor.bank_account_number,
-        "bankName": vendor.bank_name,
-        "branchName": vendor.branch_name,
-        "ifscCode": vendor.ifsc_code,
-
-        "tradeLicenceFile": vendor.trade_licence_file,
-        "panFile": vendor.pan_file,
-        "gstnFile": vendor.gstn_file,
-        "bankDetailsFile": vendor.bank_details_file,
-
-        "email": vendor.email,
-        "supplierId": vendor.supplier_id,
-        "supplierCode": vendor.linked_supplier.supplier_code if vendor.linked_supplier else None,
-        "supplierTypes": vendor.supplier_types or [],
-        "natureOfService": vendor.nature_of_service or [],
-        "serviceDescription": vendor.service_description,
-
-        "status": vendor.status,
-        "createdAt": vendor.created_at
-        })
-
-    return res("ledger  list fetched successfully", data, 200)
+    return res("ledger list fetched successfully", data, 200)
 
 
 def get_vendor_by_id(ledgerId):
-    vendor = Vendor.query.get(ledgerId)
+    vendor = (
+        Vendor.query
+        .options(
+            joinedload(Vendor.vendor_category),
+            joinedload(Vendor.linked_supplier),
+            joinedload(Vendor.projects).joinedload(VendorProject.project),
+        )
+        .get(ledgerId)
+    )
 
     if not vendor:
         return res("ledger  not found", [], 404)
