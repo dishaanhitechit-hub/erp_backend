@@ -7,7 +7,7 @@ from flask import g
 # from pandas.io.pytables import Term
 
 from app.response import res
-from app.models.vendor import Vendor
+from app.models.vendor import Vendor, VendorProject
 from app.models.item import Item
 from app.models.asset import *
 from app.models.cc_code import *
@@ -168,6 +168,19 @@ def create_vendor(request):
     if not is_debtor:
         existing_supplier_id = data.get("supplierId")
         auto_create_or_link_supplier(vendor, int(existing_supplier_id) if existing_supplier_id else None)
+
+    # Link projects
+    project_ids = (
+        request.form.getlist("projectIds[]") or
+        request.form.getlist("projectIds") or
+        json.loads(data.get("projectIds", "[]") or "[]")
+    )
+    for pid in project_ids:
+        try:
+            db.session.add(VendorProject(vendor_id=vendor.id, project_id=int(pid)))
+        except (ValueError, TypeError):
+            pass
+
     db.session.commit()
 
     data = [{
@@ -298,6 +311,10 @@ def get_vendor_by_id(ledgerId):
         "serviceDescription": vendor.service_description,
 
         "status": vendor.status,
+        "projects": [
+            {"id": lnk.project.id, "projectCode": lnk.project.project_code, "projectName": lnk.project.project_name}
+            for lnk in vendor.projects
+        ],
         **_audit(vendor),
     }]
 
@@ -402,6 +419,21 @@ def update_vendor(vendorId, request):
     if not vendor.is_debtor:
         sync_vendor_to_suppliers(vendor)
         auto_create_or_link_supplier(vendor)
+
+    # Update project links if provided
+    if "projectIds[]" in data or "projectIds" in data:
+        project_ids = (
+            request.form.getlist("projectIds[]") or
+            request.form.getlist("projectIds") or
+            json.loads(data.get("projectIds", "[]") or "[]")
+        )
+        VendorProject.query.filter_by(vendor_id=vendor.id).delete()
+        for pid in project_ids:
+            try:
+                db.session.add(VendorProject(vendor_id=vendor.id, project_id=int(pid)))
+            except (ValueError, TypeError):
+                pass
+
     db.session.commit()
 
     return res(
