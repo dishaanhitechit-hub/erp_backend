@@ -6,6 +6,7 @@ from app.models.drawingRegister import DrawingRegister
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.models.user import User
+from app.utils.audit_utils import audit_fields as _audit
 from app.modules.communication import whatsapp_events as wa
 from app.utils.date_utils import parse_date
 from app.modules.work_flow import (
@@ -222,6 +223,7 @@ def get_drawing_register_details(dr_id):
             "workflowStatus": dr.workflow_status,
             "currentLevel": dr.current_level,
             "locked": dr.locked,
+            **_audit(dr),
         }
 
         return res("Drawing Register details fetched", data, 200)

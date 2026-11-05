@@ -4,6 +4,7 @@ from app.extensions import db
 from app.response import res
 from app.models.pmMaster import PMServiceHistory, PMMaster
 from app.cloudinary_uploader import upload_file_to_bunny
+from app.utils.audit_utils import audit_fields as _audit
 
 
 def _parse_date(val):
@@ -30,8 +31,7 @@ def _serialize(h: PMServiceHistory):
         "jobMonitoringBy": h.job_monitoring_by,
         "operatorName":    h.operator_name,
         "status":          h.status,
-        "createdAt":       h.created_at.isoformat() if h.created_at else None,
-        "updatedAt":       h.updated_at.isoformat() if h.updated_at else None,
+        **_audit(h),
     }
 
 

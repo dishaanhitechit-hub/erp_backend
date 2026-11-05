@@ -3,6 +3,7 @@ from datetime import datetime
 from app.extensions import db
 from app.response import res
 from app.models.pmMaster import PMServiceSchedule, PMMaster
+from app.utils.audit_utils import audit_fields as _audit
 
 
 def _parse_date(val):
@@ -27,8 +28,7 @@ def _serialize(s: PMServiceSchedule):
         "expectedExpenses":  float(s.expected_expenses) if s.expected_expenses else None,
         "responsiblePerson": s.responsible_person,
         "status":            s.status,
-        "createdAt":         s.created_at.isoformat() if s.created_at else None,
-        "updatedAt":         s.updated_at.isoformat() if s.updated_at else None,
+        **_audit(s),
     }
 
 

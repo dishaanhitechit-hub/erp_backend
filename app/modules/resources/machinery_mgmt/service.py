@@ -6,6 +6,7 @@ from app.models.machineryLogBook import MachineryLogBook, LogBookEntry
 from app.models.ORDER_projectwork import ProjectWorkOrderMaster
 from app.response import res
 from app.utils.date_utils import parse_date
+from app.utils.audit_utils import audit_fields as _audit
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -191,6 +192,7 @@ def get_log_book_details(log_book_id):
             "workflowStatus":         lb.workflow_status,
             "currentLevel":           lb.current_level,
             "locked":                 lb.locked,
+            **_audit(lb),
         }
 
         return res("Log Book details fetched", data, 200)
@@ -725,6 +727,7 @@ def get_log_entry_details(entry_id):
             "workflowStatus":      entry.workflow_status,
             "currentLevel":        entry.current_level,
             "locked":              entry.locked,
+            **_audit(entry),
         }
 
         return res("Log Entry details fetched", data, 200)
