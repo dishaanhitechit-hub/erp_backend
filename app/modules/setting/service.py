@@ -13,6 +13,7 @@ from app.models.team import ProjectTeam
 from app.models.project_role import ProjectUserRole
 from app.models.designation import Designation
 from app.models.project_designation_permission import *
+from app.utils.audit_utils import audit_fields as _audit
 from app.models.project_user_permission import *
 from app.models.permission_action import *
 from app.models.feature_page import *
@@ -931,7 +932,8 @@ def get_project_by_id(projectId):
         "originalStartDate": project.original_start_date.isoformat() if project.original_start_date else None,
         "extendedCompleteDate": project.extended_complete_date.isoformat() if project.extended_complete_date else None,
 
-        "status": project.status
+        "status": project.status,
+        **_audit(project),
     }]
 
     return res("Project fetched", data)
@@ -1025,8 +1027,8 @@ def get_user_by_id(userId):
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
         "password": "",
-        "signatureUrl": user.signature
-
+        "signatureUrl": user.signature,
+        **_audit(user),
     }]
 
     return res("User fetched", data,200)
