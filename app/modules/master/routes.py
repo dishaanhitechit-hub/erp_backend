@@ -521,5 +521,8 @@ def bank_cash_unlink_project(recordId):
 @master_bp.route("/ledger/dropdown", methods=["GET"])
 @login_required
 def vendor_dropdown():
-    return get_vendor_dropdown()
+    from flask import request as _req
+    ledger_type  = _req.args.get("type")
+    project_code = _req.args.get("projectCode")
+    return get_vendor_dropdown(ledger_type=ledger_type, project_code=project_code)
 

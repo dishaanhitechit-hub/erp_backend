@@ -142,6 +142,9 @@ def _build_detail_payload(og_so):
         "orderValidity":    _fmt_date(og_so.order_validity),
         "orderTitle":       og_so.order_title,
         "projectCode":      og_so.project_code,
+        "debtorId":         og_so.debtor_id,
+        "debtorName":       og_so.debtor.ledger_name if og_so.debtor else None,
+        "debtorCode":       og_so.debtor.ledger_code if og_so.debtor else None,
         "basicAmount":      float(og_so.basic_amount or 0),
         "gstAmount":        float(og_so.gst_amount   or 0),
         "totalAmount":      float(og_so.total_amount  or 0),
@@ -216,6 +219,7 @@ def create_og_sale_order(request, user_id):
             order_validity     = _parse_date(data.get("orderValidity")),
             order_title        = order_title,
             project_code       = project_code,
+            debtor_id          = data.get("debtorId") or None,
             attachment_1       = att_1,
             attachment_2       = att_2,
             attachment_3       = att_3,
@@ -295,6 +299,7 @@ def get_og_sale_order_list(data):
                 "gstAmount":       float(row.gst_amount   or 0),
                 "totalAmount":     float(row.total_amount  or 0),
                 "workflowStatus":  row.workflow_status,
+                "debtorName":      row.debtor.ledger_name if row.debtor else None,
                 "createdBy":       row.creator.username if row.creator else None,
                 "createdAt":       _fmt_date(row.created_at),
             }
@@ -364,6 +369,7 @@ def edit_og_sale_order(so_id, request, user_id):
             og_so.order_validity = _parse_date(data.get("orderValidity"))
         if data.get("orderTitle"):
             og_so.order_title = data.get("orderTitle").strip()
+        og_so.debtor_id = data.get("debtorId") or None
 
         # Upload new attachments or clear if explicitly removed
         f1 = request.files.get("attachment_1")

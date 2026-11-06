@@ -22,6 +22,12 @@ class OgSaleOrderMaster(db.Model):
         nullable=False
     )
 
+    debtor_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendors.id"),
+        nullable=True
+    )
+
     # Financials — computed from items + boq_items
     basic_amount = db.Column(db.Numeric(14, 2), default=0)
     gst_amount   = db.Column(db.Numeric(14, 2), default=0)
@@ -53,6 +59,7 @@ class OgSaleOrderMaster(db.Model):
 
     # Relationships
     project   = db.relationship("Project", backref="og_sale_orders")
+    debtor    = db.relationship("Vendor", foreign_keys=[debtor_id], lazy=True)
     items     = db.relationship(
         "OgSaleOrderItem",
         backref="og_sale_order",

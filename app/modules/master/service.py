@@ -1915,16 +1915,31 @@ def migrate_bank_cash_to_projects(bank_cash_ids, project_ids):
 
 # ── Vendor Dropdown ───────────────────────────────────────────────────────────
 
-def get_vendor_dropdown():
-    vendors = (
-        Vendor.query
-        .filter_by(status="Active")
-        .order_by(Vendor.ledger_code.asc())
-        .all()
-    )
+def get_vendor_dropdown(ledger_type=None, project_code=None):
+    """
+    ledger_type  : "debtor" | "creditor" | None (all)
+    project_code : when given, only vendors linked to that project are returned
+    """
+    q = Vendor.query.filter_by(status="Active")
+
+    if ledger_type == "debtor":
+        q = q.filter(Vendor.is_debtor == True)
+    elif ledger_type == "creditor":
+        q = q.filter(Vendor.is_debtor.isnot(True))
+
+    if project_code:
+        from app.models.project import Project
+        project = Project.query.filter_by(project_code=project_code).first()
+        if project:
+            q = q.join(VendorProject, VendorProject.vendor_id == Vendor.id) \
+                 .filter(VendorProject.project_id == project.id)
+        else:
+            return res("Vendor dropdown fetched", [], 200)
+
+    vendors = q.order_by(Vendor.ledger_code.asc()).all()
     data = [
         {
-            "id": v.id,
+            "id":         v.id,
             "ledgerCode": v.ledger_code,
             "ledgerName": v.ledger_name,
         }
