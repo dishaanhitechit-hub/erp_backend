@@ -217,9 +217,12 @@ def _build_detail_payload(bill):
             {
                 "id":               s.id,
                 "saleOrderId":      s.sale_order_id,
-                "saleOrderNo":      s.sale_order_no,
+                "saleOrderErpNo":   s.og_so.erp_no       if s.og_so else None,
+                "saleOrderNo":      s.og_so.order_no     if s.og_so else s.sale_order_no,
+                "debtorName":       s.og_so.debtor.ledger_name if (s.og_so and s.og_so.debtor) else None,
                 "certifiedBillId":  s.certified_bill_id,
                 "certifiedBillNo":  s.certified_bill_no,
+                "billingNo":        (s.certified_bill.billing_no or s.certified_bill.erp_no) if s.certified_bill else s.certified_bill_no,
                 "billingDate":      _fmt_date(s.billing_date),
                 "basicAmount":      float(s.basic_amount or 0),
             }
