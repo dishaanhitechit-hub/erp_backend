@@ -137,9 +137,13 @@ def _group_by_cc(billing_items):
     return items, gst_lines
 
 
+_INACTIVE_STATUSES = ("Draft", "Reback", "Rejected")
+
+
 def _get_cert_bill_billed_amounts(cert_bill_id):
     """
-    Return dict {billing_item_id: Decimal(billed_amount)} from active (non-Rejected) sale bills.
+    Return dict {billing_item_id: Decimal(billed_amount)} from active sale bills.
+    Draft, Reback and Rejected bills are excluded — their certified amounts are free again.
     """
     rows = (
         db.session.query(SaleBillItem.billing_item_id, func.coalesce(func.sum(SaleBillItem.basic_amount), 0))
@@ -147,7 +151,7 @@ def _get_cert_bill_billed_amounts(cert_bill_id):
         .join(SaleBillMaster, SaleBillMaster.id == SaleBillItem.sale_bill_id)
         .filter(
             SaleBillSource.certified_bill_id == cert_bill_id,
-            SaleBillMaster.workflow_status   != "Rejected",
+            SaleBillMaster.workflow_status.notin_(_INACTIVE_STATUSES),
         )
         .group_by(SaleBillItem.billing_item_id)
         .all()
@@ -163,7 +167,7 @@ def _get_cert_bill_total_billed(cert_bill_id):
         SaleBillMaster, SaleBillMaster.id == SaleBillSource.sale_bill_id
     ).filter(
         SaleBillSource.certified_bill_id == cert_bill_id,
-        SaleBillMaster.workflow_status   != "Rejected",
+        SaleBillMaster.workflow_status.notin_(_INACTIVE_STATUSES),
     ).scalar()
     return Decimal(str(total))
 
@@ -483,7 +487,7 @@ def _get_cert_bill_total_billed_excluding(cert_bill_id, exclude_sale_bill_id=Non
         SaleBillMaster, SaleBillMaster.id == SaleBillSource.sale_bill_id
     ).filter(
         SaleBillSource.certified_bill_id == cert_bill_id,
-        SaleBillMaster.workflow_status   != "Rejected",
+        SaleBillMaster.workflow_status.notin_(_INACTIVE_STATUSES),
     )
     if exclude_sale_bill_id:
         q = q.filter(SaleBillMaster.id != int(exclude_sale_bill_id))
