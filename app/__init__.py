@@ -268,6 +268,10 @@ def create_app():
     from .modules.hr.onboarding.routes import onboarding_bp
     app.register_blueprint(onboarding_bp, url_prefix="/hr/onboarding")
 
+    from .models import gang_tracker  # noqa — registers GangMember & GangFollowupLog with Alembic
+    from .modules.hr.gang_tracker.routes import gang_tracker_bp
+    app.register_blueprint(gang_tracker_bp, url_prefix="/hr/gang-tracker")
+
     from .modules.communication.chatting.routes import comm_bp
     app.register_blueprint(comm_bp, url_prefix="/comm")
 
