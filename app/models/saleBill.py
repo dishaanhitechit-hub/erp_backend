@@ -15,7 +15,6 @@ class SaleBillMaster(db.Model):
     mode         = db.Column(db.String(30), nullable=False)
     invoice_date = db.Column(db.Date, nullable=False)
 
-    reference_no   = db.Column(db.String(200), nullable=True)
     reference_date = db.Column(db.Date, nullable=True)
 
     # OG Sale Order reference

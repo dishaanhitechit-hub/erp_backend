@@ -178,7 +178,11 @@ def _build_detail_payload(bill):
         "saleBillUuid":        bill.sale_bill_uuid,
         "mode":                bill.mode,
         "invoiceDate":         _fmt_date(bill.invoice_date),
-        "referenceNo":         bill.reference_no,
+        "referenceNo":         ", ".join(
+            (s.certified_bill.billing_no or s.certified_bill.erp_no) if s.certified_bill else s.certified_bill_no
+            for s in bill.sources
+            if (s.certified_bill or s.certified_bill_no)
+        ) or "",
         "referenceDate":       _fmt_date(bill.reference_date),
         # Legacy single-source fields (kept for backward compat)
         "saleOrderNo":         bill.sale_order_no,
@@ -536,7 +540,6 @@ def create_sale_bill(data, user_id):
             sale_bill_uuid     = sale_bill_uuid,
             mode               = mode,
             invoice_date       = invoice_date_val,
-            reference_no       = data.get("referenceNo"),
             reference_date     = parse_date(data.get("referenceDate"), "referenceDate"),
             sale_order_no      = sources_data[0]["sale_order_no"],
             sale_order_id      = sources_data[0]["sale_order_id"],
@@ -733,8 +736,6 @@ def edit_sale_bill(bill_id, data, user_id):
             bill.mode = data.get("mode")
         if data.get("invoiceDate"):
             bill.invoice_date = parse_date(data.get("invoiceDate"), "invoiceDate")
-        if data.get("referenceNo") is not None:
-            bill.reference_no = data.get("referenceNo")
         if data.get("referenceDate") is not None:
             bill.reference_date = parse_date(data.get("referenceDate"), "referenceDate")
         if data.get("billToAddress") is not None:
