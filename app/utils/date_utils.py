@@ -43,6 +43,36 @@ def parse_date(value, field_name="date"):
     return parsed
 
 
+def parse_datetime(value, field_name="datetime"):
+    """Parse a date/datetime string from the frontend into a datetime object.
+
+    Accepts: None/empty → None; datetime object → as-is; strings in any of
+    these formats: YYYY-MM-DD HH:MM:SS, YYYY-MM-DD HH:MM, YYYY-MM-DDTHH:MM:SS,
+    YYYY-MM-DDTHH:MM, YYYY-MM-DD (treated as midnight).
+    Raises ValueError with a clear message on unrecognised input.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    raw = str(value).strip()
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    raise ValueError(
+        f"{field_name}: '{raw}' is not a recognised datetime — "
+        "expected YYYY-MM-DD or YYYY-MM-DD HH:MM"
+    )
+
+
 def parse_time(value, field_name="time"):
     """Parse and validate a time value before writing to the DB.
 

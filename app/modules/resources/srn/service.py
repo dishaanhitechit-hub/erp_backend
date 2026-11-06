@@ -15,7 +15,7 @@ from app.models.companies import Company
 from app.response import res
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 # from app.alias_helper import get_approval_module
-from app.utils.date_utils import parse_date
+from app.utils.date_utils import parse_date, parse_datetime as _parse_datetime
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -42,6 +42,7 @@ def _fmt_date(d):
     if isinstance(d, datetime):
         return d.strftime("%Y-%m-%d %H:%M")
     return d.strftime("%Y-%m-%d")
+
 
 
 def _pre_received_qty(pw_order_item_id):
@@ -302,7 +303,7 @@ def create_srn(data, user_id, files=None):
             party_bill_date       = parse_date(data.get("partyBillDate"), "partyBillDate"),
             deliver_vehicle_no    = data.get("deliverVehicleNo"),
             delivered_concern     = data.get("deliveredConcern"),
-            unloading_datetime    = parse_date(data.get("unloadingDatetime"), "unloadingDatetime"),
+            unloading_datetime    = _parse_datetime(data.get("unloadingDatetime")),
             physically_verified_by = data.get("physicallyVerifiedBy"),
             attached_doc          = attached_doc,
             workflow_status       = "Draft",
@@ -939,7 +940,7 @@ def edit_srn(srn_id, data, user_id, files=None):
         if data.get("deliveredConcern"):
             srn.delivered_concern = data.get("deliveredConcern")
         if data.get("unloadingDatetime"):
-            srn.unloading_datetime = parse_date(data.get("unloadingDatetime"), "unloadingDatetime")
+            srn.unloading_datetime = _parse_datetime(data.get("unloadingDatetime"))
         if data.get("physicallyVerifiedBy"):
             srn.physically_verified_by = data.get("physicallyVerifiedBy")
 

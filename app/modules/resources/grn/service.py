@@ -28,7 +28,7 @@ from app.modules.work_flow import (
 import json
 from app.models.user import User
 from app.modules.communication import whatsapp_events as wa
-from app.utils.date_utils import parse_date
+from app.utils.date_utils import parse_date, parse_datetime as _parse_datetime
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -48,18 +48,6 @@ def _fmt_date_only(d):
     if d is None:
         return None
     return d.strftime("%Y-%m-%d")
-
-
-def _parse_datetime(s):
-    """Parse date/datetime string from frontend into a datetime object."""
-    if not s:
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return None
 
 
 def _pre_received_qty(order_item_id):
