@@ -60,8 +60,48 @@ def generate_sale_bill_no(project_code, invoice_date):
     return f"{prefix}{str(count + 1).zfill(3)}{project_code}"
 
 
+def _expand_items(billing_items, already_billed_map=None):
+    """
+    Return individual billing items with their GST rates.
+    already_billed_map: {billing_item_id: Decimal} of amounts already invoiced.
+    """
+    result = []
+    if already_billed_map is None:
+        already_billed_map = {}
+
+    for idx, bi in enumerate(billing_items):
+        original    = Decimal(str(bi.amount or 0))
+        gst_pct     = Decimal(str(bi.gst_percent or 0))
+        already     = already_billed_map.get(bi.id, Decimal("0"))
+        remaining   = max(original - already, Decimal("0"))
+
+        status = "UNBILLED"
+        if already >= original and original > 0:
+            status = "FULLY_BILLED"
+        elif already > 0:
+            status = "PARTIALLY_BILLED"
+
+        result.append({
+            "billingItemId": bi.id,
+            "slNo":          idx + 1,
+            "itemCode":      getattr(bi, "item_code", None) or "",
+            "itemName":      getattr(bi, "item_name", None) or "",
+            "description":   getattr(bi, "item_name_desc", None) or "",
+            "unit":          getattr(bi, "unit", None) or "",
+            "claimQty":      float(getattr(bi, "claim_qty", 0) or 0),
+            "rate":          float(getattr(bi, "rate", 0) or 0),
+            "hsnSac":        "",
+            "originalAmount": float(original),
+            "alreadyBilled":  float(already),
+            "remaining":      float(remaining),
+            "gstPercent":     float(gst_pct),
+            "billingStatus":  status,
+        })
+    return result
+
+
 def _group_by_cc(billing_items):
-    """Consolidate all certified bill items under the CRIN CC code."""
+    """Consolidate all certified bill items under the CRIN CC code (legacy helper)."""
     crin = CCCode.query.filter_by(cc_code="CRIN").first()
     cc_code = crin.cc_code if crin else "CRIN"
     cc_name = crin.cc_name if crin else "CRIN"
@@ -95,6 +135,37 @@ def _group_by_cc(billing_items):
         ]
 
     return items, gst_lines
+
+
+def _get_cert_bill_billed_amounts(cert_bill_id):
+    """
+    Return dict {billing_item_id: Decimal(billed_amount)} from active (non-Rejected) sale bills.
+    """
+    rows = (
+        db.session.query(SaleBillItem.billing_item_id, func.coalesce(func.sum(SaleBillItem.basic_amount), 0))
+        .join(SaleBillSource, SaleBillSource.id == SaleBillItem.source_id)
+        .join(SaleBillMaster, SaleBillMaster.id == SaleBillItem.sale_bill_id)
+        .filter(
+            SaleBillSource.certified_bill_id == cert_bill_id,
+            SaleBillMaster.workflow_status   != "Rejected",
+        )
+        .group_by(SaleBillItem.billing_item_id)
+        .all()
+    )
+    return {r[0]: Decimal(str(r[1])) for r in rows if r[0] is not None}
+
+
+def _get_cert_bill_total_billed(cert_bill_id):
+    """Sum of basic_amount billed from a cert bill across all active sale bills."""
+    total = db.session.query(
+        func.coalesce(func.sum(SaleBillSource.basic_amount), 0)
+    ).join(
+        SaleBillMaster, SaleBillMaster.id == SaleBillSource.sale_bill_id
+    ).filter(
+        SaleBillSource.certified_bill_id == cert_bill_id,
+        SaleBillMaster.workflow_status   != "Rejected",
+    ).scalar()
+    return Decimal(str(total))
 
 
 def _build_detail_payload(bill):
@@ -156,15 +227,17 @@ def _build_detail_payload(bill):
         ],
         "items": [
             {
-                "id":          i.id,
-                "slNo":        i.sl_no,
-                "ccCode":      i.cc_code,
-                "ccName":      i.cc_name,
-                "description": i.description,
-                "hsnSac":      i.hsn_sac,
-                "basicAmount": float(i.basic_amount or 0),
-                "sourceId":    i.source_id,
-                "sourceIndex": source_id_to_index.get(i.source_id),
+                "id":             i.id,
+                "slNo":           i.sl_no,
+                "ccCode":         i.cc_code,
+                "ccName":         i.cc_name,
+                "description":    i.description,
+                "hsnSac":         i.hsn_sac,
+                "basicAmount":    float(i.basic_amount or 0),
+                "gstPercent":     float(i.gst_percent  or 0),
+                "billingItemId":  i.billing_item_id,
+                "sourceId":       i.source_id,
+                "sourceIndex":    source_id_to_index.get(i.source_id),
             }
             for i in bill.items
         ],
@@ -189,72 +262,56 @@ def _build_detail_payload(bill):
 # ══════════════════════════════════════════════════════════════════
 
 def get_certified_bills_for_order(data):
-    """Return Approved certified bills that are still available for invoicing."""
+    """
+    Return Approved certified bills for a sale order with their partial billing balances.
+    Supports partial billing: a cert bill is shown even if previously partially invoiced.
+    Only fully-billed cert bills are excluded (remaining == 0).
+    """
     try:
-        erp_no = (data.get("erpDocNumber") or "").strip()
-        project_code     = (data.get("projectCode")   or "").strip()
+        erp_no       = (data.get("erpDocNumber") or "").strip()
+        project_code = (data.get("projectCode")  or "").strip()
 
         if not erp_no:
             return res("erpDocNumber required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
-        # Check if the order itself is fully invoiced (sum of non-Rejected sale bills >= order basic amount)
-        og_so = OgSaleOrderMaster.query.filter_by(
-            erp_no=erp_no,
-            project_code=project_code,
-        ).first()
-
-        if og_so:
-            total_invoiced = db.session.query(
-                func.coalesce(func.sum(SaleBillMaster.basic_amount), 0)
-            ).filter(
-                SaleBillMaster.sale_order_no    == erp_no,
-                SaleBillMaster.project_code     == project_code,
-                SaleBillMaster.workflow_status  != "Rejected",
-            ).scalar()
-
-            order_basic = Decimal(str(og_so.basic_amount or 0))
-            if Decimal(str(total_invoiced)) >= order_basic and order_basic > 0:
-                return res("Order is fully invoiced", [], 200)
-
-        # Collect certified bill ids that already have an active (non-Rejected) sale bill
-        billed_cert_ids = {
-            row[0]
-            for row in db.session.query(SaleBillMaster.certified_bill_id).filter(
-                SaleBillMaster.sale_order_no   == erp_no,
-                SaleBillMaster.project_code    == project_code,
-                SaleBillMaster.workflow_status != "Rejected",
-                SaleBillMaster.certified_bill_id.isnot(None),
-            ).all()
-        }
-
         bills = BillingMaster.query.filter(
             BillingMaster.og_sale_order_erp_no == erp_no,
-            BillingMaster.project_code     == project_code,
-            BillingMaster.mode             == "sale_certified_bill",
-            BillingMaster.workflow_status  == "Approved",
+            BillingMaster.project_code         == project_code,
+            BillingMaster.mode                 == "sale_certified_bill",
+            BillingMaster.workflow_status       == "Approved",
         ).order_by(BillingMaster.id.asc()).all()
 
-        # deduplicate by billing_no: keep only the latest (highest id) per billing_no
+        # Deduplicate by billing_no: keep latest per billing_no
         latest_by_billing_no = {}
         for b in bills:
-            if b.id in billed_cert_ids:
-                continue
             key = b.billing_no or b.erp_no or str(b.id)
             if key not in latest_by_billing_no or b.id > latest_by_billing_no[key].id:
                 latest_by_billing_no[key] = b
 
-        result = [
-            {
-                "id":            b.id,
-                "billingNo":     b.billing_no or b.erp_no,
-                "erpNo":         b.erp_no,
-                "billingDate":   _fmt_date(b.billing_date),
-                "thisBillClaim": float(b.this_bill_claim or 0),
-            }
-            for b in latest_by_billing_no.values()
-        ]
+        result = []
+        for b in latest_by_billing_no.values():
+            original      = Decimal(str(b.this_bill_claim or 0))
+            already_billed = _get_cert_bill_total_billed(b.id)
+            remaining      = max(original - already_billed, Decimal("0"))
+
+            status = "UNBILLED"
+            if already_billed >= original and original > 0:
+                status = "FULLY_BILLED"
+            elif already_billed > 0:
+                status = "PARTIALLY_BILLED"
+
+            result.append({
+                "id":              b.id,
+                "billingNo":       b.billing_no or b.erp_no,
+                "erpNo":           b.erp_no,
+                "billingDate":     _fmt_date(b.billing_date),
+                "thisBillClaim":   float(original),
+                "alreadyBilled":   float(already_billed),
+                "remaining":       float(remaining),
+                "billingStatus":   status,
+            })
 
         return res("Certified bills fetched", result, 200)
 
@@ -270,7 +327,10 @@ def get_certified_bills_for_order(data):
 # ══════════════════════════════════════════════════════════════════
 
 def get_certified_bill_items_grouped(data):
-    """Fetch items from an approved certified bill, grouped by CC Code."""
+    """
+    Fetch items from an approved certified bill with individual item detail and
+    partial billing balances. Each item shows originalAmount, alreadyBilled, remaining.
+    """
     try:
         certified_bill_id = data.get("certifiedBillId")
         project_code      = (data.get("projectCode") or "").strip()
@@ -281,9 +341,9 @@ def get_certified_bill_items_grouped(data):
             return res("projectCode required", [], 400)
 
         bill = BillingMaster.query.filter_by(
-            id             = int(certified_bill_id),
-            mode           = "sale_certified_bill",
-            workflow_status= "Approved",
+            id              = int(certified_bill_id),
+            mode            = "sale_certified_bill",
+            workflow_status = "Approved",
         ).first()
 
         if not bill:
@@ -291,15 +351,30 @@ def get_certified_bill_items_grouped(data):
         if bill.project_code != project_code:
             return res("Certified bill does not belong to this project", [], 403)
 
-        boq_items = BillingBoqItem.query.filter_by(billing_id=bill.id).all()
-        items, gst_lines = _group_by_cc(bill.items + boq_items)
+        already_billed_map = _get_cert_bill_billed_amounts(bill.id)
+        total_billed       = _get_cert_bill_total_billed(bill.id)
 
-        return res("Items grouped by CC Code", {
-            "certifiedBillId": bill.id,
+        all_items = list(bill.items) + list(BillingBoqItem.query.filter_by(billing_id=bill.id).all())
+        items = _expand_items(all_items, already_billed_map)
+
+        # Build aggregate GST lines for the right panel (grouped by rate)
+        total_basic = Decimal(str(bill.this_bill_claim or 0))
+        total_gst   = sum(Decimal(str(bi.gst_amount or 0)) for bi in all_items)
+        _, gst_lines = _group_by_cc(all_items)
+
+        original  = Decimal(str(bill.this_bill_claim or 0))
+        remaining = max(original - total_billed, Decimal("0"))
+
+        return res("Certified bill items fetched", {
+            "certifiedBillId":  bill.id,
             "certifiedErpDocNo": bill.erp_no,
-            "ogSaleOrderNo":   bill.og_sale_order_erp_no,
-            "items":           items,
-            "gstLines":        gst_lines,
+            "billingNo":        bill.billing_no or bill.erp_no,
+            "ogSaleOrderNo":    bill.og_sale_order_erp_no,
+            "thisBillClaim":    float(original),
+            "alreadyBilled":    float(total_billed),
+            "remaining":        float(remaining),
+            "items":            items,
+            "gstLines":         gst_lines,
         }, 200)
 
     except ValueError as e:
@@ -313,10 +388,11 @@ def get_certified_bill_items_grouped(data):
 # 3. CREATE
 # ══════════════════════════════════════════════════════════════════
 
-def _resolve_sources(data, project_code):
+def _resolve_sources(data, project_code, exclude_sale_bill_id=None):
     """
     Normalise the incoming payload to a list of source dicts.
     Supports both old single-source (certifiedBillId) and new multi-source (sources[]).
+    Validates partial billing: basicAmount for each cert bill must not exceed remaining balance.
     Returns (sources_data, first_cert_bill_or_None, error_response_or_None).
     """
     raw_sources = data.get("sources")
@@ -357,6 +433,25 @@ def _resolve_sources(data, project_code):
         if cert_bill.project_code != project_code:
             return None, None, res(f"Certified bill {cert_id} does not belong to this project", [], 403)
 
+        basic_amount = Decimal(str(src.get("basicAmount") or 0))
+
+        # Validate partial billing balance
+        # When editing, exclude the current sale bill's own sources from the already-billed sum
+        already_billed = _get_cert_bill_total_billed_excluding(cert_bill.id, exclude_sale_bill_id)
+        original       = Decimal(str(cert_bill.this_bill_claim or 0))
+        remaining      = max(original - already_billed, Decimal("0"))
+
+        if basic_amount <= 0:
+            return None, None, res(
+                f"sources[{idx}] basicAmount must be greater than zero", [], 400
+            )
+        if basic_amount > remaining + Decimal("0.01"):  # 0.01 tolerance for rounding
+            return None, None, res(
+                f"sources[{idx}] basicAmount ({basic_amount}) exceeds remaining balance "
+                f"({remaining}) for certified bill {cert_bill.billing_no or cert_bill.erp_no}",
+                [], 400,
+            )
+
         if first_cert_bill is None:
             first_cert_bill = cert_bill
 
@@ -364,10 +459,28 @@ def _resolve_sources(data, project_code):
             "cert_bill":     cert_bill,
             "sale_order_id": src.get("saleOrderId") or cert_bill.og_sale_order_id,
             "sale_order_no": src.get("saleOrderNo") or cert_bill.og_sale_order_erp_no,
-            "basic_amount":  Decimal(str(src.get("basicAmount") or 0)),
+            "basic_amount":  basic_amount,
         })
 
     return validated, first_cert_bill, None
+
+
+def _get_cert_bill_total_billed_excluding(cert_bill_id, exclude_sale_bill_id=None):
+    """
+    Sum of basicAmount billed from a cert bill across active sale bills,
+    optionally excluding a specific sale bill (for edits).
+    """
+    q = db.session.query(
+        func.coalesce(func.sum(SaleBillSource.basic_amount), 0)
+    ).join(
+        SaleBillMaster, SaleBillMaster.id == SaleBillSource.sale_bill_id
+    ).filter(
+        SaleBillSource.certified_bill_id == cert_bill_id,
+        SaleBillMaster.workflow_status   != "Rejected",
+    )
+    if exclude_sale_bill_id:
+        q = q.filter(SaleBillMaster.id != int(exclude_sale_bill_id))
+    return Decimal(str(q.scalar()))
 
 
 def create_sale_bill(data, user_id):
@@ -388,21 +501,6 @@ def create_sale_bill(data, user_id):
         if err:
             return err
 
-        # Check no existing active sale bill for any of the cert bills
-        for src in sources_data:
-            existing = SaleBillMaster.query.join(
-                SaleBillSource,
-                SaleBillSource.sale_bill_id == SaleBillMaster.id,
-            ).filter(
-                SaleBillSource.certified_bill_id == src["cert_bill"].id,
-                SaleBillMaster.workflow_status   != "Rejected",
-            ).first()
-            if existing:
-                return res(
-                    f"A sale bill ({existing.sale_bill_no}) already exists for certified bill {src['cert_bill'].billing_no or src['cert_bill'].erp_no}",
-                    [], 400,
-                )
-
         items = data.get("items", [])
         if not items:
             return res("At least one BASIC item required", [], 400)
@@ -410,10 +508,17 @@ def create_sale_bill(data, user_id):
         gst_lines = data.get("gstLines", [])
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
-        gst_total   = sum(
-            (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01"))
-            for g in gst_lines if g.get("isSelected")
+        # GST total: sum of per-item GST amounts (item.basicAmount × item.gstPercent / 100)
+        gst_total = sum(
+            (Decimal(str(i.get("basicAmount") or 0)) * Decimal(str(i.get("gstPercent") or 0)) / 100).quantize(Decimal("0.01"))
+            for i in items
         )
+        # Fall back to old gst_lines-based computation if no per-item rates
+        if gst_total == 0 and gst_lines:
+            gst_total = sum(
+                Decimal(str(g.get("gstAmount") or 0))
+                for g in gst_lines if g.get("isSelected")
+            )
         discount  = Decimal(str(data.get("discount")  or 0))
         round_off = Decimal(str(data.get("roundOff")  or 0))
         total     = basic_total + gst_total - discount + round_off
@@ -477,14 +582,16 @@ def create_sale_bill(data, user_id):
             source_index = row.get("sourceIndex")
             source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(SaleBillItem(
-                sale_bill_id = bill.id,
-                source_id    = source_id,
-                sl_no        = row.get("slNo") or idx,
-                cc_code      = row.get("ccCode"),
-                cc_name      = row.get("ccName"),
-                description  = row.get("description"),
-                hsn_sac      = row.get("hsnSac"),
-                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
+                sale_bill_id    = bill.id,
+                source_id       = source_id,
+                sl_no           = row.get("slNo") or idx,
+                cc_code         = row.get("ccCode"),
+                cc_name         = row.get("ccName"),
+                description     = row.get("description"),
+                hsn_sac         = row.get("hsnSac"),
+                basic_amount    = Decimal(str(row.get("basicAmount") or 0)),
+                gst_percent     = Decimal(str(row.get("gstPercent") or 0)),
+                billing_item_id = row.get("billingItemId"),
             ))
 
         for g in gst_lines:
@@ -495,7 +602,7 @@ def create_sale_bill(data, user_id):
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
                 percent      = Decimal(str(g.get("percent")   or 0)),
-                gst_amount   = (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
+                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal("0"),
                 is_selected  = bool(g.get("isSelected")),
             ))
 
@@ -653,7 +760,7 @@ def edit_sale_bill(bill_id, data, user_id):
         # Rebuild sources if provided
         source_index_to_id = {}
         if data.get("sources"):
-            sources_data, first_cert_bill, err = _resolve_sources(data, bill.project_code)
+            sources_data, first_cert_bill, err = _resolve_sources(data, bill.project_code, exclude_sale_bill_id=bill.id)
             if err:
                 db.session.rollback()
                 return err
@@ -678,10 +785,15 @@ def edit_sale_bill(bill_id, data, user_id):
                 source_index_to_id[idx] = source_row.id
 
         basic_total = sum(Decimal(str(i.get("basicAmount") or 0)) for i in items)
-        gst_total   = sum(
-            (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01"))
-            for g in gst_lines if g.get("isSelected")
+        gst_total = sum(
+            (Decimal(str(i.get("basicAmount") or 0)) * Decimal(str(i.get("gstPercent") or 0)) / 100).quantize(Decimal("0.01"))
+            for i in items
         )
+        if gst_total == 0 and gst_lines:
+            gst_total = sum(
+                Decimal(str(g.get("gstAmount") or 0))
+                for g in gst_lines if g.get("isSelected")
+            )
         discount  = Decimal(str(data.get("discount")  or 0))
         round_off = Decimal(str(data.get("roundOff")  or 0))
 
@@ -689,14 +801,16 @@ def edit_sale_bill(bill_id, data, user_id):
             source_index = row.get("sourceIndex")
             source_id = source_index_to_id.get(source_index) if source_index is not None else None
             db.session.add(SaleBillItem(
-                sale_bill_id = bill.id,
-                source_id    = source_id,
-                sl_no        = row.get("slNo") or idx,
-                cc_code      = row.get("ccCode"),
-                cc_name      = row.get("ccName"),
-                description  = row.get("description"),
-                hsn_sac      = row.get("hsnSac"),
-                basic_amount = Decimal(str(row.get("basicAmount") or 0)),
+                sale_bill_id    = bill.id,
+                source_id       = source_id,
+                sl_no           = row.get("slNo") or idx,
+                cc_code         = row.get("ccCode"),
+                cc_name         = row.get("ccName"),
+                description     = row.get("description"),
+                hsn_sac         = row.get("hsnSac"),
+                basic_amount    = Decimal(str(row.get("basicAmount") or 0)),
+                gst_percent     = Decimal(str(row.get("gstPercent") or 0)),
+                billing_item_id = row.get("billingItemId"),
             ))
 
         for g in gst_lines:
@@ -707,7 +821,7 @@ def edit_sale_bill(bill_id, data, user_id):
                 cc_name      = g.get("ccName"),
                 description  = g.get("description"),
                 percent      = Decimal(str(g.get("percent")   or 0)),
-                gst_amount   = (basic_total * Decimal(str(g.get("percent") or 0)) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
+                gst_amount   = Decimal(str(g.get("gstAmount") or 0)) if g.get("isSelected") else Decimal("0"),
                 is_selected  = bool(g.get("isSelected")),
             ))
 

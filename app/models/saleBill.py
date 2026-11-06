@@ -112,7 +112,7 @@ class SaleBillSource(db.Model):
 
 
 class SaleBillItem(db.Model):
-    """BASIC section — one row per CC Code group."""
+    """BASIC section — one row per billing item or CC Code group."""
 
     __tablename__ = "sale_bill_items"
 
@@ -120,12 +120,14 @@ class SaleBillItem(db.Model):
     sale_bill_id = db.Column(db.Integer, db.ForeignKey("sale_bill_master.id"), nullable=False)
     source_id    = db.Column(db.Integer, db.ForeignKey("sale_bill_sources.id", ondelete="SET NULL"), nullable=True)
 
-    sl_no        = db.Column(db.Integer, nullable=False)
-    cc_code      = db.Column(db.String(50),  nullable=True)
-    cc_name      = db.Column(db.String(200), nullable=True)
-    description  = db.Column(db.Text,        nullable=True)
-    hsn_sac      = db.Column(db.String(50),  nullable=True)
-    basic_amount = db.Column(db.Numeric(14, 2), default=0)
+    sl_no           = db.Column(db.Integer, nullable=False)
+    cc_code         = db.Column(db.String(50),  nullable=True)
+    cc_name         = db.Column(db.String(200), nullable=True)
+    description     = db.Column(db.Text,        nullable=True)
+    hsn_sac         = db.Column(db.String(50),  nullable=True)
+    basic_amount    = db.Column(db.Numeric(14, 2), default=0)
+    gst_percent     = db.Column(db.Numeric(5, 2),  default=0)   # per-item GST rate
+    billing_item_id = db.Column(db.Integer, nullable=True)       # FK to billing_items or billing_boq_items
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
