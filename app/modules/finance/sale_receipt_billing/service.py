@@ -118,12 +118,15 @@ def _build_srb_payload(srb):
         payment_ac_name = receipt.payment_mode if receipt else None
         payment_ac_code = receipt.payment_mode if receipt else None
 
+    debtor_name = srb.og_so.debtor.ledger_name if srb.og_so and srb.og_so.debtor else None
+
     return {
         "id":                   srb.id,
         "srbNo":                srb.srb_no,
         "srbDate":              _fmt_date(srb.srb_date),
         "srbUuid":              srb.srb_uuid,
         "receiptId":            srb.receipt_id,
+        "debtorName":           debtor_name,
         "erpDocNumber":        srb.erp_no,
         "ogSaleOrderId":        srb.og_sale_order_id,
         "saleOrderDate":        _fmt_date(srb.sale_order_date),
