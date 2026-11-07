@@ -381,6 +381,24 @@ def get_brr_details(brr_id):
             "locked":            brr.locked,
         }
 
+        # Attach the single BRB (non-Rejected preferred)
+        active_brb = (
+            BrbMaster.query
+            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status != "Rejected")
+            .order_by(BrbMaster.id.desc())
+            .first()
+        )
+        brb = active_brb or BrbMaster.query.filter_by(brr_id=brr.id).order_by(BrbMaster.id.desc()).first()
+        data["brb"] = {
+            "brbId":          brb.id,
+            "brbNo":          brb.brb_no,
+            "brbDate":        _fmt_date(brb.brb_date),
+            "workflowStatus": brb.workflow_status,
+            "basicAmount":    float(brb.basic_amount or 0),
+            "gstAmount":      float(brb.gst_amount   or 0),
+            "totalAmount":    float(brb.total_amount  or 0),
+        } if brb else None
+
         return res("BRR details fetched", data, 200)
 
     except ValueError as e:
