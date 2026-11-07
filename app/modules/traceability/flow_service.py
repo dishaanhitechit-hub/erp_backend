@@ -44,6 +44,10 @@ from app.models.brrMaster import BrrMaster
 from app.models.brbMaster import BrbMaster, BrbItem
 from app.models.purchaseBill import PurchaseBillMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
+from app.models.ogSaleOrder import OgSaleOrderMaster
+from app.models.saleBill import SaleBillMaster
+from app.models.saleReceipt import SaleReceiptMaster
+from app.models.saleReceiptBilling import SaleReceiptBillingMaster
 
 from app.modules.traceability.access import TraceAccess
 from app.modules.traceability.registry import (
@@ -192,6 +196,24 @@ class FlowGraph:
                     r.id for r in BillPaymentReceiptMaster.query.filter(
                         BillPaymentReceiptMaster.purchase_bill_id.in_(pbs)).all()})
 
+            # Sales lifecycle: OG Sale Order → Sale Bill + Sale Receipt Billing → Sale Receipt
+            og_sos = (docs.get("OG_SALE_ORDER") or set()) | nd["OG_SALE_ORDER"]
+            if og_sos:
+                nd["SALE_BILL"] |= self.add_docs("SALE_BILL", {
+                    r.id for r in SaleBillMaster.query.filter(
+                        SaleBillMaster.sale_order_id.in_(og_sos)).all()})
+                nd["SALE_RECEIPT_BILLING"] |= self.add_docs("SALE_RECEIPT_BILLING", {
+                    r.id for r in SaleReceiptBillingMaster.query.filter(
+                        SaleReceiptBillingMaster.og_sale_order_id.in_(og_sos)).all()})
+
+            srbs = (docs.get("SALE_RECEIPT_BILLING") or set()) | nd["SALE_RECEIPT_BILLING"]
+            if srbs:
+                nd["SALE_RECEIPT"] |= self.add_docs("SALE_RECEIPT", {
+                    self.docs["SALE_RECEIPT_BILLING"][i].receipt_id
+                    for i in srbs
+                    if i in self.docs["SALE_RECEIPT_BILLING"]
+                    and self.docs["SALE_RECEIPT_BILLING"][i].receipt_id})
+
             lines, docs = nl, nd
 
     # ── upward ──────────────────────────────────────────────────
@@ -237,6 +259,36 @@ class FlowGraph:
                     nd[dt] |= added
                     if expand_order_lines and added:
                         self.complete_docs(dt, added, nl, nd)
+
+            # Sales lifecycle (upward): traverse from child → OG Sale Order
+            sale_rcpts = docs.get("SALE_RECEIPT") or set()
+            if sale_rcpts:
+                srb_rows = SaleReceiptBillingMaster.query.filter(
+                    SaleReceiptBillingMaster.receipt_id.in_(sale_rcpts)).all()
+                nd["SALE_RECEIPT_BILLING"] |= self.add_docs(
+                    "SALE_RECEIPT_BILLING", {r.id for r in srb_rows})
+
+            sale_bills = docs.get("SALE_BILL") or set()
+            srb_up = (docs.get("SALE_RECEIPT_BILLING") or set()) | nd["SALE_RECEIPT_BILLING"]
+
+            og_so_ids = set()
+            if sale_bills:
+                og_so_ids |= {self.docs["SALE_BILL"][i].sale_order_id
+                              for i in sale_bills
+                              if i in self.docs["SALE_BILL"]
+                              and self.docs["SALE_BILL"][i].sale_order_id}
+            if srb_up:
+                og_so_ids |= {self.docs["SALE_RECEIPT_BILLING"][i].og_sale_order_id
+                              for i in srb_up
+                              if i in self.docs["SALE_RECEIPT_BILLING"]
+                              and self.docs["SALE_RECEIPT_BILLING"][i].og_sale_order_id}
+                nd["SALE_RECEIPT"] |= self.add_docs("SALE_RECEIPT", {
+                    self.docs["SALE_RECEIPT_BILLING"][i].receipt_id
+                    for i in srb_up
+                    if i in self.docs["SALE_RECEIPT_BILLING"]
+                    and self.docs["SALE_RECEIPT_BILLING"][i].receipt_id})
+            if og_so_ids:
+                nd["OG_SALE_ORDER"] |= self.add_docs("OG_SALE_ORDER", og_so_ids)
 
             lines, docs = nl, nd
 
@@ -390,7 +442,9 @@ def _vendors(graph):
     ids = set()
     for dt, rows in graph.docs.items():
         for r in rows.values():
-            v = getattr(r, "vendor_id", None) or getattr(r, "from_vendor_id", None)
+            v = (getattr(r, "vendor_id", None)
+                 or getattr(r, "from_vendor_id", None)
+                 or getattr(r, "debtor_id", None))  # OgSaleOrderMaster.debtor_id is the client
             if v:
                 ids.add(v)
     if not ids:
@@ -399,7 +453,9 @@ def _vendors(graph):
 
 
 def _party(dt, row, vendors):
-    v = getattr(row, "vendor_id", None) or getattr(row, "from_vendor_id", None)
+    v = (getattr(row, "vendor_id", None)
+         or getattr(row, "from_vendor_id", None)
+         or getattr(row, "debtor_id", None))
     if v:
         return vendors.get(v)
     if dt == "INDENT":
@@ -441,7 +497,7 @@ def _nodes(graph, access, start_doc, items):
                 **base, "restricted": False, "docId": did,
                 "docNo": getattr(row, meta["no"]),
                 "date": _date(getattr(row, meta["date"])),
-                "status": row.workflow_status,
+                "status": getattr(row, "workflow_status", None),
                 "projectCode": projects[0] if projects else None,
                 "projectCodes": projects,
                 "party": _party(dt, row, vendors),
@@ -678,6 +734,74 @@ def _financials(graph, visible):
     return {"brrs": brr_rows, "purchaseBills": pb_rows, "totals": totals}
 
 
+def _sales_financials(graph, visible):
+    """OG Sale Order level: amount invoiced vs received (Sales lifecycle)."""
+    og_so_ids = [i for i in graph.docs["OG_SALE_ORDER"] if _key("OG_SALE_ORDER", i) in visible]
+    if not og_so_ids:
+        return {"ogSaleOrders": [], "totals": {}}
+
+    invoiced = defaultdict(lambda: defaultdict(lambda: ZERO))
+    for og_id, status, total in (
+        db.session.query(SaleBillMaster.sale_order_id, SaleBillMaster.workflow_status,
+                         func.sum(SaleBillMaster.total_invoice_amount))
+        .filter(SaleBillMaster.sale_order_id.in_(og_so_ids))
+        .group_by(SaleBillMaster.sale_order_id, SaleBillMaster.workflow_status).all()
+    ):
+        if _live(status):
+            invoiced[og_id]["invoiced"] += _d(total)
+        if status == APPROVED:
+            invoiced[og_id]["invoicedApproved"] += _d(total)
+
+    received = defaultdict(lambda: defaultdict(lambda: ZERO))
+    for og_id, status, total in (
+        db.session.query(SaleReceiptBillingMaster.og_sale_order_id,
+                         SaleReceiptBillingMaster.workflow_status,
+                         func.sum(SaleReceiptBillingMaster.total_invoice_amount))
+        .filter(SaleReceiptBillingMaster.og_sale_order_id.in_(og_so_ids))
+        .group_by(SaleReceiptBillingMaster.og_sale_order_id,
+                  SaleReceiptBillingMaster.workflow_status).all()
+    ):
+        if _live(status):
+            received[og_id]["received"] += _d(total)
+        if status == APPROVED:
+            received[og_id]["receivedApproved"] += _d(total)
+        elif _live(status):
+            received[og_id]["inProcess"] += _d(total)
+
+    rows = []
+    for i in og_so_ids:
+        o = graph.docs["OG_SALE_ORDER"][i]
+        total = _d(o.total_amount)
+        inv = invoiced[i]
+        rec = received[i]
+        inv_approved = inv["invoicedApproved"]
+        rec_approved = rec["receivedApproved"]
+        rows.append({
+            "ogSaleOrderId": i,
+            "erpDocNo": o.erp_no,
+            "date": _date(o.og_sale_order_date),
+            "status": o.workflow_status,
+            "orderAmount": _a(total),
+            "invoiced": _a(inv["invoiced"]),
+            "invoicedApproved": _a(inv_approved),
+            "received": _a(rec["received"]),
+            "receivedApproved": _a(rec_approved),
+            "inProcess": _a(rec["inProcess"]),
+            "outstanding": _a(max(inv_approved - rec_approved, ZERO))
+                if inv_approved > 0 else None,
+        })
+
+    live = [r for r in rows if _live(r["status"])]
+    totals = {
+        "orderAmount": _a(sum((_d(r["orderAmount"]) for r in live), ZERO)),
+        "invoiced": _a(sum((_d(r["invoiced"]) for r in live), ZERO)),
+        "received": _a(sum((_d(r["received"]) for r in live), ZERO)),
+        "outstanding": _a(sum((_d(r["outstanding"]) for r in rows
+                               if r["outstanding"] is not None), ZERO)),
+    }
+    return {"ogSaleOrders": rows, "totals": totals}
+
+
 def _fq(v):
     return f"{_d(v):,.3f}"
 
@@ -686,7 +810,7 @@ def _fa(v):
     return f"₹ {_d(v):,.2f}"
 
 
-def _exceptions(graph, recon, fin, nodes, visible):
+def _exceptions(graph, recon, fin, sales_fin, nodes, visible):
     out = []
 
     def add(code, severity, msg, key=None):
@@ -753,6 +877,17 @@ def _exceptions(graph, recon, fin, nodes, visible):
         if p["paid"] > p["total"] + 0.01:
             add("OVER_PAID", "error", f"{p['purchaseBillNo']}: paid {_fa(p['paid'])} exceeds bill {_fa(p['total'])}.", k)
 
+    for o in sales_fin["ogSaleOrders"]:
+        k = _key("OG_SALE_ORDER", o["ogSaleOrderId"])
+        if not _live(o["status"]):
+            continue
+        if o["invoicedApproved"] > 0 and o["outstanding"] and o["outstanding"] > 0.01:
+            add("SALE_RECEIPT_OUTSTANDING", "warning",
+                f"{o['erpDocNo']}: {_fa(o['outstanding'])} outstanding on approved invoices.", k)
+        if o["invoiced"] == 0 and o["status"] == APPROVED:
+            add("SALE_NOT_INVOICED", "info",
+                f"{o['erpDocNo']}: approved OG Sale Order has no Sales Invoice yet.", k)
+
     for n in nodes:
         if n["restricted"]:
             continue
@@ -807,7 +942,8 @@ def get_document_flow(user_id, start_type, start_id, mode="LINEAGE"):
                 e["itemKey"] = None
         recon = _reconciliation(graph, items, visible)
         fin = _financials(graph, visible)
-        exceptions = _exceptions(graph, recon, fin, nodes, visible)
+        sales_fin = _sales_financials(graph, visible)
+        exceptions = _exceptions(graph, recon, fin, sales_fin, nodes, visible)
 
         start_item = None
         if start_type == "INDENT_ITEM":
@@ -827,6 +963,7 @@ def get_document_flow(user_id, start_type, start_id, mode="LINEAGE"):
             "edges": edges,
             "reconciliation": recon,
             "financials": fin,
+            "salesFinancials": sales_fin,
             "exceptions": exceptions,
             "truncated": graph.truncated,
             "limits": {"maxDocs": MAX_DOCS},

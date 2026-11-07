@@ -20,6 +20,15 @@ from app.models.bvsMaster import BvsMaster, BvsItem
 from app.models.bssMaster import BssMaster, BssItem
 from app.models.purchaseBill import PurchaseBillMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
+from app.models.ogSaleOrder import OgSaleOrderMaster
+from app.models.saleBill import SaleBillMaster
+from app.models.saleReceipt import SaleReceiptMaster
+from app.models.saleReceiptBilling import SaleReceiptBillingMaster
+from app.models.contraEntry import ContraEntryMaster
+from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher
+# NOTE: Debit Note / Credit Note are intentionally excluded from the Workbench
+# for now. Their party selection, bill linking and accounting treatment will be
+# designed and implemented in a separate phase. Do not add them here until then.
 
 
 # Lifecycle stages, in order (the "lanes" of the flow).
@@ -31,6 +40,12 @@ STAGES = [
     ("BILLING", "Supplier Billing"),
     ("ACCOUNTS", "Accounts"),
     ("PAYMENT", "Payment"),
+    # Sales lifecycle
+    ("SALES_ORDER", "Sales Order"),
+    ("SALES_INVOICE", "Sales Invoice"),
+    ("SALES_RECEIPT", "Sales Receipt"),
+    # Standalone financial documents
+    ("FINANCE", "Finance"),
 ]
 STAGE_INDEX = {k: i for i, (k, _) in enumerate(STAGES)}
 
@@ -103,6 +118,42 @@ DOC_TYPES = {
         projects=("project_code",), pages=("payment",), stage="PAYMENT", flow="COMMON",
         line=None, amount="total_invoice_amount",
     ),
+    # ── Sales lifecycle ───────────────────────────────────────────
+    "OG_SALE_ORDER": dict(
+        label="OG Sale Order", model=OgSaleOrderMaster, no="erp_no", date="og_sale_order_date",
+        projects=("project_code",), pages=("og_sale_order",), stage="SALES_ORDER", flow="SALES",
+        line=None, amount="total_amount",
+    ),
+    "SALE_BILL": dict(
+        label="Sales Invoice", model=SaleBillMaster, no="sale_bill_no", date="invoice_date",
+        projects=("project_code",), pages=("sale_bill",), stage="SALES_INVOICE", flow="SALES",
+        line=None, amount="total_invoice_amount",
+    ),
+    # SaleReceiptMaster has no workflow_status column (no_workflow=True signals this to flow_service)
+    "SALE_RECEIPT": dict(
+        label="Sale Receipt", model=SaleReceiptMaster, no="receipt_no", date="entry_date",
+        projects=("project_code",), pages=("sale_receipt",), stage="SALES_RECEIPT", flow="SALES",
+        line=None, amount="total_amount", no_workflow=True,
+    ),
+    "SALE_RECEIPT_BILLING": dict(
+        label="Sale Receipt Billing", model=SaleReceiptBillingMaster, no="srb_no", date="srb_date",
+        projects=("project_code",), pages=("sale_receipt",), stage="SALES_RECEIPT", flow="SALES",
+        line=None, amount="total_invoice_amount",
+    ),
+    # ── Standalone financial documents ───────────────────────────
+    # Contra Entry: bank↔cash transfer — no FK to procurement or sales
+    "CONTRA_ENTRY": dict(
+        label="Contra Entry", model=ContraEntryMaster, no="voucher_no", date="entry_date",
+        projects=("project_code",), pages=("contra_entry",), stage="FINANCE", flow="FINANCE",
+        line=None, amount="total_amount",
+    ),
+    # Petty Cash Docket Voucher — no FK to procurement or sales
+    "PETTY_CASH_VOUCHER": dict(
+        label="Petty Cash Voucher", model=PettyCashDocketVoucher, no="voucher_no", date="voucher_date",
+        projects=("project_code",), pages=("petty_cash",), stage="FINANCE", flow="FINANCE",
+        line=None, amount="total_amount",
+    ),
+    # Debit Note / Credit Note are intentionally NOT registered yet — see note at top.
 }
 
 
@@ -143,6 +194,10 @@ HEADER_LINKS = [
     ("BRB", "brr_id", "BRR", "HEADER", "Reconciled"),
     ("PURCHASE_BILL", "brr_id", "BRR", "HEADER", "Booked"),
     ("BILL_PAYMENT", "purchase_bill_id", "PURCHASE_BILL", "HEADER", "Paid"),
+    # Sales lifecycle (FK-confirmed from models)
+    ("SALE_BILL", "sale_order_id", "OG_SALE_ORDER", "HEADER", "Invoiced"),
+    ("SALE_RECEIPT_BILLING", "og_sale_order_id", "OG_SALE_ORDER", "HEADER", "Receipt"),
+    ("SALE_RECEIPT_BILLING", "receipt_id", "SALE_RECEIPT", "HEADER", "Grouped"),
 ]
 
 

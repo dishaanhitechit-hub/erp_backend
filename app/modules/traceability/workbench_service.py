@@ -20,6 +20,8 @@ from app.models.indent_master import IndentMaster
 from app.models.indent_item import IndentItem
 from app.models.purchaseBill import PurchaseBillItem, PurchaseBillGst
 from app.models.billPaymentReceipt import BillPaymentReceiptItem, BillPaymentReceiptGst
+from app.models.saleBill import SaleBillItem, SaleBillGst
+from app.models.saleReceiptBilling import SaleReceiptItem, SaleReceiptGst
 
 from app.modules.traceability.access import TraceAccess
 from app.modules.traceability.registry import (
@@ -103,17 +105,23 @@ def _doc_select(dt, pattern, allowed, limit):
     proj_cols = [getattr(model, c) for c in meta["projects"]]
     project = proj_cols[0] if len(proj_cols) == 1 else func.coalesce(*reversed(proj_cols))
 
+    # Some documents (e.g. Sale Receipt) have no workflow_status column.
+    status_col = (getattr(model, "workflow_status") if hasattr(model, "workflow_status")
+                  else cast(null(), String))
+    vendor_join_fk = getattr(model, "vendor_id", None) or getattr(model, "from_vendor_id", None) \
+        or getattr(model, "debtor_id", None)
+
     stmt = select(
         literal(dt).label("doc_type"),
         model.id.label("doc_id"),
         no_col.label("doc_no"),
         _as_date(getattr(model, meta["date"])).label("doc_date"),
-        model.workflow_status.label("status"),
+        status_col.label("status"),
         cast(project, String).label("project_code"),
-        (Vendor.ledger_name if vendor_fk is not None else cast(null(), String)).label("party"),
+        (Vendor.ledger_name if vendor_join_fk is not None else cast(null(), String)).label("party"),
     )
-    if vendor_fk is not None:
-        stmt = stmt.select_from(model).outerjoin(Vendor, Vendor.id == vendor_fk)
+    if vendor_join_fk is not None:
+        stmt = stmt.select_from(model).outerjoin(Vendor, Vendor.id == vendor_join_fk)
     if pattern:
         stmt = stmt.where(no_col.ilike(pattern, escape="\\"))
     pf = _project_filter(dt, allowed)
@@ -262,6 +270,25 @@ HEADER_FIELDS = {
                      ("Vendor Bill No", "vendor_bill_no", "text"), ("Taxable", "basic_amount", "amount"),
                      ("GST", "gst_amount", "amount"), ("Discount", "discount", "amount"),
                      ("Total", "total_invoice_amount", "amount")],
+    # ── Sales lifecycle ──────────────────────────────────────────────
+    "OG_SALE_ORDER": [("Order Title", "order_title", "text"), ("Order No", "order_no", "text"),
+                      ("Validity", "order_validity", "date"), ("Taxable", "basic_amount", "amount"),
+                      ("GST", "gst_amount", "amount"), ("Total", "total_amount", "amount")],
+    "SALE_BILL": [("Mode", "mode", "text"), ("Sale Order No", "sale_order_no", "text"),
+                  ("Certified Bill No", "certified_bill_no", "text"), ("Taxable", "basic_amount", "amount"),
+                  ("GST", "gst_amount", "amount"), ("Discount", "discount", "amount"),
+                  ("Round Off", "round_off", "amount"), ("Total", "total_invoice_amount", "amount")],
+    "SALE_RECEIPT": [("Payment Mode", "payment_mode", "text"), ("UTR / Voucher", "utr_voucher_no", "text"),
+                     ("Remarks", "payment_remarks", "text"), ("Total", "total_amount", "amount")],
+    "SALE_RECEIPT_BILLING": [("Invoice No", "invoice_no", "text"), ("Invoice Date", "invoice_date", "date"),
+                             ("Certified Bill No", "bill_abstract_no", "text"),
+                             ("Taxable", "basic_amount", "amount"), ("GST", "gst_amount", "amount"),
+                             ("Discount", "discount", "amount"), ("Round Off", "round_off", "amount"),
+                             ("Total", "total_invoice_amount", "amount")],
+    # ── Standalone financial documents ───────────────────────────────
+    "CONTRA_ENTRY": [("Remarks", "remarks", "text"), ("Total", "total_amount", "amount")],
+    "PETTY_CASH_VOUCHER": [("Expenses By", "expenses_by", "text"), ("Mode", "mode_of_payment", "text"),
+                           ("Payment Ref", "payment_ref_id", "text"), ("Total", "total_amount", "amount")],
 }
 
 
@@ -390,6 +417,25 @@ def _cc_lines(dt, doc_id):
             "gstLines": [{"gstType": g.gst_type, "ccCode": g.cc_code, "booked": _num(g.booked_amount),
                           "amount": _num(g.current_amount), "selected": bool(g.is_selected)} for g in gst],
         }
+    if dt == "SALE_BILL":
+        items = SaleBillItem.query.filter_by(sale_bill_id=doc_id).order_by(SaleBillItem.sl_no).all()
+        gst = SaleBillGst.query.filter_by(sale_bill_id=doc_id).all()
+        return {
+            "ccLines": [{"slNo": i.sl_no, "ccCode": i.cc_code, "ccName": i.cc_name,
+                         "gstPercent": _num(i.gst_percent), "amount": _num(i.basic_amount)} for i in items],
+            "gstLines": [{"gstType": g.gst_type, "ccCode": g.cc_code, "percent": _num(g.percent),
+                          "amount": _num(g.gst_amount), "selected": bool(g.is_selected)} for g in gst],
+        }
+    if dt == "SALE_RECEIPT_BILLING":
+        items = SaleReceiptItem.query.filter_by(receipt_id=doc_id).order_by(SaleReceiptItem.sl_no).all()
+        gst = SaleReceiptGst.query.filter_by(receipt_id=doc_id).all()
+        return {
+            "ccLines": [{"slNo": i.sl_no, "ccCode": i.cc_code, "ccName": i.cc_name,
+                         "booked": _num(i.booked_amount), "amount": _num(i.current_amount)} for i in items],
+            "gstLines": [{"gstType": g.gst_type, "ccCode": g.cc_code, "percent": _num(g.percent),
+                          "booked": _num(g.booked_amount), "amount": _num(g.current_amount),
+                          "selected": bool(g.is_selected)} for g in gst],
+        }
     return {}
 
 
@@ -420,7 +466,7 @@ def get_document_detail(user_id, doc_type, doc_id):
         data = {
             "docType": dt, "typeLabel": meta["label"], "docId": row.id,
             "docNo": getattr(row, meta["no"]), "date": _date(getattr(row, meta["date"])),
-            "status": row.workflow_status, "projectCodes": projects,
+            "status": getattr(row, "workflow_status", None), "projectCodes": projects,
             "party": vendor.ledger_name if vendor else None,
             "partyGstin": vendor.gstin if vendor else None,
             "submittedAt": str(row.submitted_at) if getattr(row, "submitted_at", None) else None,
