@@ -227,7 +227,7 @@ def get_approved_purchase_bills(data):
             )
             paid_map = {row.purchase_bill_id: float(row.paid) for row in paid_q}
 
-            # Sum of Draft/Pending amounts (in-progress, not yet approved)
+            # Sum Draft/Reback/Pending amounts only (not Approved/Rejected)
             inprog_q = (
                 db.session.query(
                     BillPaymentReceiptMaster.purchase_bill_id,
@@ -241,7 +241,9 @@ def get_approved_purchase_bills(data):
                 .all()
             )
             in_progress_map = {row.purchase_bill_id: float(row.inprog) for row in inprog_q}
+            # Note: paid_map already covers Approved amounts, so balance = booked - paid - in_progress
 
+            # Only Draft/Reback/Pending lock the bill — Approved/Rejected are terminal
             active_q = (
                 db.session.query(
                     BillPaymentReceiptMaster.purchase_bill_id,
@@ -249,12 +251,11 @@ def get_approved_purchase_bills(data):
                 )
                 .filter(
                     BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
-                    BillPaymentReceiptMaster.workflow_status.notin_(["Rejected"]),
+                    BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
                 )
                 .order_by(BillPaymentReceiptMaster.id.desc())
                 .all()
             )
-            # Keep only the first (latest) status per bill
             locked_map = {}
             for row in active_q:
                 if row.purchase_bill_id not in locked_map:
