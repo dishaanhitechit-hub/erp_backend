@@ -218,7 +218,10 @@ def get_approved_purchase_bills(data):
                 "brrDate":            _fmt_date(r.brr_date),
                 "vendorBillNo":       r.vendor_bill_no,
                 "vendorBillDate":     _fmt_date(r.vendor_bill_date),
-                "orderNo":            (r.order.order_no if r.order else None) or (r.pw_order.order_no if r.pw_order else None),
+                "orderNo":            (
+                    (r.brr.order.order_no    if r.brr and r.brr.order    else None) or
+                    (r.brr.pw_order.order_no if r.brr and r.brr.pw_order else None)
+                ),
                 "totalInvoiceAmount": float(r.total_invoice_amount or 0),
             }
             for r in rows
@@ -278,7 +281,10 @@ def get_purchase_bill_payment_items(bill_id):
                 "isSelected":    g.is_selected,
             })
 
-        order_no = (bill.order.order_no if bill.order else None) or (bill.pw_order.order_no if bill.pw_order else None)
+        order_no = (
+            (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
+            (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
+        )
 
         return res("Purchase bill payment items fetched", {
             "purchaseBillId":      bill.id,
@@ -339,7 +345,10 @@ def create_bill_payment_receipt(data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
         total     = basic_total + gst_total - discount + round_off
 
-        order_no = (bill.order.order_no if bill.order else None) or (bill.pw_order.order_no if bill.pw_order else None)
+        order_no = (
+            (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
+            (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
+        )
 
         r = BillPaymentReceiptMaster(
             receipt_no       = _generate_receipt_no(),
