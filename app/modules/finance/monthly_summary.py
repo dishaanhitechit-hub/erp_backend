@@ -9,8 +9,6 @@ from app.extensions import db
 from app.models.project import Project
 from app.models.purchaseBill import PurchaseBillMaster
 from app.models.saleBill import SaleBillMaster
-from app.models.purchaseVoucher import PurchaseVoucherMaster
-from app.models.paymentVoucher import PaymentVoucherMaster
 from app.models.journalEntry import JournalEntryMaster
 from app.models.contraEntry import ContraEntryMaster
 from app.models.creditNote import CreditNoteMaster
@@ -117,44 +115,6 @@ def _render_sale_receipts(rows, proj_map):
     return html
 
 
-def _render_purchase_vouchers(rows, proj_map):
-    html = section_header("Purchase Vouchers")
-    if not rows:
-        return html + no_data_note()
-    groups = _group_by_project(rows)
-    total_count, total_amt = 0, 0
-    for code, items in sorted(groups.items()):
-        name, client = proj_map.get(code, (code, ""))
-        html += project_block_open(code, name, client)
-        table_rows = []
-        for r in items:
-            table_rows.append([r.voucher_no, r.workflow_status, r.total_invoice_amount])
-            total_count += 1
-            total_amt += float(r.total_invoice_amount or 0)
-        html += table(["Voucher No", "Status", "Amount"], table_rows, amount_cols={2})
-    html = stat_row([("Total Vouchers", str(total_count)), ("Total Amount", f"₹{total_amt:,.2f}")]) + html
-    return html
-
-
-def _render_payment_vouchers(rows, proj_map):
-    html = section_header("Payment Vouchers")
-    if not rows:
-        return html + no_data_note()
-    groups = _group_by_project(rows)
-    total_count, total_amt = 0, 0
-    for code, items in sorted(groups.items()):
-        name, client = proj_map.get(code, (code, ""))
-        html += project_block_open(code, name, client)
-        table_rows = []
-        for r in items:
-            table_rows.append([r.payment_voucher_no, r.workflow_status, r.total_invoice_amount])
-            total_count += 1
-            total_amt += float(r.total_invoice_amount or 0)
-        html += table(["Voucher No", "Status", "Amount"], table_rows, amount_cols={2})
-    html = stat_row([("Total Vouchers", str(total_count)), ("Total Amount", f"₹{total_amt:,.2f}")]) + html
-    return html
-
-
 def _render_journal_entries(rows, proj_map):
     html = section_header("Journal Entries")
     if not rows:
@@ -231,8 +191,6 @@ def build_and_send():
     pb   = _query(PurchaseBillMaster,        start, end)
     sb   = _query(SaleBillMaster,            start, end)
     sr   = _query(SaleReceiptMaster,         start, end)
-    pv   = _query(PurchaseVoucherMaster,     start, end)
-    pmv  = _query(PaymentVoucherMaster,      start, end)
     je   = _query(JournalEntryMaster,        start, end)
     ce   = _query(ContraEntryMaster,         start, end)
     cn   = _query(CreditNoteMaster,          start, end)
@@ -244,7 +202,6 @@ def build_and_send():
     overview = stat_row([
         ("Purchase Bills",    str(len(pb))),
         ("Sale Bills",        str(len(sb))),
-        ("Payment Vouchers",  str(len(pmv))),
         ("Petty Cash",        str(len(pc))),
     ])
 
@@ -253,8 +210,6 @@ def build_and_send():
         + _render_purchase_bills(pb,  proj_map)
         + _render_sale_bills(sb,      proj_map)
         + _render_sale_receipts(sr,   proj_map)
-        + _render_purchase_vouchers(pv,  proj_map)
-        + _render_payment_vouchers(pmv,  proj_map)
         + _render_journal_entries(je,    proj_map)
         + _render_simple_project(ce,  proj_map, "Contra Entries",    "voucher_no", "Date", "entry_date")
         + _render_simple_project(cn,  proj_map, "Credit Notes",      "credit_note_no", "Date", "entry_date")

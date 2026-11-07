@@ -35,7 +35,6 @@ MODULE_NOTIFICATION_ROLE = {
     "BRB":                  "Billing Manager",
     "PURCHASE_BILL":        "Accounts",
     "BILL_PAYMENT":         "Accounts Head",
-    "PURCHASE_VOUCHER":     "Accounts",
     "PAYMENT_VOUCHER":      "Accounts Head",
     "SALE_BILL":            "Accounts",
     "SALE_RECEIPT":         "Accounts",

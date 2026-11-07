@@ -1187,7 +1187,6 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
     from app.models.brbMaster import BrbMaster
     from app.models.contraEntry import ContraEntryMaster
     from app.models.purchaseBill import PurchaseBillMaster
-    from app.models.purchaseVoucher import PurchaseVoucherMaster
     from app.models.saleBill import SaleBillMaster
     from app.models.saleReceipt import SaleReceiptMaster
     from app.models.ogSaleOrder import OgSaleOrderMaster
@@ -1219,7 +1218,7 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
         "billing_by_grn":        [(BvsMaster, None, None), (BrgMaster, None, None), (BrbMaster, "GRN", None)],
         "billing_by_srn":        [(BssMaster, None, None), (BrsMaster, None, None), (BrbMaster, "SRN", None)],
         "contra":                [(ContraEntryMaster,      None, None)],
-        "purchases":             [(PurchaseBillMaster, None, None), (PurchaseVoucherMaster, None, None)],
+        "purchases":             [(PurchaseBillMaster, None, None)],
         "sale":                  [(SaleBillMaster,         None, None)],
         "sale_order":            [(OgSaleOrderMaster,      None, None)],
         "bbs_register":          [(BbsRegister,            None, None)],

@@ -44,7 +44,6 @@ from app.models.brsMaster          import BrsMaster, BrsItem
 from app.models.brbMaster          import BrbMaster, BrbItem
 from app.models.purchaseBill       import PurchaseBillMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
-from app.models.purchaseVoucher    import PurchaseVoucherMaster
 from app.models.paymentVoucher     import PaymentVoucherMaster
 from app.models.saleBill           import SaleBillMaster
 from app.models.saleReceipt        import SaleReceiptMaster
@@ -338,21 +337,6 @@ DEPENDENCY_MAP = {
         "children": [],  # leaf — deepest node in procurement chain
     },
 
-    "PURCHASE_VOUCHER": {
-        "model_class":  PurchaseVoucherMaster,
-        "doc_no_field": "voucher_no",
-        "project_field": "project_code",
-        "children": [
-            {
-                "child_model":  PaymentVoucherMaster,
-                "fk_column":    "purchase_voucher_id",
-                "doc_no_field": "payment_vouch_no",
-                "module_code":  "PAYMENT_VOUCHER",
-                "label":        "Payment Voucher",
-            },
-        ],
-    },
-
     "PAYMENT_VOUCHER": {
         "model_class":  PaymentVoucherMaster,
         "doc_no_field": "payment_vouch_no",
@@ -592,7 +576,6 @@ MODULE_DISPLAY_NAMES = {
     "BRB":                  "BRR Billing",
     "PURCHASE_BILL":        "Purchase Bill",
     "BILL_PAYMENT":         "Bill Payment Receipt",
-    "PURCHASE_VOUCHER":     "Purchase Voucher",
     "PAYMENT_VOUCHER":      "Payment Voucher",
     "SALE_BILL":            "Sale Bill",
     "SALE_RECEIPT":         "Sale Receipt",

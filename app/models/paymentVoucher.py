@@ -13,12 +13,6 @@ class PaymentVoucherMaster(db.Model):
 
     payment_date = db.Column(db.Date, nullable=False)
 
-    purchase_voucher_id = db.Column(
-        db.Integer,
-        db.ForeignKey("purchase_voucher_master.id"),
-        nullable=False,
-    )
-
     project_code = db.Column(
         db.String(50),
         db.ForeignKey("projects.project_code"),
@@ -60,9 +54,8 @@ class PaymentVoucherMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project          = db.relationship("Project",              backref="payment_vouchers")
-    purchase_voucher = db.relationship("PurchaseVoucherMaster", backref="payment_vouchers")
-    vendor           = db.relationship("Vendor",               backref="payment_vouchers")
+    project = db.relationship("Project", backref="payment_vouchers")
+    vendor  = db.relationship("Vendor",  backref="payment_vouchers")
     cash_account     = db.relationship("BankCash", foreign_keys=[cash_ac_id])
     bank_account     = db.relationship("BankCash", foreign_keys=[bank_ac_id])
 
@@ -84,9 +77,6 @@ class PaymentVoucherItem(db.Model):
     id                 = db.Column(db.Integer, primary_key=True)
     payment_voucher_id = db.Column(db.Integer, db.ForeignKey("payment_voucher_master.id"), nullable=False)
 
-    # Reference to the originating purchase voucher item (for paid-amount tracking)
-    pv_item_id = db.Column(db.Integer, db.ForeignKey("purchase_voucher_items.id"), nullable=True)
-
     sl_no          = db.Column(db.Integer,      nullable=False)
     cc_code_id     = db.Column(db.Integer,      db.ForeignKey("cc_codes.id"), nullable=True)
     cc_code        = db.Column(db.String(50),   nullable=True)
@@ -97,7 +87,6 @@ class PaymentVoucherItem(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     cc_code_rel = db.relationship("CCCode")
-    pv_item     = db.relationship("PurchaseVoucherItem")
 
 
 class PaymentVoucherGst(db.Model):

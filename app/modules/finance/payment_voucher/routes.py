@@ -1,8 +1,6 @@
 from flask import Blueprint, request, g
 from app.middleware.auth_middleware import login_required
 from app.modules.finance.payment_voucher.service import (
-    get_approved_purchase_vouchers,
-    get_purchase_voucher_payment_items,
     create_payment_voucher,
     get_payment_voucher_list,
     get_payment_voucher_details,
@@ -17,20 +15,6 @@ from app.modules.finance.payment_voucher.service import (
 )
 
 payment_voucher_bp = Blueprint("payment_voucher", __name__)
-
-
-# ── LOOKUP: Approved purchase vouchers for JV dropdown ────────────
-@payment_voucher_bp.route("/approved-purchase-vouchers", methods=["GET"])
-@login_required
-def api_approved_purchase_vouchers():
-    return get_approved_purchase_vouchers(request.args.to_dict())
-
-
-# ── LOOKUP: Items + GST of a purchase voucher with paid/balance ───
-@payment_voucher_bp.route("/purchase-voucher-items/<int:pv_id>", methods=["GET"])
-@login_required
-def api_purchase_voucher_payment_items(pv_id):
-    return get_purchase_voucher_payment_items(pv_id)
 
 
 # ── 1. CREATE ─────────────────────────────────────────────────────

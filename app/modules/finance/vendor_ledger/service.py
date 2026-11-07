@@ -1,9 +1,7 @@
 from datetime import datetime, date as date_type
 from app.extensions import db
 from app.models.vendor import Vendor
-from app.models.purchaseVoucher import PurchaseVoucherMaster
 from app.models.purchaseBill import PurchaseBillMaster
-from app.models.paymentVoucher import PaymentVoucherMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 from app.models.debitNote import DebitNoteMaster
 from app.models.creditNote import CreditNoteMaster
@@ -39,25 +37,7 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             q = q.filter(date_col <= to_date)
         return q
 
-    # ── 1. Purchase Voucher → Credit (we owe vendor)
-    for r in _apply_filters(
-        PurchaseVoucherMaster.query.filter_by(vendor_id=vendor_id, workflow_status="Approved"),
-        PurchaseVoucherMaster, PurchaseVoucherMaster.processing_date
-    ).all():
-        entries.append({
-            "date":        _fmt(r.processing_date),
-            "_sort_dt":    r.processing_date,
-            "_sort_id":    r.id,
-            "docType":     "Purchase Voucher",
-            "docNo":       r.voucher_no,
-            "docId":       r.id,
-            "projectCode": r.project_code,
-            "particular":  "Purchase Voucher " + r.voucher_no + (f" | {r.vendor_voucher_no}" if r.vendor_voucher_no else ""),
-            "debit":       0.0,
-            "credit":      float(r.total_invoice_amount or 0),
-        })
-
-    # ── 2. Purchase Bill → Credit (we owe vendor)
+    # ── 1. Purchase Bill → Credit (we owe vendor)
     for r in _apply_filters(
         PurchaseBillMaster.query.filter_by(vendor_id=vendor_id, workflow_status="Approved"),
         PurchaseBillMaster, PurchaseBillMaster.processing_date
@@ -75,25 +55,7 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             "credit":      float(r.total_invoice_amount or 0),
         })
 
-    # ── 3. Payment Voucher → Debit (we paid vendor)
-    for r in _apply_filters(
-        PaymentVoucherMaster.query.filter_by(vendor_id=vendor_id, workflow_status="Approved"),
-        PaymentVoucherMaster, PaymentVoucherMaster.payment_date
-    ).all():
-        entries.append({
-            "date":        _fmt(r.payment_date),
-            "_sort_dt":    r.payment_date,
-            "_sort_id":    r.id,
-            "docType":     "Payment Voucher",
-            "docNo":       r.payment_vouch_no,
-            "docId":       r.id,
-            "projectCode": r.project_code,
-            "particular":  "Payment Voucher " + r.payment_vouch_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
-            "debit":       float(r.total_invoice_amount or 0),
-            "credit":      0.0,
-        })
-
-    # ── 4. Bill Payment Receipt → Debit (we paid vendor)
+    # ── 2. Bill Payment Receipt → Debit (we paid vendor)
     for r in _apply_filters(
         BillPaymentReceiptMaster.query.filter_by(vendor_id=vendor_id, workflow_status="Approved"),
         BillPaymentReceiptMaster, BillPaymentReceiptMaster.payment_date

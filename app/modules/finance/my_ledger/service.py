@@ -1,8 +1,6 @@
 from datetime import datetime, date as date_type
 from app.extensions import db
-from app.models.purchaseVoucher import PurchaseVoucherMaster
 from app.models.purchaseBill import PurchaseBillMaster
-from app.models.paymentVoucher import PaymentVoucherMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 from app.models.saleBill import SaleBillMaster
 from app.models.saleReceiptBilling import SaleReceiptBillingMaster
@@ -59,19 +57,9 @@ def _build_project_entries(project_code, from_date=None, to_date=None):
         SaleReceiptBillingMaster.invoice_date
     ).all()
 
-    pv_records = _df(
-        PurchaseVoucherMaster.query.filter_by(project_code=project_code, workflow_status="Approved"),
-        PurchaseVoucherMaster.processing_date
-    ).all()
-
     pb_records = _df(
         PurchaseBillMaster.query.filter_by(project_code=project_code, workflow_status="Approved"),
         PurchaseBillMaster.processing_date
-    ).all()
-
-    pvm_records = _df(
-        PaymentVoucherMaster.query.filter_by(project_code=project_code, workflow_status="Approved"),
-        PaymentVoucherMaster.payment_date
     ).all()
 
     bpr_records = _df(
@@ -91,7 +79,7 @@ def _build_project_entries(project_code, from_date=None, to_date=None):
 
     # Batch load vendor names
     vendor_ids = set()
-    for r in pv_records + pb_records + pvm_records + bpr_records:
+    for r in pb_records + bpr_records:
         if r.vendor_id:
             vendor_ids.add(r.vendor_id)
     for r in dn_records + cn_records:
@@ -129,22 +117,7 @@ def _build_project_entries(project_code, from_date=None, to_date=None):
             "credit":      0.0,
         })
 
-    # ── 3. Purchase Voucher → Credit (vendor billed us, payable)
-    for r in pv_records:
-        entries.append({
-            "date":        _fmt(r.processing_date),
-            "_sort_dt":    r.processing_date,
-            "_sort_id":    r.id,
-            "docType":     "Purchase Voucher",
-            "docNo":       r.voucher_no,
-            "docId":       r.id,
-            "vendorName":  v_map.get(r.vendor_id),
-            "particular":  "Purchase Voucher " + r.voucher_no,
-            "debit":       0.0,
-            "credit":      float(r.total_invoice_amount or 0),
-        })
-
-    # ── 4. Purchase Bill → Credit (vendor billed us, payable)
+    # ── 3. Purchase Bill → Credit (vendor billed us, payable)
     for r in pb_records:
         entries.append({
             "date":        _fmt(r.processing_date),
@@ -159,22 +132,7 @@ def _build_project_entries(project_code, from_date=None, to_date=None):
             "credit":      float(r.total_invoice_amount or 0),
         })
 
-    # ── 5. Payment Voucher → Credit (we paid vendor, cash out)
-    for r in pvm_records:
-        entries.append({
-            "date":        _fmt(r.payment_date),
-            "_sort_dt":    r.payment_date,
-            "_sort_id":    r.id,
-            "docType":     "Payment Voucher",
-            "docNo":       r.payment_vouch_no,
-            "docId":       r.id,
-            "vendorName":  v_map.get(r.vendor_id),
-            "particular":  "Payment Voucher " + r.payment_vouch_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
-            "debit":       0.0,
-            "credit":      float(r.total_invoice_amount or 0),
-        })
-
-    # ── 6. Bill Payment Receipt → Credit (we paid vendor, cash out)
+    # ── 4. Bill Payment Receipt → Credit (we paid vendor, cash out)
     for r in bpr_records:
         entries.append({
             "date":        _fmt(r.payment_date),
@@ -277,28 +235,12 @@ def _build_all_projects_entries(projects, from_date=None, to_date=None):
         SaleReceiptBillingMaster.invoice_date,
     ).all()
 
-    pv_records = _df(
-        PurchaseVoucherMaster.query.filter(
-            PurchaseVoucherMaster.project_code.in_(project_codes),
-            PurchaseVoucherMaster.workflow_status == "Approved",
-        ),
-        PurchaseVoucherMaster.processing_date,
-    ).all()
-
     pb_records = _df(
         PurchaseBillMaster.query.filter(
             PurchaseBillMaster.project_code.in_(project_codes),
             PurchaseBillMaster.workflow_status == "Approved",
         ),
         PurchaseBillMaster.processing_date,
-    ).all()
-
-    pvm_records = _df(
-        PaymentVoucherMaster.query.filter(
-            PaymentVoucherMaster.project_code.in_(project_codes),
-            PaymentVoucherMaster.workflow_status == "Approved",
-        ),
-        PaymentVoucherMaster.payment_date,
     ).all()
 
     bpr_records = _df(
@@ -327,7 +269,7 @@ def _build_all_projects_entries(projects, from_date=None, to_date=None):
 
     # Batch-load all vendor names in one query
     vendor_ids = set()
-    for r in pv_records + pb_records + pvm_records + bpr_records:
+    for r in pb_records + bpr_records:
         if r.vendor_id:
             vendor_ids.add(r.vendor_id)
     for r in dn_records + cn_records:
@@ -354,30 +296,12 @@ def _build_all_projects_entries(projects, from_date=None, to_date=None):
             "debit": float(r.total_invoice_amount or 0), "credit": 0.0,
         })
 
-    for r in pv_records:
-        by_project.setdefault(r.project_code, []).append({
-            "date": _fmt(r.processing_date), "_sort_dt": r.processing_date, "_sort_id": r.id,
-            "docType": "Purchase Voucher", "docNo": r.voucher_no, "docId": r.id,
-            "vendorName": v_map.get(r.vendor_id),
-            "particular": "Purchase Voucher " + r.voucher_no,
-            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
-        })
-
     for r in pb_records:
         by_project.setdefault(r.project_code, []).append({
             "date": _fmt(r.processing_date), "_sort_dt": r.processing_date, "_sort_id": r.id,
             "docType": "Purchase Bill", "docNo": r.purchase_bill_no, "docId": r.id,
             "vendorName": v_map.get(r.vendor_id),
             "particular": "Purchase Bill " + r.purchase_bill_no + (f" | {r.vendor_bill_no}" if r.vendor_bill_no else ""),
-            "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
-        })
-
-    for r in pvm_records:
-        by_project.setdefault(r.project_code, []).append({
-            "date": _fmt(r.payment_date), "_sort_dt": r.payment_date, "_sort_id": r.id,
-            "docType": "Payment Voucher", "docNo": r.payment_vouch_no, "docId": r.id,
-            "vendorName": v_map.get(r.vendor_id),
-            "particular": "Payment Voucher " + r.payment_vouch_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
             "debit": 0.0, "credit": float(r.total_invoice_amount or 0),
         })
 

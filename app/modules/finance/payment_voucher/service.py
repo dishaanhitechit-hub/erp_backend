@@ -1,12 +1,10 @@
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
 from app.extensions import db
 from datetime import datetime, date
 import uuid as _uuid
 
 from app.models.paymentVoucher  import PaymentVoucherMaster, PaymentVoucherItem, PaymentVoucherGst
-from app.models.purchaseVoucher import PurchaseVoucherMaster
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -63,215 +61,65 @@ def _generate_payment_vouch_no():
     return f"PVE{str(num + 1).zfill(3)}"
 
 
-def _paid_basic_map(purchase_voucher_id, exclude_id=None):
-    """Sum current_amount per pv_item_id from all Approved payment vouchers for a purchase voucher."""
-    q = (
-        db.session.query(
-            PaymentVoucherItem.pv_item_id,
-            func.coalesce(func.sum(PaymentVoucherItem.current_amount), 0).label("paid"),
-        )
-        .join(PaymentVoucherMaster, PaymentVoucherMaster.id == PaymentVoucherItem.payment_voucher_id)
-        .filter(
-            PaymentVoucherMaster.purchase_voucher_id == purchase_voucher_id,
-            PaymentVoucherMaster.workflow_status     == "Approved",
-        )
-    )
-    if exclude_id:
-        q = q.filter(PaymentVoucherMaster.id != exclude_id)
-    return {r.pv_item_id: float(r.paid) for r in q.group_by(PaymentVoucherItem.pv_item_id).all()}
-
-
-def _paid_gst_map(purchase_voucher_id, exclude_id=None):
-    """Sum current_amount per gst_type from all Approved payment vouchers for a purchase voucher."""
-    q = (
-        db.session.query(
-            PaymentVoucherGst.gst_type,
-            func.coalesce(func.sum(PaymentVoucherGst.current_amount), 0).label("paid"),
-        )
-        .join(PaymentVoucherMaster, PaymentVoucherMaster.id == PaymentVoucherGst.payment_voucher_id)
-        .filter(
-            PaymentVoucherMaster.purchase_voucher_id == purchase_voucher_id,
-            PaymentVoucherMaster.workflow_status     == "Approved",
-        )
-    )
-    if exclude_id:
-        q = q.filter(PaymentVoucherMaster.id != exclude_id)
-    return {r.gst_type: float(r.paid) for r in q.group_by(PaymentVoucherGst.gst_type).all()}
-
-
 def _build_detail_payload(pvm):
-    paid_basic = _paid_basic_map(pvm.purchase_voucher_id, exclude_id=pvm.id)
-    paid_gst   = _paid_gst_map(pvm.purchase_voucher_id,   exclude_id=pvm.id)
-
     items = []
     for i in pvm.items:
-        booked  = float(i.booked_amount  or 0)
-        current = float(i.current_amount or 0)
-        paid    = paid_basic.get(i.pv_item_id, 0)
         items.append({
             "id":            i.id,
-            "pvItemId":      i.pv_item_id,
             "slNo":          i.sl_no,
             "ccCodeId":      i.cc_code_id,
             "ccCode":        i.cc_code,
             "ccName":        i.cc_name,
-            "bookedAmount":  booked,
-            "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
-            "currentAmount": current,
+            "bookedAmount":  float(i.booked_amount  or 0),
+            "currentAmount": float(i.current_amount or 0),
         })
 
     gst_lines = []
     for g in pvm.gst_lines:
-        booked  = float(g.booked_amount  or 0)
-        current = float(g.current_amount or 0)
-        paid    = paid_gst.get(g.gst_type, 0)
         gst_lines.append({
             "id":            g.id,
             "gstType":       g.gst_type,
             "ccCode":        g.cc_code,
             "ccName":        g.cc_name,
-            "bookedAmount":  booked,
-            "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
-            "currentAmount": current,
+            "bookedAmount":  float(g.booked_amount  or 0),
+            "currentAmount": float(g.current_amount or 0),
             "isSelected":    g.is_selected,
         })
 
-    pv = pvm.purchase_voucher
     return {
-        "id":                  pvm.id,
-        "paymentVouchNo":      pvm.payment_vouch_no,
-        "paymentVouchUuid":    pvm.payment_vouch_uuid,
-        "paymentDate":         _fmt_date(pvm.payment_date),
-        "purchaseVoucherId":   pvm.purchase_voucher_id,
-        "purchaseVoucherNo":   pv.voucher_no   if pv else None,
-        "purchaseVoucherDate": _fmt_date(pv.voucher_date) if pv else None,
-        "projectCode":         pvm.project_code,
-        "vendorId":            pvm.vendor_id,
-        "vendorName":          pvm.vendor.ledger_name if pvm.vendor else None,
-        "paymentMode":         pvm.payment_mode,
-        "cashAcId":            pvm.cash_ac_id,
-        "cashAcName":          pvm.cash_account.bank_holder_name if pvm.cash_account else None,
-        "bankAcId":            pvm.bank_ac_id,
-        "bankAcName":          pvm.bank_account.bank_holder_name if pvm.bank_account else None,
-        "utrVoucherNo":        pvm.utr_voucher_no,
-        "paymentRemarks":      pvm.payment_remarks,
-        "basicAmount":         float(pvm.basic_amount         or 0),
-        "gstAmount":           float(pvm.gst_amount           or 0),
-        "discount":            float(pvm.discount             or 0),
-        "roundOff":            float(pvm.round_off            or 0),
-        "totalInvoiceAmount":  float(pvm.total_invoice_amount or 0),
-        "workflowStatus":      pvm.workflow_status,
-        "currentLevel":        pvm.current_level,
-        "locked":              pvm.locked,
-        "createdBy":           pvm.creator.username   if pvm.creator   else None,
-        "createdAt":           _fmt_date(pvm.created_at),
-        "submittedBy":         pvm.submitter.username if pvm.submitter else None,
-        "submittedAt":         _fmt_date(pvm.submitted_at),
-        "approvedBy":          pvm.approver.username  if pvm.approver  else None,
-        "finalApprovedAt":     _fmt_date(pvm.final_approved_at),
-        "rejectedBy":          pvm.rejector.username  if pvm.rejector  else None,
-        "rejectedAt":          _fmt_date(pvm.rejected_at),
-        "items":               items,
-        "gstLines":            gst_lines,
+        "id":                 pvm.id,
+        "paymentVouchNo":     pvm.payment_vouch_no,
+        "paymentVouchUuid":   pvm.payment_vouch_uuid,
+        "paymentDate":        _fmt_date(pvm.payment_date),
+        "projectCode":        pvm.project_code,
+        "vendorId":           pvm.vendor_id,
+        "vendorName":         pvm.vendor.ledger_name if pvm.vendor else None,
+        "paymentMode":        pvm.payment_mode,
+        "cashAcId":           pvm.cash_ac_id,
+        "cashAcName":         pvm.cash_account.bank_holder_name if pvm.cash_account else None,
+        "bankAcId":           pvm.bank_ac_id,
+        "bankAcName":         pvm.bank_account.bank_holder_name if pvm.bank_account else None,
+        "utrVoucherNo":       pvm.utr_voucher_no,
+        "paymentRemarks":     pvm.payment_remarks,
+        "basicAmount":        float(pvm.basic_amount         or 0),
+        "gstAmount":          float(pvm.gst_amount           or 0),
+        "discount":           float(pvm.discount             or 0),
+        "roundOff":           float(pvm.round_off            or 0),
+        "totalInvoiceAmount": float(pvm.total_invoice_amount or 0),
+        "workflowStatus":     pvm.workflow_status,
+        "currentLevel":       pvm.current_level,
+        "locked":             pvm.locked,
+        "createdBy":          pvm.creator.username   if pvm.creator   else None,
+        "createdAt":          _fmt_date(pvm.created_at),
+        "submittedBy":        pvm.submitter.username if pvm.submitter else None,
+        "submittedAt":        _fmt_date(pvm.submitted_at),
+        "approvedBy":         pvm.approver.username  if pvm.approver  else None,
+        "finalApprovedAt":    _fmt_date(pvm.final_approved_at),
+        "rejectedBy":         pvm.rejector.username  if pvm.rejector  else None,
+        "rejectedAt":         _fmt_date(pvm.rejected_at),
+        "items":              items,
+        "gstLines":           gst_lines,
     }
-
-
-# ══════════════════════════════════════════════════════════════════
-# LOOKUP — Approved Purchase Vouchers for dropdown
-# ══════════════════════════════════════════════════════════════════
-
-def get_approved_purchase_vouchers(data):
-    try:
-        project_code = (data.get("projectCode") or "").strip()
-        if not project_code:
-            return res("projectCode required", [], 400)
-
-        rows = PurchaseVoucherMaster.query.filter(
-            PurchaseVoucherMaster.project_code    == project_code,
-            PurchaseVoucherMaster.workflow_status == "Approved",
-        ).order_by(PurchaseVoucherMaster.id.desc()).all()
-
-        result = [
-            {
-                "id":              r.id,
-                "voucherNo":       r.voucher_no,
-                "voucherDate":     _fmt_date(r.voucher_date),
-                "vendorId":        r.vendor_id,
-                "vendorName":      r.vendor.ledger_name if r.vendor else None,
-                "totalInvoiceAmount": float(r.total_invoice_amount or 0),
-            }
-            for r in rows
-        ]
-
-        return res("Approved purchase vouchers fetched", result, 200)
-
-    except Exception as e:
-        return res(str(e), [], 500)
-
-
-# ══════════════════════════════════════════════════════════════════
-# LOOKUP — Items + GST of a purchase voucher with paid/balance
-# ══════════════════════════════════════════════════════════════════
-
-def get_purchase_voucher_payment_items(pv_id):
-    try:
-        pv = PurchaseVoucherMaster.query.get(pv_id)
-        if not pv:
-            return res("Purchase voucher not found", [], 404)
-
-        paid_basic = _paid_basic_map(pv.id)
-        paid_gst   = _paid_gst_map(pv.id)
-
-        items = []
-        for i in pv.items:
-            booked  = float(i.basic_amount or 0)
-            paid    = paid_basic.get(i.id, 0)
-            balance = max(booked - paid, 0)
-            items.append({
-                "pvItemId":      i.id,
-                "slNo":          i.sl_no,
-                "ccCodeId":      i.cc_code_id,
-                "ccCode":        i.cc_code_rel.cc_code if i.cc_code_rel else None,
-                "ccName":        i.cc_code_rel.cc_name if i.cc_code_rel else None,
-                "bookedAmount":  booked,
-                "paidAmount":    paid,
-                "balanceAmount": balance,
-                "currentAmount": 0,
-            })
-
-        gst_lines = []
-        for g in pv.gst_lines:
-            booked  = float(g.gst_amount or 0)
-            paid    = paid_gst.get(g.gst_type, 0)
-            balance = max(booked - paid, 0)
-            gst_lines.append({
-                "gstType":       g.gst_type,
-                "ccCode":        g.cc_code,
-                "ccName":        g.cc_name,
-                "bookedAmount":  booked,
-                "paidAmount":    paid,
-                "balanceAmount": balance,
-                "currentAmount": 0,
-                "isSelected":    g.is_selected,
-            })
-
-        return res("Purchase voucher items fetched", {
-            "purchaseVoucherId":      pv.id,
-            "purchaseVoucherNo":      pv.voucher_no,
-            "purchaseVoucherDate":    _fmt_date(pv.voucher_date),
-            "vendorId":               pv.vendor_id,
-            "vendorName":             pv.vendor.ledger_name if pv.vendor else None,
-            "totalBookedBasic":       float(pv.basic_amount         or 0),
-            "totalBookedGst":         float(pv.gst_amount           or 0),
-            "totalBookedInvoice":     float(pv.total_invoice_amount or 0),
-            "items":                  items,
-            "gstLines":               gst_lines,
-        }, 200)
-
-    except Exception as e:
-        return res(str(e), [], 500)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -284,16 +132,6 @@ def create_payment_voucher(data, user_id):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        purchase_voucher_id = data.get("purchaseVoucherId")
-        if not purchase_voucher_id:
-            return res("purchaseVoucherId required", [], 400)
-
-        pv = PurchaseVoucherMaster.query.get(int(purchase_voucher_id))
-        if not pv:
-            return res("Purchase voucher not found", [], 404)
-        if pv.workflow_status != "Approved":
-            return res("Only Approved purchase vouchers can be paid", [], 400)
-
         allowed = is_creator(project_code, _MODULE, user_id)
         if not allowed:
             return res("You are not authorized to create payment vouchers", [], 403)
@@ -305,39 +143,34 @@ def create_payment_voucher(data, user_id):
         gst_lines = data.get("gstLines", [])
 
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
-        pct_map   = {pg.gst_type: Decimal(str(pg.percent or 0)) for pg in pv.gst_lines}
-        gst_total = sum(
-            (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01"))
-            for g in gst_lines if g.get("isSelected")
-        )
-        discount  = Decimal(str(data.get("discount")  or 0))
-        round_off = Decimal(str(data.get("roundOff")  or 0))
-        total     = basic_total + gst_total - discount + round_off
+        gst_total   = sum(Decimal(str(g.get("currentAmount") or 0)) for g in gst_lines if g.get("isSelected"))
+        discount    = Decimal(str(data.get("discount")  or 0))
+        round_off   = Decimal(str(data.get("roundOff")  or 0))
+        total       = basic_total + gst_total - discount + round_off
 
         payment_vouch_no   = _generate_payment_vouch_no()
         payment_vouch_uuid = str(_uuid.uuid4())
 
         pvm = PaymentVoucherMaster(
-            payment_vouch_no   = payment_vouch_no,
-            payment_vouch_uuid = payment_vouch_uuid,
-            payment_date       = _parse_date(data.get("paymentDate")) or date.today(),
-            purchase_voucher_id = int(purchase_voucher_id),
-            project_code       = project_code,
-            vendor_id          = data.get("vendorId") or pv.vendor_id,
-            payment_mode       = data.get("paymentMode"),
-            cash_ac_id         = data.get("cashAcId")  or None,
-            bank_ac_id         = data.get("bankAcId")  or None,
-            utr_voucher_no     = data.get("utrVoucherNo"),
-            payment_remarks    = data.get("paymentRemarks"),
+            payment_vouch_no     = payment_vouch_no,
+            payment_vouch_uuid   = payment_vouch_uuid,
+            payment_date         = _parse_date(data.get("paymentDate")) or date.today(),
+            project_code         = project_code,
+            vendor_id            = data.get("vendorId") or None,
+            payment_mode         = data.get("paymentMode"),
+            cash_ac_id           = data.get("cashAcId")  or None,
+            bank_ac_id           = data.get("bankAcId")  or None,
+            utr_voucher_no       = data.get("utrVoucherNo"),
+            payment_remarks      = data.get("paymentRemarks"),
             basic_amount         = basic_total,
             gst_amount           = gst_total,
             discount             = discount,
             round_off            = round_off,
             total_invoice_amount = total,
-            workflow_status = "Draft",
-            current_level   = 0,
-            locked          = False,
-            created_by      = user_id,
+            workflow_status      = "Draft",
+            current_level        = 0,
+            locked               = False,
+            created_by           = user_id,
         )
         db.session.add(pvm)
         db.session.flush()
@@ -345,7 +178,6 @@ def create_payment_voucher(data, user_id):
         for idx, row in enumerate(items, start=1):
             db.session.add(PaymentVoucherItem(
                 payment_voucher_id = pvm.id,
-                pv_item_id         = row.get("pvItemId") or None,
                 sl_no              = row.get("slNo") or idx,
                 cc_code_id         = row.get("ccCodeId") or None,
                 cc_code            = row.get("ccCode"),
@@ -361,7 +193,7 @@ def create_payment_voucher(data, user_id):
                 cc_code            = g.get("ccCode"),
                 cc_name            = g.get("ccName"),
                 booked_amount      = Decimal(str(g.get("bookedAmount") or 0)),
-                current_amount     = (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
+                current_amount     = Decimal(str(g.get("currentAmount") or 0)) if g.get("isSelected") else Decimal("0"),
                 is_selected        = bool(g.get("isSelected")),
             ))
 
@@ -412,8 +244,6 @@ def get_payment_voucher_list(data):
                 "id":                 r.id,
                 "paymentVouchNo":     r.payment_vouch_no,
                 "paymentDate":        _fmt_date(r.payment_date),
-                "purchaseVoucherId":  r.purchase_voucher_id,
-                "purchaseVoucherNo":  r.purchase_voucher.voucher_no if r.purchase_voucher else None,
                 "vendorId":           r.vendor_id,
                 "vendorName":         r.vendor.ledger_name if r.vendor else None,
                 "paymentMode":        r.payment_mode,
@@ -503,19 +333,13 @@ def edit_payment_voucher(pvm_id, data, user_id):
         db.session.flush()
 
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
-        pv        = PurchaseVoucherMaster.query.get(pvm.purchase_voucher_id)
-        pct_map   = {pg.gst_type: Decimal(str(pg.percent or 0)) for pg in (pv.gst_lines if pv else [])}
-        gst_total = sum(
-            (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01"))
-            for g in gst_lines if g.get("isSelected")
-        )
-        discount  = Decimal(str(data.get("discount")  or 0))
-        round_off = Decimal(str(data.get("roundOff")  or 0))
+        gst_total   = sum(Decimal(str(g.get("currentAmount") or 0)) for g in gst_lines if g.get("isSelected"))
+        discount    = Decimal(str(data.get("discount")  or 0))
+        round_off   = Decimal(str(data.get("roundOff")  or 0))
 
         for idx, row in enumerate(items, start=1):
             db.session.add(PaymentVoucherItem(
                 payment_voucher_id = pvm.id,
-                pv_item_id         = row.get("pvItemId") or None,
                 sl_no              = row.get("slNo") or idx,
                 cc_code_id         = row.get("ccCodeId") or None,
                 cc_code            = row.get("ccCode"),
@@ -531,7 +355,7 @@ def edit_payment_voucher(pvm_id, data, user_id):
                 cc_code            = g.get("ccCode"),
                 cc_name            = g.get("ccName"),
                 booked_amount      = Decimal(str(g.get("bookedAmount") or 0)),
-                current_amount     = (basic_total * pct_map.get(g.get("gstType"), Decimal("0")) / 100).quantize(Decimal("0.01")) if g.get("isSelected") else Decimal("0"),
+                current_amount     = Decimal(str(g.get("currentAmount") or 0)) if g.get("isSelected") else Decimal("0"),
                 is_selected        = bool(g.get("isSelected")),
             ))
 

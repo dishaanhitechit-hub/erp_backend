@@ -96,11 +96,6 @@ _REGISTRY = {
         "approve": "approve_bill_payment", "reback": "reback_bill_payment",
         "reject": "reject_bill_payment",
     },
-    "purchase_voucher": {
-        "mod": "app.modules.finance.purchase_voucher.service",
-        "approve": "approve_purchase_voucher", "reback": "reback_purchase_voucher",
-        "reject": "reject_purchase_voucher",
-    },
     "budget": {
         "mod": "app.modules.project_mgmt.contract.budget.service",
         "approve": "approve_budget", "reback": "reback_budget", "reject": "reject_budget",

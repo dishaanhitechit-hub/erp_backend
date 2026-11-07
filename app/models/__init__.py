@@ -60,7 +60,6 @@ from .billingMaster import BillingMaster, BillingItem, BillingBoqItem
 from .ogSaleOrder import *
 from .saleBill import SaleBillMaster, SaleBillItem, SaleBillGst, SaleBillSource
 from .purchaseBill import PurchaseBillMaster, PurchaseBillItem, PurchaseBillGst, PurchaseBillSource
-from .purchaseVoucher import PurchaseVoucherMaster, PurchaseVoucherItem, PurchaseVoucherGst
 from .saleReceipt import SaleReceiptMaster
 from .saleReceiptBilling import SaleReceiptBillingMaster, SaleReceiptItem, SaleReceiptGst
 from .debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst

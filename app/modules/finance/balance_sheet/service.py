@@ -6,7 +6,6 @@ from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.models.bankCash import BankCash
 from app.models.saleBill import SaleBillMaster, SaleBillGst
 from app.models.saleReceipt import SaleReceiptMaster
-from app.models.purchaseVoucher import PurchaseVoucherMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster, BillPaymentReceiptGst
 from app.models.cc_code import CCCode
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher, PettyCashDocketVoucherDetail
@@ -350,26 +349,6 @@ def _sundry_debtors(project_code=None, from_date=None, to_date=None):
     return float(bq.scalar() or 0) - float(rq.scalar() or 0)
 
 
-def _advance_to_vendors(project_code=None, from_date=None, to_date=None):
-    """
-    CAAV = sum of advance payments from approved purchase vouchers
-    (total_invoice_amount paid out to vendors).
-    """
-    q = db.session.query(
-        db.func.coalesce(db.func.sum(PurchaseVoucherMaster.total_invoice_amount), 0)
-    ).filter(
-        PurchaseVoucherMaster.workflow_status == "Approved",
-        PurchaseVoucherMaster.status == "Active",
-    )
-    if project_code:
-        q = q.filter(PurchaseVoucherMaster.project_code == project_code)
-    if from_date:
-        q = q.filter(PurchaseVoucherMaster.voucher_date >= from_date)
-    if to_date:
-        q = q.filter(PurchaseVoucherMaster.voucher_date <= to_date)
-    return float(q.scalar() or 0)
-
-
 def _grn_value(project_code=None, from_date=None, to_date=None):
     """
     CARM = raw materials stock value tracked via JournalEntry lines
@@ -463,7 +442,6 @@ def get_balance_sheet(args):
         banks  = _all_bank_balances(**kw)
         cash   = _cash_balance(**kw)
         casd   = _sundry_debtors(**kw)
-        caav   = _advance_to_vendors(**kw)
 
         bank_total = sum(b["balance"] for b in banks)
 
@@ -552,7 +530,7 @@ def get_balance_sheet(args):
 
         caae = jd["CAAE"]
         caop = jd["CAOP"]
-        cala_total = caav + caae + caop
+        cala_total = caae + caop
 
         caci = jd["CACI"]
         cats = jd["CATS"]
