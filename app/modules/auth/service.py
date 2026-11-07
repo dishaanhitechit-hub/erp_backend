@@ -201,3 +201,34 @@ def get_me():
         "profilePicture": user.profile_picture,
     }])
 
+
+def get_user_file(user_id, kind):
+    """Stream a user's profile picture / signature through the API (https),
+    so the browser never needs the raw media URL."""
+    import os
+    from flask import g, send_file
+    from app.cloudinary_uploader import local_path_from_url
+
+    if kind not in ("profile", "signature"):
+        return res("Not found", code=404)
+
+    # Signatures are sensitive: only the owner or a super admin
+    # (role read from the DB — project tokens don't carry the role claim)
+    if kind == "signature" and g.current_user["id"] != user_id:
+        me = User.query.get(g.current_user["id"])
+        if not me or not me.global_role or me.global_role.name != "super_admin":
+            return res("Forbidden", code=403)
+
+    user = User.query.get(user_id)
+    if not user:
+        return res("User not found", code=404)
+
+    url = user.profile_picture if kind == "profile" else user.signature
+    path = local_path_from_url(url)
+    if not path or not os.path.isfile(path):
+        return res("File not found", code=404)
+
+    response = send_file(path, max_age=0)
+    response.headers["Cache-Control"] = "private, no-cache"
+    return response
+

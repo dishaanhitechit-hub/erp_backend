@@ -1,5 +1,25 @@
 import os
 
+def local_path_from_url(url):
+    """Disk path of a file uploaded with upload_file_to_bunny, or None."""
+    if not url:
+        return None
+    media_base_path = os.getenv("MEDIA_BASE_PATH")
+    media_base_url  = os.getenv("MEDIA_BASE_URL")
+    if not media_base_path or not media_base_url:
+        return None
+    # match ignoring http/https, so old uploads keep working if the scheme changes
+    strip = lambda u: u.split("://", 1)[-1]
+    if not strip(url).startswith(strip(media_base_url)):
+        return None
+    relative = strip(url)[len(strip(media_base_url)):].lstrip("/")
+    base = os.path.realpath(media_base_path)
+    path = os.path.realpath(os.path.join(base, relative))
+    if not path.startswith(base + os.sep):
+        return None
+    return path
+
+
 def delete_file_from_storage(url):
     """Delete a previously uploaded file given its public URL. Silent no-op on any error."""
     if not url:
