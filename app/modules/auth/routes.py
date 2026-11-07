@@ -1,7 +1,7 @@
 # app/modules/auth/routes.py
 
 from flask import Blueprint, request
-from .service import login_user, logout_user, forgot_password, verify_otp, reset_password, upload_profile_picture
+from .service import login_user, logout_user, forgot_password, verify_otp, reset_password, upload_profile_picture, get_me
 from app.middleware.auth_middleware import login_required
 
 auth_bp = Blueprint("auth", __name__)
@@ -52,3 +52,11 @@ def reset_password_route():
 @login_required
 def profile_picture_route():
     return upload_profile_picture(request.files.get("file"))
+
+
+# Logged-in user's own basic info (name, role, profile picture URL).
+@auth_bp.route("/me", methods=["GET"])
+@login_required
+def me_route():
+    return get_me()
+

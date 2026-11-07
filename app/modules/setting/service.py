@@ -47,7 +47,7 @@ def create_user(request): # Test done & pass
 
     # file
     # file = request.files.get("signature")
-    signatureFile = request.files.get("signatureFile")
+    signatureFile = request.files.get("signatureFile") or request.files.get("signature")
     profileFile = request.files.get("profilePicture")
     # role check
     role = Role.query.filter_by(name=role_name).first()
@@ -1124,9 +1124,18 @@ def update_user(userId, request):
         )
 
     )
-    user.signature = supporting_file or user.signature
+    remove_signature = str(request.form.get("removeSignature", "")).lower() in ["true", "1", "yes"]
+    if supporting_file:
+        user.signature = supporting_file
+    elif remove_signature and user.signature:
+        delete_file_from_storage(user.signature)
+        user.signature = None
 
     profileFile = request.files.get("profilePicture")
+    remove_profile = str(request.form.get("removeProfilePicture", "")).lower() in ["true", "1", "yes"]
+    if not profileFile and remove_profile and user.profile_picture:
+        delete_file_from_storage(user.profile_picture)
+        user.profile_picture = None
     if profileFile:
         _, pic_error = save_user_profile_picture(user, profileFile)
         if pic_error:
@@ -1145,7 +1154,7 @@ def update_user(userId, request):
         "whatsapp": user.wp_mobile,
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
-        "signatureUrl": supporting_file,
+        "signatureUrl": user.signature,
         "profilePictureUrl": user.profile_picture
     }]
 

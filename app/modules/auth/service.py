@@ -185,3 +185,19 @@ def upload_profile_picture(file):
 
     db.session.commit()
     return res("Profile picture updated", [{"id": user.id, "profilePicture": url}])
+
+
+def get_me():
+    """Basic info about the logged-in user (used for the navbar avatar)."""
+    from flask import g
+
+    user = User.query.get(g.current_user["id"])
+    if not user:
+        return res("User not found", code=404)
+    return res("User fetched", [{
+        "id": user.id,
+        "username": user.username,
+        "role": user.global_role.name if user.global_role else None,
+        "profilePicture": user.profile_picture,
+    }])
+
