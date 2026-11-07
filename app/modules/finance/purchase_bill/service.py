@@ -388,12 +388,18 @@ def get_available_brrs(data):
         if not vendor_id or not project_code:
             return res("vendorId and projectCode required", [], 400)
 
+        # Only return BRRs that have at least one Approved BRB (billing record)
+        approved_brr_ids = db.session.query(BrbMaster.brr_id).filter(
+            BrbMaster.workflow_status == "Approved"
+        ).distinct().subquery()
+
         rows = (
             BrrMaster.query
             .filter(
                 BrrMaster.vendor_id      == int(vendor_id),
                 BrrMaster.project_code   == project_code,
                 BrrMaster.workflow_status == "Approved",
+                BrrMaster.id.in_(approved_brr_ids),
             )
             .order_by(BrrMaster.brr_date.desc())
             .all()
@@ -485,7 +491,7 @@ def get_brr_items_grouped(data):
 
         brbs = (
             BrbMaster.query
-            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status != "Rejected")
+            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status == "Approved")
             .all()
         )
 
