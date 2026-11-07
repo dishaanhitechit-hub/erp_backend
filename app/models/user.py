@@ -17,6 +17,7 @@ class User(db.Model):
     wp_mobile = db.Column(db.String(20), unique=False, nullable=False)
     emp_code = db.Column(db.String(20), unique=False, nullable=False)
     signature = db.Column(db.String(255))
+    profile_picture = db.Column(db.String(255))
 
     #  set password
     def set_password(self, password):

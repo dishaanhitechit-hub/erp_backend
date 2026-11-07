@@ -1,7 +1,7 @@
 # app/modules/auth/routes.py
 
 from flask import Blueprint, request
-from .service import login_user, logout_user, forgot_password, verify_otp, reset_password
+from .service import login_user, logout_user, forgot_password, verify_otp, reset_password, upload_profile_picture
 from app.middleware.auth_middleware import login_required
 
 auth_bp = Blueprint("auth", __name__)
@@ -44,3 +44,11 @@ def reset_password_route():
         data.get("reset_token", "").strip(),
         data.get("new_password", ""),
     )
+
+
+# Any logged-in user can upload their own profile picture.
+# multipart/form-data with field "file" (jpg, jpeg, png, webp — max 5 MB).
+@auth_bp.route("/profile-picture", methods=["POST"])
+@login_required
+def profile_picture_route():
+    return upload_profile_picture(request.files.get("file"))
