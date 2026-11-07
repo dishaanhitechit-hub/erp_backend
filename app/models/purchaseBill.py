@@ -23,18 +23,13 @@ class PurchaseBillMaster(db.Model):
 
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
 
-    # "GRN" → order_master, "SRN" → pw_order_master
-    order_type  = db.Column(db.String(10), nullable=True)
-    order_id    = db.Column(db.Integer, db.ForeignKey("order_master.id"),    nullable=True)
-    pw_order_id = db.Column(db.Integer, db.ForeignKey("pw_order_master.id"), nullable=True)
-
-    # BRR reference
+    # BRR reference (single BRR per purchase bill)
     brr_id   = db.Column(db.Integer, db.ForeignKey("brr_master.id"), nullable=True)
     brr_no   = db.Column(db.String(50), nullable=True)  # snapshot
     brr_date = db.Column(db.Date,       nullable=True)  # snapshot
 
-    vendor_bill_no   = db.Column(db.String(100), nullable=True)  # party_bill_no snapshot
-    vendor_bill_date = db.Column(db.Date,        nullable=True)  # party_date snapshot
+    vendor_bill_no   = db.Column(db.String(100), nullable=True)
+    vendor_bill_date = db.Column(db.Date,        nullable=True)
 
     remarks = db.Column(db.Text, nullable=True)
 
@@ -65,13 +60,10 @@ class PurchaseBillMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project   = db.relationship("Project",                backref="purchase_bills")
-    vendor    = db.relationship("Vendor",                 backref="purchase_bills")
-    order     = db.relationship("OrderMaster",            backref="purchase_bills")
-    pw_order  = db.relationship("ProjectWorkOrderMaster", backref="purchase_bills")
-    brr       = db.relationship("BrrMaster",              backref="purchase_bills")
+    project   = db.relationship("Project",    backref="purchase_bills")
+    vendor    = db.relationship("Vendor",     backref="purchase_bills")
+    brr       = db.relationship("BrrMaster",  backref="purchase_bills")
 
-    sources   = db.relationship("PurchaseBillSource", backref="purchase_bill", cascade="all,delete-orphan", order_by="PurchaseBillSource.id", lazy=True)
     items     = db.relationship("PurchaseBillItem", backref="purchase_bill", cascade="all,delete-orphan", order_by="PurchaseBillItem.sl_no")
     gst_lines = db.relationship("PurchaseBillGst",  backref="purchase_bill", cascade="all,delete-orphan", order_by="PurchaseBillGst.id")
 
@@ -82,28 +74,6 @@ class PurchaseBillMaster(db.Model):
     rejector  = db.relationship("User", foreign_keys=[rejected_by])
 
 
-class PurchaseBillSource(db.Model):
-    """One row per (order, BRR) pair that contributes to this purchase bill."""
-
-    __tablename__ = "purchase_bill_sources"
-
-    id               = db.Column(db.Integer, primary_key=True)
-    purchase_bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bill_master.id", ondelete="CASCADE"), nullable=False)
-    order_id         = db.Column(db.Integer, db.ForeignKey("order_master.id"),    nullable=True)
-    pw_order_id      = db.Column(db.Integer, db.ForeignKey("pw_order_master.id"), nullable=True)
-    order_type       = db.Column(db.String(10),   nullable=True)   # GRN or SRN
-    order_no         = db.Column(db.String(50),   nullable=True)   # snapshot
-    brr_id           = db.Column(db.Integer, db.ForeignKey("brr_master.id"), nullable=True)
-    brr_no           = db.Column(db.String(50),   nullable=True)   # snapshot
-    brr_date         = db.Column(db.Date,          nullable=True)   # snapshot
-    basic_amount     = db.Column(db.Numeric(14, 2), default=0)
-    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
-
-    order    = db.relationship("OrderMaster",            lazy=True)
-    pw_order = db.relationship("ProjectWorkOrderMaster", lazy=True)
-    brr      = db.relationship("BrrMaster",              lazy=True)
-
-
 class PurchaseBillItem(db.Model):
     """BASIC section — one row per CC Code group."""
 
@@ -111,7 +81,6 @@ class PurchaseBillItem(db.Model):
 
     id               = db.Column(db.Integer, primary_key=True)
     purchase_bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bill_master.id"), nullable=False)
-    source_id        = db.Column(db.Integer, db.ForeignKey("purchase_bill_sources.id", ondelete="SET NULL"), nullable=True)
 
     sl_no        = db.Column(db.Integer,        nullable=False)
     cc_code      = db.Column(db.String(50),     nullable=True)
