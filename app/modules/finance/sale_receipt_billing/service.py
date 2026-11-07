@@ -371,14 +371,14 @@ def get_details_by_invoice_no(data):
             })
 
         if not result_gst:
-            for gst_type, cc_code, cc_name, pct in [
-                ("IGST", "IGST", "Output-IGST", 18),
-                ("CGST", "CGST", "Output-CGST", 9),
-                ("SGST", "SGST", "Output-SGST", 9),
+            for gst_type, cc_code, cc_name in [
+                ("IGST", "IGST", "Output-IGST"),
+                ("CGST", "CGST", "Output-CGST"),
+                ("SGST", "SGST", "Output-SGST"),
             ]:
                 result_gst.append({
                     "gstType": gst_type, "ccCode": cc_code, "ccName": cc_name,
-                    "percent": pct, "bookedAmount": 0, "receivedAmount": 0,
+                    "percent": 0, "bookedAmount": 0, "receivedAmount": 0,
                     "balanceAmount": 0, "currentAmount": 0, "isSelected": False,
                 })
 
