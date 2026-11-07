@@ -342,8 +342,8 @@ def get_petty_cash_docket_voucher_list(data):
                 "accountType":    r.bank_cash.type if r.bank_cash else None,
                 "paymentRefId":   r.payment_ref_id,
                 "totalAmount":    float(r.total_amount or 0),
-                "ccCodes":        ", ".join(
-                    dict.fromkeys(d.cc_code for d in r.details if d.cc_code)
+                "ccNames":        ", ".join(
+                    dict.fromkeys(d.cc_name for d in r.details if d.cc_name)
                 ),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
