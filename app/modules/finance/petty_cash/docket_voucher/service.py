@@ -259,7 +259,7 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
         voucher = PettyCashDocketVoucher(
             voucher_uuid    = str(_uuid.uuid4()),
             voucher_no      = _generate_voucher_no(),
-            voucher_date    = date.today(),
+            voucher_date    = _parse_date(data.get("voucherDate")) or date.today(),
             budget_id       = budget_id,
             expenses_by     = expenses_by,
             mode_of_payment = mode_of_payment,
@@ -342,6 +342,9 @@ def get_petty_cash_docket_voucher_list(data):
                 "accountType":    r.bank_cash.type if r.bank_cash else None,
                 "paymentRefId":   r.payment_ref_id,
                 "totalAmount":    float(r.total_amount or 0),
+                "ccCodes":        ", ".join(
+                    dict.fromkeys(d.cc_code for d in r.details if d.cc_code)
+                ),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      _fmt_date(r.created_at),
@@ -404,6 +407,8 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
         if not details_data:
             return res("At least one detail row required", [], 400)
 
+        if data.get("voucherDate"):
+            voucher.voucher_date = _parse_date(data["voucherDate"]) or voucher.voucher_date
         if data.get("expensesBy"):
             voucher.expenses_by = data["expensesBy"]
         if data.get("modeOfPayment"):

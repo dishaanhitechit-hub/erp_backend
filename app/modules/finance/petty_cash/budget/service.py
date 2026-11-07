@@ -145,7 +145,7 @@ def create_petty_cash_budget(data, user_id, files=None):
         budget = PettyCashBudget(
             budget_uuid         = str(_uuid.uuid4()),
             budget_no           = _generate_budget_no(),
-            budget_date         = date.today(),
+            budget_date         = _parse_date(data.get("budgetDate")) or date.today(),
             budget_frequency    = data.get("budgetFrequency"),
             from_date           = _parse_date(data.get("fromDate")),
             to_date             = _parse_date(data.get("toDate")),
@@ -281,6 +281,8 @@ def edit_petty_cash_budget(budget_id, data, user_id, files=None):
         if not details_data:
             return res("At least one budget detail row required", [], 400)
 
+        if data.get("budgetDate") is not None:
+            budget.budget_date = _parse_date(data["budgetDate"]) or budget.budget_date
         if data.get("budgetFrequency") is not None:
             budget.budget_frequency = data["budgetFrequency"]
         if data.get("fromDate") is not None:
