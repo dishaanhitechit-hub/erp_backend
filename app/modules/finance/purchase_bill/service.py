@@ -109,6 +109,19 @@ def _cc_summary_from_brb(brb_id, billing_type):
     ]
 
 
+def _get_order_no_for_brr(brr):
+    """Return the order_no from the order linked to this BRR (or None)."""
+    if brr is None:
+        return None
+    if brr.order_type == "GRN" and brr.order_id:
+        o = OrderMaster.query.get(brr.order_id)
+        return o.order_no if o else None
+    if brr.order_type == "SRN" and brr.pw_order_id:
+        o = ProjectWorkOrderMaster.query.get(brr.pw_order_id)
+        return o.order_no if o else None
+    return None
+
+
 def _build_detail_payload(bill):
     return {
         "id":                  bill.id,
@@ -122,6 +135,7 @@ def _build_detail_payload(bill):
         "brrId":               bill.brr_id,
         "brrNo":               bill.brr_no,
         "brrDate":             _fmt_date(bill.brr_date),
+        "orderNo":             _get_order_no_for_brr(bill.brr),
         "vendorBillNo":        bill.vendor_bill_no,
         "vendorBillDate":      _fmt_date(bill.vendor_bill_date),
         "remarks":             bill.remarks,
