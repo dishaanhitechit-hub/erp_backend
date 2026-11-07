@@ -388,39 +388,56 @@ def get_available_brrs(data):
         if not vendor_id or not project_code:
             return res("vendorId and projectCode required", [], 400)
 
-        # Only return BRRs that have at least one Approved BRB (billing record)
-        approved_brr_ids = db.session.query(BrbMaster.brr_id).filter(
-            BrbMaster.workflow_status == "Approved"
-        ).distinct().subquery()
-
-        rows = (
-            BrrMaster.query
-            .filter(
-                BrrMaster.vendor_id      == int(vendor_id),
-                BrrMaster.project_code   == project_code,
-                BrrMaster.workflow_status == "Approved",
-                BrrMaster.id.in_(approved_brr_ids),
+        # Start directly from BRB — if a BRR has no Approved BRBs it simply won't appear.
+        # Join BRR only to enforce vendor/project/status constraints.
+        brb_agg = (
+            db.session.query(
+                BrbMaster.brr_id,
+                func.sum(BrbMaster.basic_amount).label("basic_amount"),
+                func.sum(BrbMaster.gst_amount).label("gst_amount"),
             )
-            .order_by(BrrMaster.brr_date.desc())
+            .join(BrrMaster, BrrMaster.id == BrbMaster.brr_id)
+            .filter(
+                BrbMaster.workflow_status == "Approved",
+                BrrMaster.vendor_id       == int(vendor_id),
+                BrrMaster.project_code    == project_code,
+                BrrMaster.workflow_status == "Approved",
+            )
+            .group_by(BrbMaster.brr_id)
             .all()
         )
 
-        # Batch-resolve billing status
-        brr_ids = [r.id for r in rows]
+        if not brb_agg:
+            return res("Available BRRs fetched", [], 200)
+
+        brr_id_list = [row.brr_id for row in brb_agg]
+        brb_amount_map = {
+            row.brr_id: {
+                "basicAmount": float(row.basic_amount or 0),
+                "gstAmount":   float(row.gst_amount   or 0),
+            }
+            for row in brb_agg
+        }
+
+        # Fetch BRR details for matched ids
+        brr_map = {
+            r.id: r
+            for r in BrrMaster.query.filter(BrrMaster.id.in_(brr_id_list)).all()
+        }
+
+        # Batch-resolve billing status from PurchaseBillMaster
         linked_bills = (
             PurchaseBillMaster.query
-            .filter(PurchaseBillMaster.brr_id.in_(brr_ids))
+            .filter(PurchaseBillMaster.brr_id.in_(brr_id_list))
             .with_entities(PurchaseBillMaster.brr_id, PurchaseBillMaster.workflow_status)
             .all()
-        ) if brr_ids else []
-
+        )
         brr_status_map = {}
         for lb in linked_bills:
             brr_status_map.setdefault(lb.brr_id, set()).add(lb.workflow_status)
 
-        def _resolve_status(brr_id):
-            statuses = brr_status_map.get(brr_id, set())
-            # Filter out only Rejected — treat everything else as "in-use"
+        def _resolve_status(bid):
+            statuses = brr_status_map.get(bid, set())
             active = {s for s in statuses if s != "Rejected"}
             if not active:
                 return "Free"
@@ -428,50 +445,24 @@ def get_available_brrs(data):
                 return "Booked"
             return "Pending"
 
-        # Batch-resolve order numbers (polymorphic: GRN → OrderMaster, SRN → ProjectWorkOrderMaster)
-        grn_ids = list({r.order_id    for r in rows if r.order_type == "GRN" and r.order_id})
-        srn_ids = list({r.pw_order_id for r in rows if r.order_type == "SRN" and r.pw_order_id})
-
+        # Batch-resolve order numbers (polymorphic)
+        grn_ids = list({r.order_id    for r in brr_map.values() if r.order_type == "GRN" and r.order_id})
+        srn_ids = list({r.pw_order_id for r in brr_map.values() if r.order_type == "SRN" and r.pw_order_id})
         grn_map = {o.id: o.order_no for o in OrderMaster.query.filter(OrderMaster.id.in_(grn_ids)).all()} if grn_ids else {}
         srn_map = {o.id: o.order_no for o in ProjectWorkOrderMaster.query.filter(ProjectWorkOrderMaster.id.in_(srn_ids)).all()} if srn_ids else {}
 
-        # Aggregate approved BRB basic+gst amounts per BRR — these are the actual billed amounts
-        all_brr_ids = [r.id for r in rows]
-        brb_agg_rows = (
-            db.session.query(
-                BrbMaster.brr_id,
-                func.sum(BrbMaster.basic_amount).label("basic_amount"),
-                func.sum(BrbMaster.gst_amount).label("gst_amount"),
-            )
-            .filter(
-                BrbMaster.brr_id.in_(all_brr_ids),
-                BrbMaster.workflow_status == "Approved",
-            )
-            .group_by(BrbMaster.brr_id)
-            .all()
-        ) if all_brr_ids else []
-        brb_amount_map = {
-            row.brr_id: {
-                "basicAmount": float(row.basic_amount or 0),
-                "gstAmount":   float(row.gst_amount   or 0),
-            }
-            for row in brb_agg_rows
-        }
-
         result = []
-        for r in rows:
-            billing_status = _resolve_status(r.id)
-            # Exclude BRRs that already have any active (non-Rejected) purchase bill
-            if billing_status in ("Booked", "Pending"):
+        for brr_id in brr_id_list:
+            r = brr_map.get(brr_id)
+            if not r:
                 continue
-
-            # Skip if no approved BRB amounts (the subquery found the brr_id but amounts may be zero)
-            brb_amounts = brb_amount_map.get(r.id)
-            if not brb_amounts or brb_amounts["basicAmount"] <= 0:
+            billing_status = _resolve_status(brr_id)
+            if billing_status in ("Booked", "Pending"):
                 continue
 
             order_no = (grn_map.get(r.order_id, "") if r.order_type == "GRN"
                         else srn_map.get(r.pw_order_id, ""))
+            brb_amounts = brb_amount_map[brr_id]
 
             result.append({
                 "id":            r.id,
@@ -485,6 +476,9 @@ def get_available_brrs(data):
                 "orderType":     r.order_type or "GRN",
                 "billingStatus": billing_status,
             })
+
+        # Sort latest BRR date first
+        result.sort(key=lambda x: x["brrDate"] or "", reverse=True)
 
         return res("Available BRRs fetched", result, 200)
 
