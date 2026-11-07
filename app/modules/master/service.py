@@ -236,12 +236,13 @@ def get_all_vendors(ledger_type=None):
             "whatsappNumber": v.whatsapp_number,
             "supplierTypes":  v.supplier_types or [],
             "supplierCode":   v.linked_supplier.supplier_code if v.linked_supplier else None,
-            "siteCodes":   ", ".join(
+            "siteCodes":        ", ".join(
                 lnk.project.project_code
                 for lnk in v.projects
                 if lnk.project and lnk.project.project_code
             ) if is_debtor else None,
-            "status":      v.status,
+            "corporateAddress": v.corporate_address,
+            "status":           v.status,
         }
         for v in vendors
     ]
