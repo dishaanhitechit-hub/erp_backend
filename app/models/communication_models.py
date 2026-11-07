@@ -272,6 +272,23 @@ class CommNotification(db.Model):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# PUSH DEVICES  (Firebase Cloud Messaging tokens of the mobile app)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class CommDeviceToken(db.Model):
+    __tablename__ = "comm_device_tokens"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token      = db.Column(db.String(512), nullable=False, unique=True)
+    platform   = db.Column(db.String(20),  nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+    updated_at = db.Column(db.DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # CALLS  (voice + video)
 # ═════════════════════════════════════════════════════════════════════════════
 

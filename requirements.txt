@@ -34,3 +34,4 @@ python-docx
 lxml
 APScheduler>=3.10.4
 anthropic==0.40.0
+firebase-admin>=7.0,<8

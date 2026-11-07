@@ -759,6 +759,34 @@ def user_presence(target_user_id):
     return jsonify(presence_integration_service.get_rich_status(target_user_id)), 200
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PUSH DEVICES (mobile app — Firebase Cloud Messaging)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@comm_bp.route("/devices", methods=["POST"])
+@jwt_required()
+def register_device():
+    """JSON: {token, platform} — called by the mobile app after login."""
+    from app.modules.communication.chatting import push_service
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    if not data.get("token"):
+        return jsonify({"error": "token required", "message": "token required"}), 400
+    push_service.register_device(user_id, data["token"], data.get("platform"))
+    return jsonify({"ok": True}), 200
+
+
+@comm_bp.route("/devices/remove", methods=["POST"])
+@jwt_required()
+def remove_device():
+    """JSON: {token} — called by the mobile app on logout."""
+    from app.modules.communication.chatting import push_service
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    push_service.remove_device(user_id, data.get("token"))
+    return jsonify({"ok": True}), 200
+
+
 @comm_bp.route("/heartbeat", methods=["POST"])
 @jwt_required()
 def heartbeat():

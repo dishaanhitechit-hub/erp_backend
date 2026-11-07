@@ -47,7 +47,31 @@ def send_message(
         conv.updated_at = now
 
     db.session.commit()
+    _push_new_message(conv, msg)
     return msg
+
+
+def _push_new_message(conv, msg) -> None:
+    """Phone notification to the other (un-muted) members. Never raises."""
+    try:
+        from app.models.communication_models import CommConversationMember
+        from app.modules.communication.chatting.push_service import notify_users
+
+        if conv is None:
+            return
+        members = CommConversationMember.query.filter(
+            CommConversationMember.conversation_id == conv.id,
+            CommConversationMember.user_id != msg.sender_id,
+        ).all()
+        ids = [m.user_id for m in members if not getattr(m, "is_muted", False)]
+        if not ids:
+            return
+        sender = msg.sender.username if msg.sender else "New message"
+        title = sender if conv.conv_type == "direct" else f"{conv.name} • {sender}"
+        body = msg.content or (f"📎 {msg.file_name}" if msg.file_name else "Sent an attachment")
+        notify_users(ids, title, body, kind="message")
+    except Exception:
+        pass
 
 
 def get_message_history(

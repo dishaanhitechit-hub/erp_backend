@@ -26,6 +26,13 @@ def push_notification(
     )
     db.session.add(n)
     db.session.commit()
+
+    # instant phone notification (no-op unless Firebase is configured)
+    try:
+        from app.modules.communication.chatting.push_service import notify_users
+        notify_users([user_id], title, body or "", kind=notification_type)
+    except Exception:
+        pass
     return n
 
 
