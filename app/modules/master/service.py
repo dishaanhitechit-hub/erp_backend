@@ -20,7 +20,7 @@ from app.modules.helper import get_category_by_head_under,get_cc_code_list
 from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
 from app.modules.master.sub_group_service import sub_group_path_fields
 from app.utils.audit_utils import audit_fields as _audit
-from sqlalchemy.orm import joinedload, noload
+from sqlalchemy.orm import joinedload, noload, selectinload
 
 
 
@@ -209,15 +209,18 @@ def create_vendor(request):
 
 
 def get_all_vendors(ledger_type=None):
-    q = (
-        Vendor.query
-        .options(
-            joinedload(Vendor.vendor_category),
-            joinedload(Vendor.linked_supplier),
-            noload(Vendor.projects),
-        )
-    )
-    if ledger_type == "debtor":
+    is_debtor = ledger_type == "debtor"
+    opts = [
+        joinedload(Vendor.vendor_category),
+        joinedload(Vendor.linked_supplier),
+    ]
+    if is_debtor:
+        opts.append(selectinload(Vendor.projects).joinedload(VendorProject.project))
+    else:
+        opts.append(noload(Vendor.projects))
+
+    q = Vendor.query.options(*opts)
+    if is_debtor:
         q = q.filter(Vendor.is_debtor == True)
     elif ledger_type == "creditor":
         q = q.filter(Vendor.is_debtor.isnot(True))
@@ -233,6 +236,11 @@ def get_all_vendors(ledger_type=None):
             "whatsappNumber": v.whatsapp_number,
             "supplierTypes":  v.supplier_types or [],
             "supplierCode":   v.linked_supplier.supplier_code if v.linked_supplier else None,
+            "siteCodes":   ", ".join(
+                lnk.project.project_code
+                for lnk in v.projects
+                if lnk.project and lnk.project.project_code
+            ) if is_debtor else None,
             "status":      v.status,
         }
         for v in vendors
