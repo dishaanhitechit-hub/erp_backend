@@ -18,8 +18,8 @@ class SaleReceiptBillingMaster(db.Model):
         nullable=False,
     )
 
-    erp_no = db.Column(db.String(50), nullable=True)
-    og_sale_order_id = db.Column(
+    erp_no            = db.Column(db.String(50), nullable=True)
+    og_sale_order_id  = db.Column(
         db.Integer,
         db.ForeignKey("og_sale_order_master.id"),
         nullable=True,
@@ -31,7 +31,6 @@ class SaleReceiptBillingMaster(db.Model):
         db.ForeignKey("billing_master.id"),
         nullable=True,
     )
-    certified_bill_no = db.Column(db.String(50), nullable=True)
 
     project_code = db.Column(
         db.String(50),

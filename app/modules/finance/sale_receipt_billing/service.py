@@ -112,14 +112,13 @@ def _build_srb_payload(srb):
         "ogSaleOrderId":      srb.og_sale_order_id,
         "saleOrderDate":      _fmt_date(srb.sale_order_date),
         "certifiedBillId":    srb.certified_bill_id,
-        "certifiedBillNo":    srb.certified_bill_no,
+        "certifiedBillNo":    srb.bill_abstract_no,
+        "certifiedBillDate":  _fmt_date(srb.bill_abstract_date),
         "projectCode":        srb.project_code,
         "invoiceNo":          srb.invoice_no,
         "invoiceDate":        _fmt_date(srb.invoice_date),
         "billToAddress":      srb.bill_to_address,
         "shipToAddress":      srb.ship_to_address,
-        "billAbstractNo":     srb.bill_abstract_no,
-        "billAbstractDate":   _fmt_date(srb.bill_abstract_date),
         "basicAmount":        float(srb.basic_amount         or 0),
         "gstAmount":          float(srb.gst_amount           or 0),
         "discount":           float(srb.discount             or 0),
@@ -174,9 +173,12 @@ def _build_srb_payload(srb):
 
 def get_available_invoices(params):
     """
-    Return Approved sale invoices that are Free or Draft (InUse ones are excluded).
-      Free  — not used in any non-Rejected SRB
-      Draft — used only in a Draft SRB (show but disable)
+    Return Approved sale invoices with balance remaining to receive.
+    Status:
+      Free    — no receipt exists yet
+      Partial — partially received (balance > 0)
+      Draft   — a Draft SRB is in progress (disable selection)
+      Full    — fully received (balance ≤ 0, skipped entirely)
     """
     try:
         project_code = (params.get("projectCode") or "").strip()
@@ -192,32 +194,53 @@ def get_available_invoices(params):
 
         result = []
         for bill in bills:
-            active_srb = (
+            booked = Decimal(str(bill.basic_amount or 0))
+
+            # Total received across all non-Rejected SRBs for this invoice
+            received = Decimal(str(
+                db.session.query(func.sum(SaleReceiptItem.current_amount))
+                .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptItem.receipt_id)
+                .filter(
+                    SaleReceiptBillingMaster.invoice_no    == bill.sale_bill_no,
+                    SaleReceiptBillingMaster.project_code  == project_code,
+                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                )
+                .scalar() or 0
+            ))
+            balance = booked - received
+
+            # Fully received — skip
+            if booked > 0 and balance <= 0:
+                continue
+
+            # Draft SRB in progress — show but disable
+            draft_srb = (
                 SaleReceiptBillingMaster.query
                 .filter(
-                    SaleReceiptBillingMaster.project_code == project_code,
-                    SaleReceiptBillingMaster.invoice_no   == bill.sale_bill_no,
-                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptBillingMaster.project_code    == project_code,
+                    SaleReceiptBillingMaster.invoice_no      == bill.sale_bill_no,
+                    SaleReceiptBillingMaster.workflow_status == "Draft",
                 )
                 .first()
             )
 
-            if active_srb:
-                if active_srb.workflow_status != "Draft":
-                    continue          # InUse — skip entirely
+            if draft_srb:
                 receipt_status = "Draft"
-                used_in_srb_id = active_srb.id
+            elif received > 0:
+                receipt_status = "Partial"
             else:
                 receipt_status = "Free"
-                used_in_srb_id = None
 
             customer_order_no = None
             sale_order_date   = None
+            debtor_name       = None
             if bill.sale_order_id:
                 so = OgSaleOrderMaster.query.get(bill.sale_order_id)
                 if so:
                     customer_order_no = so.order_no
                     sale_order_date   = _fmt_date(so.og_sale_order_date)
+                    if so.debtor:
+                        debtor_name = so.debtor.ledger_name
 
             result.append({
                 "id":               bill.id,
@@ -226,12 +249,12 @@ def get_available_invoices(params):
                 "saleOrderNo":      bill.sale_order_no,
                 "customerOrderNo":  customer_order_no,
                 "saleOrderDate":    sale_order_date,
-                "certifiedBillNo":  bill.certified_bill_no,
-                "basicAmount":      float(bill.basic_amount         or 0),
-                "gstAmount":        float(bill.gst_amount           or 0),
+                "debtorName":       debtor_name,
+                "bookedAmount":     float(booked),
+                "receivedAmount":   float(received),
+                "balanceAmount":    float(balance),
                 "totalInvoiceAmount": float(bill.total_invoice_amount or 0),
                 "receiptStatus":    receipt_status,
-                "usedInSrbId":      used_in_srb_id,
             })
 
         return res("Available invoices fetched", result, 200)
@@ -246,9 +269,9 @@ def get_available_invoices(params):
 
 def get_details_by_invoice_no(data):
     """
-    Given an Approved sale bill's invoice number, return the linked OG Sale
-    Order, certified bill, and the booked/received/balance accounting rows —
-    ready to pre-fill a new child billing form.
+    Given an Approved sale bill's invoice number, return the sale bill's own
+    items/GST lines with booked/received/balance figures — ready to pre-fill
+    a new child billing form.  No dependency on BillingMaster.
     """
     try:
         invoice_no   = (data.get("invoiceNo")   or "").strip()
@@ -268,130 +291,95 @@ def get_details_by_invoice_no(data):
         if not sale_bill:
             return res("Approved sale bill not found for this invoice number", [], 404)
 
-        if not sale_bill.certified_bill_id:
-            return res("Sale bill has no linked certified bill", [], 400)
+        og_so = sale_bill.og_so
 
-        bill = BillingMaster.query.filter_by(
-            id              = sale_bill.certified_bill_id,
-            mode            = "sale_certified_bill",
-            workflow_status = "Approved",
-        ).first()
-
-        if not bill:
-            return res("Linked certified bill not found or not approved", [], 404)
-
-        # ── BASIC items ───────────────────────────────────────────
-        grouped = _group_by_cc(bill.items)
+        # ── BASIC items (from SaleBillItem, grouped by CC code) ───
+        cc_map = {}
+        for item in sale_bill.items:
+            cc = item.cc_code or "GENERAL"
+            if cc not in cc_map:
+                cc_map[cc] = {"ccName": item.cc_name or "General", "basicAmount": Decimal("0")}
+            cc_map[cc]["basicAmount"] += Decimal(str(item.basic_amount or 0))
 
         result_items = []
-        for g in grouped:
-            cc_code  = g["ccCode"]
-            booked   = Decimal(str(g["basicAmount"]))
+        for sl_no, (cc_code, g) in enumerate(cc_map.items(), 1):
+            booked = g["basicAmount"]
             received = Decimal(str(
                 db.session.query(func.sum(SaleReceiptItem.current_amount))
                 .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptItem.receipt_id)
                 .filter(
-                    SaleReceiptBillingMaster.certified_bill_id == bill.id,
-                    SaleReceiptBillingMaster.workflow_status   != "Rejected",
-                    SaleReceiptItem.cc_code                    == cc_code,
+                    SaleReceiptBillingMaster.invoice_no    == invoice_no,
+                    SaleReceiptBillingMaster.project_code  == project_code,
+                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptItem.cc_code                == cc_code,
                 )
                 .scalar() or 0
             ))
-            balance = booked - received
-
             result_items.append({
-                "slNo":           g["slNo"],
+                "slNo":           sl_no,
                 "ccCode":         cc_code,
                 "ccName":         g["ccName"],
                 "bookedAmount":   float(booked),
                 "receivedAmount": float(received),
-                "balanceAmount":  float(balance),
+                "balanceAmount":  float(booked - received),
                 "currentAmount":  0,
             })
 
-        # ── GST lines ─────────────────────────────────────────────
-        gst_rows = (
-            db.session.query(
-                SaleBillGst.gst_type,
-                SaleBillGst.cc_code,
-                SaleBillGst.cc_name,
-                SaleBillGst.percent,
-                func.sum(SaleBillGst.gst_amount).label("total"),
-            )
-            .join(SaleBillMaster, SaleBillMaster.id == SaleBillGst.sale_bill_id)
-            .filter(
-                SaleBillMaster.certified_bill_id == bill.id,
-                SaleBillMaster.workflow_status   == "Approved",
-                SaleBillGst.is_selected          == True,
-            )
-            .group_by(
-                SaleBillGst.gst_type,
-                SaleBillGst.cc_code,
-                SaleBillGst.cc_name,
-                SaleBillGst.percent,
-            )
-            .all()
-        )
-
+        # ── GST lines (from SaleBillGst) ──────────────────────────
         result_gst = []
-        if gst_rows:
-            for row in gst_rows:
-                booked_gst = Decimal(str(row.total or 0))
-                received_gst = Decimal(str(
-                    db.session.query(func.sum(SaleReceiptGst.current_amount))
-                    .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptGst.receipt_id)
-                    .filter(
-                        SaleReceiptBillingMaster.certified_bill_id == bill.id,
-                        SaleReceiptBillingMaster.workflow_status   != "Rejected",
-                        SaleReceiptGst.gst_type                    == row.gst_type,
-                    )
-                    .scalar() or 0
-                ))
-                balance_gst = booked_gst - received_gst
+        for row in sale_bill.gst_lines:
+            booked_gst = Decimal(str(row.gst_amount or 0))
+            received_gst = Decimal(str(
+                db.session.query(func.sum(SaleReceiptGst.current_amount))
+                .join(SaleReceiptBillingMaster, SaleReceiptBillingMaster.id == SaleReceiptGst.receipt_id)
+                .filter(
+                    SaleReceiptBillingMaster.invoice_no    == invoice_no,
+                    SaleReceiptBillingMaster.project_code  == project_code,
+                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptGst.gst_type               == row.gst_type,
+                )
+                .scalar() or 0
+            ))
+            result_gst.append({
+                "gstType":        row.gst_type,
+                "ccCode":         row.cc_code or "",
+                "ccName":         row.cc_name or "",
+                "percent":        float(row.percent or 0),
+                "bookedAmount":   float(booked_gst),
+                "receivedAmount": float(received_gst),
+                "balanceAmount":  float(booked_gst - received_gst),
+                "currentAmount":  0,
+                "isSelected":     bool(row.is_selected),
+            })
 
-                result_gst.append({
-                    "gstType":        row.gst_type,
-                    "ccCode":         row.cc_code,
-                    "ccName":         row.cc_name,
-                    "percent":        float(row.percent or 0),
-                    "bookedAmount":   float(booked_gst),
-                    "receivedAmount": float(received_gst),
-                    "balanceAmount":  float(balance_gst),
-                    "currentAmount":  0,
-                    "isSelected":     row.gst_type == "IGST",
-                })
-        else:
+        if not result_gst:
             for gst_type, cc_code, cc_name, pct in [
                 ("IGST", "IGST", "Input-IGST", 18),
                 ("CGST", "CGST", "Input-CGST", 9),
                 ("SGST", "SGST", "Input-SGST", 9),
             ]:
                 result_gst.append({
-                    "gstType":        gst_type,
-                    "ccCode":         cc_code,
-                    "ccName":         cc_name,
-                    "percent":        pct,
-                    "bookedAmount":   0,
-                    "receivedAmount": 0,
-                    "balanceAmount":  0,
-                    "currentAmount":  0,
-                    "isSelected":     False,
+                    "gstType": gst_type, "ccCode": cc_code, "ccName": cc_name,
+                    "percent": pct, "bookedAmount": 0, "receivedAmount": 0,
+                    "balanceAmount": 0, "currentAmount": 0, "isSelected": False,
                 })
 
+        debtor_name = og_so.debtor.ledger_name if og_so and og_so.debtor else None
+
         return res("Invoice details fetched", {
-            "invoiceNo":        sale_bill.sale_bill_no,
-            "invoiceDate":      _fmt_date(sale_bill.invoice_date),
-            "billToAddress":    sale_bill.bill_to_address,
-            "shipToAddress":    sale_bill.ship_to_address,
-            "billAbstractNo":   sale_bill.bill_abstract_no,
-            "billAbstractDate": _fmt_date(sale_bill.bill_abstract_date),
-            "ogSaleOrderNo":    bill.og_sale_order_erp_no,
-            "ogSaleOrderId":    bill.og_sale_order_id,
-            "saleOrderDate":    _fmt_date(bill.og_so.og_sale_order_date) if bill.og_so else None,
-            "certifiedBillId":  bill.id,
-            "certifiedErpDocNo": bill.erp_no,
-            "items":            result_items,
-            "gstLines":         result_gst,
+            "invoiceNo":         sale_bill.sale_bill_no,
+            "invoiceDate":       _fmt_date(sale_bill.invoice_date),
+            "billToAddress":     sale_bill.bill_to_address,
+            "shipToAddress":     sale_bill.ship_to_address,
+            "certifiedBillNo":   sale_bill.certified_bill_no or sale_bill.bill_abstract_no or "",
+            "certifiedBillDate": _fmt_date(sale_bill.bill_abstract_date),
+            "certifiedBillId":   sale_bill.certified_bill_id,
+            "ogSaleOrderNo":     sale_bill.sale_order_no or (og_so.og_sale_order_erp_no if og_so else None),
+            "ogSaleOrderId":     sale_bill.sale_order_id,
+            "saleOrderDate":     _fmt_date(og_so.og_sale_order_date) if og_so else None,
+            "debtorName":        debtor_name,
+            "items":             result_items,
+            "gstLines":          result_gst,
         }, 200)
 
     except ValueError as e:
@@ -425,19 +413,17 @@ def create_srb(data, user_id):
         if parent.project_code != project_code:
             return res("Receipt does not belong to this project", [], 403)
 
-        certified_bill_id = data.get("certifiedBillId")
-        if not certified_bill_id:
-            return res("certifiedBillId required", [], 400)
+        invoice_no = (data.get("invoiceNo") or "").strip()
+        if not invoice_no:
+            return res("invoiceNo required", [], 400)
 
-        cert_bill = BillingMaster.query.filter_by(
-            id              = int(certified_bill_id),
-            mode            = "sale_certified_bill",
+        sale_bill = SaleBillMaster.query.filter_by(
+            sale_bill_no    = invoice_no,
+            project_code    = project_code,
             workflow_status = "Approved",
         ).first()
-        if not cert_bill:
-            return res("Approved certified bill not found", [], 404)
-        if cert_bill.project_code != project_code:
-            return res("Certified bill does not belong to this project", [], 403)
+        if not sale_bill:
+            return res("Approved sale bill not found for this invoice number", [], 404)
 
         items = data.get("items", [])
         if not items:
@@ -454,27 +440,25 @@ def create_srb(data, user_id):
         round_off = Decimal(str(data.get("roundOff")  or 0))
         total     = basic_total + gst_total - discount + round_off
 
-        sale_order_date = None
-        if cert_bill.og_so:
-            sale_order_date = cert_bill.og_so.og_sale_order_date
+        og_so           = sale_bill.og_so
+        sale_order_date = og_so.og_sale_order_date if og_so else None
 
         srb = SaleReceiptBillingMaster(
             srb_no             = _generate_srb_no(),
             srb_uuid           = str(_uuid.uuid4()),
             srb_date           = parse_date(data.get("srbDate"), "srbDate") if data.get("srbDate") else None,
             receipt_id         = parent.id,
-            erp_no             = cert_bill.og_sale_order_erp_no,
-            og_sale_order_id   = cert_bill.og_sale_order_id,
+            erp_no             = sale_bill.sale_order_no,
+            og_sale_order_id   = sale_bill.sale_order_id,
             sale_order_date    = sale_order_date,
-            certified_bill_id  = cert_bill.id,
-            certified_bill_no  = cert_bill.erp_no,
+            certified_bill_id  = sale_bill.certified_bill_id,
             project_code       = project_code,
-            invoice_no         = data.get("invoiceNo"),
+            invoice_no         = invoice_no,
             invoice_date       = parse_date(data.get("invoiceDate"), "invoiceDate"),
             bill_to_address    = data.get("billToAddress"),
             ship_to_address    = data.get("shipToAddress"),
-            bill_abstract_no   = data.get("billAbstractNo"),
-            bill_abstract_date = parse_date(data.get("billAbstractDate"), "billAbstractDate"),
+            bill_abstract_no   = data.get("certifiedBillNo"),
+            bill_abstract_date = parse_date(data.get("certifiedBillDate"), "certifiedBillDate") if data.get("certifiedBillDate") else None,
             basic_amount         = basic_total,
             gst_amount           = gst_total,
             discount             = discount,
@@ -561,7 +545,7 @@ def get_srb_list(data):
                 "id":                 r.id,
                 "srbNo":              r.srb_no,
                 "erpDocNumber":      r.erp_no,
-                "certifiedBillNo":    r.certified_bill_no,
+                "certifiedBillNo":    r.bill_abstract_no,
                 "basicAmount":        float(r.basic_amount         or 0),
                 "gstAmount":          float(r.gst_amount           or 0),
                 "totalInvoiceAmount": float(r.total_invoice_amount or 0),
@@ -626,16 +610,18 @@ def edit_srb(srb_id, data, user_id):
             srb.srb_date = parse_date(data.get("srbDate"), "srbDate")
 
         fields = [
-            ("invoiceNo",        "invoice_no"),
-            ("invoiceDate",      "invoice_date"),
-            ("billToAddress",    "bill_to_address"),
-            ("shipToAddress",    "ship_to_address"),
-            ("billAbstractNo",   "bill_abstract_no"),
-            ("billAbstractDate", "bill_abstract_date"),
+            ("invoiceNo",       "invoice_no"),
+            ("invoiceDate",     "invoice_date"),
+            ("billToAddress",   "bill_to_address"),
+            ("shipToAddress",   "ship_to_address"),
+            ("certifiedBillNo", "bill_abstract_no"),
         ]
         for key, attr in fields:
             if data.get(key) is not None:
                 setattr(srb, attr, data.get(key) or None)
+
+        if data.get("certifiedBillDate"):
+            srb.bill_abstract_date = parse_date(data.get("certifiedBillDate"), "certifiedBillDate")
 
         SaleReceiptItem.query.filter_by(receipt_id=srb.id).delete()
         SaleReceiptGst.query.filter_by(receipt_id=srb.id).delete()
@@ -1050,7 +1036,7 @@ def get_srb_list_by_project(params):
                 "id":                 r.id,
                 "srbNo":              r.srb_no,
                 "erpDocNumber":       r.erp_no,
-                "certifiedBillNo":    r.certified_bill_no,
+                "certifiedBillNo":    r.bill_abstract_no,
                 "basicAmount":        float(r.basic_amount         or 0),
                 "gstAmount":          float(r.gst_amount           or 0),
                 "totalInvoiceAmount": float(r.total_invoice_amount or 0),

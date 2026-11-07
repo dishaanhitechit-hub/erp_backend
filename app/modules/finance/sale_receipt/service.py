@@ -163,7 +163,7 @@ def get_sale_receipt_details(receipt_id):
                 "id":                 b.id,
                 "srbNo":              b.srb_no,
                 "erpDocNumber":      b.erp_no,
-                "certifiedBillNo":    b.certified_bill_no,
+                "certifiedBillNo":    b.bill_abstract_no,
                 "basicAmount":        float(b.basic_amount         or 0),
                 "gstAmount":          float(b.gst_amount           or 0),
                 "totalInvoiceAmount": float(b.total_invoice_amount or 0),
