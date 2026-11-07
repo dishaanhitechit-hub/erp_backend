@@ -435,11 +435,39 @@ def get_available_brrs(data):
         grn_map = {o.id: o.order_no for o in OrderMaster.query.filter(OrderMaster.id.in_(grn_ids)).all()} if grn_ids else {}
         srn_map = {o.id: o.order_no for o in ProjectWorkOrderMaster.query.filter(ProjectWorkOrderMaster.id.in_(srn_ids)).all()} if srn_ids else {}
 
+        # Aggregate approved BRB basic+gst amounts per BRR — these are the actual billed amounts
+        all_brr_ids = [r.id for r in rows]
+        brb_agg_rows = (
+            db.session.query(
+                BrbMaster.brr_id,
+                func.sum(BrbMaster.basic_amount).label("basic_amount"),
+                func.sum(BrbMaster.gst_amount).label("gst_amount"),
+            )
+            .filter(
+                BrbMaster.brr_id.in_(all_brr_ids),
+                BrbMaster.workflow_status == "Approved",
+            )
+            .group_by(BrbMaster.brr_id)
+            .all()
+        ) if all_brr_ids else []
+        brb_amount_map = {
+            row.brr_id: {
+                "basicAmount": float(row.basic_amount or 0),
+                "gstAmount":   float(row.gst_amount   or 0),
+            }
+            for row in brb_agg_rows
+        }
+
         result = []
         for r in rows:
             billing_status = _resolve_status(r.id)
             # Exclude BRRs that already have any active (non-Rejected) purchase bill
             if billing_status in ("Booked", "Pending"):
+                continue
+
+            # Skip if no approved BRB amounts (the subquery found the brr_id but amounts may be zero)
+            brb_amounts = brb_amount_map.get(r.id)
+            if not brb_amounts or brb_amounts["basicAmount"] <= 0:
                 continue
 
             order_no = (grn_map.get(r.order_id, "") if r.order_type == "GRN"
@@ -451,7 +479,8 @@ def get_available_brrs(data):
                 "brrDate":       _fmt_date(r.brr_date),
                 "partyBillNo":   r.party_bill_no or "",
                 "partyDate":     _fmt_date(r.party_date),
-                "basicAmount":   float(r.basic_amount or 0),
+                "basicAmount":   brb_amounts["basicAmount"],
+                "gstAmount":     brb_amounts["gstAmount"],
                 "orderNo":       order_no,
                 "orderType":     r.order_type or "GRN",
                 "billingStatus": billing_status,
