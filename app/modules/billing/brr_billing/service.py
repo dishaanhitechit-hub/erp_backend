@@ -346,6 +346,19 @@ def create_brb(data, user_id):
         if not brr:
             return res("BRR not found", [], 404)
 
+        # 1 BRR → 1 BRB only. Block if a non-Rejected BRB already exists.
+        existing_brb = BrbMaster.query.filter(
+            BrbMaster.brr_id == int(brr_id),
+            BrbMaster.workflow_status != "Rejected",
+        ).first()
+        if existing_brb:
+            return res(
+                f"A billing record ({existing_brb.brb_no}) already exists for this BRR "
+                f"with status '{existing_brb.workflow_status}'. "
+                "Only one billing record per BRR is allowed.",
+                [], 400,
+            )
+
         billing_type = get_billing_type(brr.order_category)
         if not billing_type:
             return res(f"Unknown order category: {brr.order_category}", [], 400)

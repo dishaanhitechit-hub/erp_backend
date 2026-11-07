@@ -276,37 +276,31 @@ def get_brr_list(data):
         result = []
         for row in rows:
 
-            all_billings = BrbMaster.query.filter_by(brr_id=row.id).order_by(BrbMaster.id.asc()).all()
+            # 1 BRR → 1 BRB: return the latest BRB (non-rejected preferred; fallback to latest rejected)
+            active_brb = (
+                BrbMaster.query
+                .filter(BrbMaster.brr_id == row.id, BrbMaster.workflow_status != "Rejected")
+                .order_by(BrbMaster.id.desc())
+                .first()
+            )
+            brb = active_brb or (
+                BrbMaster.query
+                .filter_by(brr_id=row.id)
+                .order_by(BrbMaster.id.desc())
+                .first()
+            )
 
-            grn_billings = [
-                {
-                    "brbId":          b.id,
-                    "brbNo":          b.brb_no,
-                    "brbDate":        _fmt_date(b.brb_date),
-                    "billingType":    b.billing_type,
-                    "workflowStatus": b.workflow_status,
-                    "basicAmount":    float(b.basic_amount or 0),
-                    "gstAmount":      float(b.gst_amount   or 0),
-                    "totalAmount":    float(b.total_amount  or 0),
-                    "itemCount":      len(b.items),
-                }
-                for b in all_billings if b.billing_type == "GRN"
-            ]
-
-            srn_billings = [
-                {
-                    "brbId":          b.id,
-                    "brbNo":          b.brb_no,
-                    "brbDate":        _fmt_date(b.brb_date),
-                    "billingType":    b.billing_type,
-                    "workflowStatus": b.workflow_status,
-                    "basicAmount":    float(b.basic_amount or 0),
-                    "gstAmount":      float(b.gst_amount   or 0),
-                    "totalAmount":    float(b.total_amount  or 0),
-                    "itemCount":      len(b.items),
-                }
-                for b in all_billings if b.billing_type == "SRN"
-            ]
+            brb_payload = {
+                "brbId":          brb.id,
+                "brbNo":          brb.brb_no,
+                "brbDate":        _fmt_date(brb.brb_date),
+                "billingType":    brb.billing_type,
+                "workflowStatus": brb.workflow_status,
+                "basicAmount":    float(brb.basic_amount or 0),
+                "gstAmount":      float(brb.gst_amount   or 0),
+                "totalAmount":    float(brb.total_amount  or 0),
+                "itemCount":      len(brb.items),
+            } if brb else None
 
             order_obj = row.order if row.order_type == "GRN" else row.pw_order
 
@@ -322,12 +316,12 @@ def get_brr_list(data):
                 "orderDate":      _fmt_date(order_obj.order_date) if order_obj else None,
                 "partyBillNo":    row.party_bill_no,
                 "basicAmount":    float(row.basic_amount or 0),
+                "gstAmount":      float(row.gst_amount   or 0),
                 "totalAmount":    float(row.total_amount or 0),
                 "workflowStatus": row.workflow_status,
                 "partyDate":      _fmt_date(row.party_date),
                 "bookedAmount":   row.booked_amount,
-                "grnBillings":    grn_billings,
-                "srnBillings":    srn_billings,
+                "brb":            brb_payload,
             })
 
         return res("BRR list fetched", result, 200)
