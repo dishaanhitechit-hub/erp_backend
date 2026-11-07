@@ -1,9 +1,7 @@
 from flask import Blueprint, request, g
 from app.middleware.auth_middleware import login_required
 from app.modules.finance.sale_receipt_billing.service import (
-    get_certified_bills_for_order,
-    get_receipt_items,
-    get_invoices_by_sale_order,
+    get_available_invoices,
     get_details_by_invoice_no,
     create_srb,
     get_srb_list,
@@ -22,28 +20,14 @@ from app.modules.finance.sale_receipt_billing.service import (
 sale_receipt_billing_bp = Blueprint("sale_receipt_billing", __name__)
 
 
-# ── 1. CERTIFIED BILLS LOOKUP ─────────────────────────────────────
-@sale_receipt_billing_bp.route("/certified-bills", methods=["GET"])
+# ── 0. AVAILABLE INVOICES (single picker API) ─────────────────────
+@sale_receipt_billing_bp.route("/available-invoices", methods=["GET"])
 @login_required
-def api_srb_certified_bills():
-    return get_certified_bills_for_order(request.args.to_dict())
+def api_srb_available_invoices():
+    return get_available_invoices(request.args.to_dict())
 
 
-# ── 2. RECEIPT ITEMS WITH ACCOUNTING COLUMNS ─────────────────────
-@sale_receipt_billing_bp.route("/receipt-items", methods=["GET"])
-@login_required
-def api_srb_receipt_items():
-    return get_receipt_items(request.args.to_dict())
-
-
-# ── 3. INVOICES BY SALE ORDER ────────────────────────────────────
-@sale_receipt_billing_bp.route("/invoices-by-sale-order", methods=["GET"])
-@login_required
-def api_srb_invoices_by_sale_order():
-    return get_invoices_by_sale_order(request.args.to_dict())
-
-
-# ── 4. INVOICE LOOKUP ────────────────────────────────────────────
+# ── 1. INVOICE LOOKUP ────────────────────────────────────────────
 @sale_receipt_billing_bp.route("/invoice-lookup", methods=["GET"])
 @login_required
 def api_srb_invoice_lookup():

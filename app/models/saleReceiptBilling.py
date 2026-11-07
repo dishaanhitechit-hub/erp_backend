@@ -10,6 +10,7 @@ class SaleReceiptBillingMaster(db.Model):
     id       = db.Column(db.Integer, primary_key=True)
     srb_no   = db.Column(db.String(50), nullable=False)
     srb_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
+    srb_date = db.Column(db.Date, nullable=True)
 
     receipt_id = db.Column(
         db.Integer,
