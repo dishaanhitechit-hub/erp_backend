@@ -207,25 +207,61 @@ def get_approved_purchase_bills(data):
 
         rows = query.order_by(PurchaseBillMaster.id.desc()).all()
 
-        result = [
-            {
-                "id":                 r.id,
-                "purchaseBillNo":     r.purchase_bill_no,
-                "processingDate":     _fmt_date(r.processing_date),
-                "vendorId":           r.vendor_id,
-                "vendorName":         r.vendor.ledger_name if r.vendor else None,
-                "brrNo":              r.brr_no,
-                "brrDate":            _fmt_date(r.brr_date),
-                "vendorBillNo":       r.vendor_bill_no,
-                "vendorBillDate":     _fmt_date(r.vendor_bill_date),
-                "orderNo":            (
+        # For each bill: sum paid from Approved receipts, check for active (non-rejected) receipt
+        bill_ids = [r.id for r in rows]
+        paid_map = {}
+        locked_map = {}
+        if bill_ids:
+            paid_q = (
+                db.session.query(
+                    BillPaymentReceiptMaster.purchase_bill_id,
+                    func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0).label("paid"),
+                )
+                .filter(
+                    BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
+                    BillPaymentReceiptMaster.workflow_status == "Approved",
+                )
+                .group_by(BillPaymentReceiptMaster.purchase_bill_id)
+                .all()
+            )
+            paid_map = {row.purchase_bill_id: float(row.paid) for row in paid_q}
+
+            active_q = (
+                db.session.query(BillPaymentReceiptMaster.purchase_bill_id)
+                .filter(
+                    BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
+                    BillPaymentReceiptMaster.workflow_status.notin_(["Rejected"]),
+                )
+                .distinct()
+                .all()
+            )
+            locked_map = {row.purchase_bill_id for row in active_q}
+
+        result = []
+        for r in rows:
+            booked  = float(r.total_invoice_amount or 0)
+            paid    = paid_map.get(r.id, 0)
+            balance = max(booked - paid, 0)
+            locked  = r.id in locked_map
+            # Skip bills already locked (active payment) or fully paid
+            if locked or balance <= 0:
+                continue
+            result.append({
+                "id":            r.id,
+                "purchaseBillNo": r.purchase_bill_no,
+                "processingDate": _fmt_date(r.processing_date),
+                "vendorId":       r.vendor_id,
+                "vendorBillNo":   r.vendor_bill_no,
+                "vendorBillDate": _fmt_date(r.vendor_bill_date),
+                "orderNo":        (
                     (r.brr.order.order_no    if r.brr and r.brr.order    else None) or
                     (r.brr.pw_order.order_no if r.brr and r.brr.pw_order else None)
                 ),
-                "totalInvoiceAmount": float(r.total_invoice_amount or 0),
-            }
-            for r in rows
-        ]
+                "bookedAmount":  booked,
+                "paidAmount":    paid,
+                "balanceAmount": balance,
+                "isLocked":      False,
+            })
 
         return res("Approved purchase bills fetched", result, 200)
 
