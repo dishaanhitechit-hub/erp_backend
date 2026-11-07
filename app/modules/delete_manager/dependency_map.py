@@ -144,13 +144,6 @@ DEPENDENCY_MAP = {
                 "module_code":  "BRR",
                 "label":        "BRR (Bill Receive Register)",
             },
-            {
-                "child_model":  PurchaseBillMaster,
-                "fk_column":    "order_id",
-                "doc_no_field": "purchase_bill_no",
-                "module_code":  "PURCHASE_BILL",
-                "label":        "Purchase Bill",
-            },
         ],
     },
 
@@ -179,13 +172,6 @@ DEPENDENCY_MAP = {
                 "doc_no_field": "brr_no",
                 "module_code":  "BRR",
                 "label":        "BRR (Bill Receive Register)",
-            },
-            {
-                "child_model":  PurchaseBillMaster,
-                "fk_column":    "pw_order_id",
-                "doc_no_field": "purchase_bill_no",
-                "module_code":  "PURCHASE_BILL",
-                "label":        "Purchase Bill",
             },
             {
                 "child_model":  BatchingPlantMaster,
