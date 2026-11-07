@@ -210,6 +210,7 @@ def get_approved_purchase_bills(data):
         # For each bill: sum paid from Approved receipts, check for active (non-rejected) receipt
         bill_ids = [r.id for r in rows]
         paid_map = {}
+        in_progress_map = {}
         locked_map = {}
         if bill_ids:
             paid_q = (
@@ -226,26 +227,47 @@ def get_approved_purchase_bills(data):
             )
             paid_map = {row.purchase_bill_id: float(row.paid) for row in paid_q}
 
+            # Sum of Draft/Pending amounts (in-progress, not yet approved)
+            inprog_q = (
+                db.session.query(
+                    BillPaymentReceiptMaster.purchase_bill_id,
+                    func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0).label("inprog"),
+                )
+                .filter(
+                    BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
+                    BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
+                )
+                .group_by(BillPaymentReceiptMaster.purchase_bill_id)
+                .all()
+            )
+            in_progress_map = {row.purchase_bill_id: float(row.inprog) for row in inprog_q}
+
             active_q = (
-                db.session.query(BillPaymentReceiptMaster.purchase_bill_id)
+                db.session.query(
+                    BillPaymentReceiptMaster.purchase_bill_id,
+                    BillPaymentReceiptMaster.workflow_status,
+                )
                 .filter(
                     BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
                     BillPaymentReceiptMaster.workflow_status.notin_(["Rejected"]),
                 )
-                .distinct()
+                .order_by(BillPaymentReceiptMaster.id.desc())
                 .all()
             )
-            locked_map = {row.purchase_bill_id for row in active_q}
+            # Keep only the first (latest) status per bill
+            locked_map = {}
+            for row in active_q:
+                if row.purchase_bill_id not in locked_map:
+                    locked_map[row.purchase_bill_id] = row.workflow_status
 
         result = []
         for r in rows:
-            booked  = float(r.total_invoice_amount or 0)
-            paid    = paid_map.get(r.id, 0)
-            balance = max(booked - paid, 0)
-            locked  = r.id in locked_map
-            # Skip bills already locked (active payment) or fully paid
-            if locked or balance <= 0:
-                continue
+            booked     = float(r.total_invoice_amount or 0)
+            paid       = paid_map.get(r.id, 0)
+            in_prog    = in_progress_map.get(r.id, 0)
+            # True balance = booked - approved - in-progress drafts
+            balance    = max(booked - paid - in_prog, 0)
+            is_locked  = r.id in locked_map
             result.append({
                 "id":            r.id,
                 "purchaseBillNo": r.purchase_bill_no,
@@ -257,10 +279,12 @@ def get_approved_purchase_bills(data):
                     (r.brr.order.order_no    if r.brr and r.brr.order    else None) or
                     (r.brr.pw_order.order_no if r.brr and r.brr.pw_order else None)
                 ),
-                "bookedAmount":  booked,
-                "paidAmount":    paid,
-                "balanceAmount": balance,
-                "isLocked":      False,
+                "bookedAmount":      booked,
+                "approvedPaidAmount": paid,
+                "inProgressAmount":   in_prog,
+                "balanceAmount":      balance,
+                "isLocked":           is_locked,
+                "paymentStatus":      locked_map.get(r.id),
             })
 
         return res("Approved purchase bills fetched", result, 200)
