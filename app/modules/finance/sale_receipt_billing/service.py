@@ -102,20 +102,34 @@ def _group_by_cc(billing_items):
 
 
 def _build_srb_payload(srb):
+    # Payment account from parent receipt (single FK access — no N+1)
+    receipt = srb.receipt
+    if receipt and receipt.payment_mode == "BANK" and receipt.bank_account:
+        payment_ac_name = receipt.bank_account.bank_holder_name
+        payment_ac_code = "BANK"
+    elif receipt and receipt.cash_account:
+        payment_ac_name = receipt.cash_account.bank_holder_name
+        payment_ac_code = "CASH"
+    else:
+        payment_ac_name = receipt.payment_mode if receipt else None
+        payment_ac_code = receipt.payment_mode if receipt else None
+
     return {
-        "id":                 srb.id,
-        "srbNo":              srb.srb_no,
-        "srbDate":            _fmt_date(srb.srb_date),
-        "srbUuid":            srb.srb_uuid,
-        "receiptId":          srb.receipt_id,
-        "erpDocNumber":      srb.erp_no,
-        "ogSaleOrderId":      srb.og_sale_order_id,
-        "saleOrderDate":      _fmt_date(srb.sale_order_date),
-        "certifiedBillId":    srb.certified_bill_id,
-        "certifiedBillNo":    srb.bill_abstract_no,
-        "certifiedBillDate":  _fmt_date(srb.bill_abstract_date),
-        "projectCode":        srb.project_code,
-        "invoiceNo":          srb.invoice_no,
+        "id":                   srb.id,
+        "srbNo":                srb.srb_no,
+        "srbDate":              _fmt_date(srb.srb_date),
+        "srbUuid":              srb.srb_uuid,
+        "receiptId":            srb.receipt_id,
+        "erpDocNumber":        srb.erp_no,
+        "ogSaleOrderId":        srb.og_sale_order_id,
+        "saleOrderDate":        _fmt_date(srb.sale_order_date),
+        "certifiedBillId":      srb.certified_bill_id,
+        "certifiedBillNo":      srb.bill_abstract_no,
+        "certifiedBillDate":    _fmt_date(srb.bill_abstract_date),
+        "projectCode":          srb.project_code,
+        "invoiceNo":            srb.invoice_no,
+        "paymentAccountName":   payment_ac_name,
+        "paymentAccountCode":   payment_ac_code,
         "invoiceDate":        _fmt_date(srb.invoice_date),
         "billToAddress":      srb.bill_to_address,
         "shipToAddress":      srb.ship_to_address,
@@ -354,9 +368,9 @@ def get_details_by_invoice_no(data):
 
         if not result_gst:
             for gst_type, cc_code, cc_name, pct in [
-                ("IGST", "IGST", "Input-IGST", 18),
-                ("CGST", "CGST", "Input-CGST", 9),
-                ("SGST", "SGST", "Input-SGST", 9),
+                ("IGST", "IGST", "Output-IGST", 18),
+                ("CGST", "CGST", "Output-CGST", 9),
+                ("SGST", "SGST", "Output-SGST", 9),
             ]:
                 result_gst.append({
                     "gstType": gst_type, "ccCode": cc_code, "ccName": cc_name,
