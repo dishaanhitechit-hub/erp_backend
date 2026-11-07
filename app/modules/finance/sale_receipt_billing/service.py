@@ -105,10 +105,14 @@ def _build_srb_payload(srb):
     # Payment account from parent receipt (single FK access — no N+1)
     receipt = srb.receipt
     if receipt and receipt.payment_mode == "BANK" and receipt.bank_account:
-        payment_ac_name = receipt.bank_account.bank_holder_name
+        ac = receipt.bank_account
+        ac_no = ac.bank_account_number
+        payment_ac_name = f"{ac.bank_holder_name} (Acc: {ac_no})" if ac_no else ac.bank_holder_name
         payment_ac_code = "BANK"
-    elif receipt and receipt.cash_account:
-        payment_ac_name = receipt.cash_account.bank_holder_name
+    elif receipt and receipt.payment_mode == "CASH" and receipt.cash_account:
+        ac = receipt.cash_account
+        ac_no = ac.bank_account_number
+        payment_ac_name = f"{ac.bank_holder_name} (Acc: {ac_no})" if ac_no else ac.bank_holder_name
         payment_ac_code = "CASH"
     else:
         payment_ac_name = receipt.payment_mode if receipt else None
