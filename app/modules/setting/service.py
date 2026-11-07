@@ -24,6 +24,7 @@ from app.cloudinary_uploader import *
 from app.models.approval_path import ApprovalPath
 from app.models.project_location import *
 from app.modules.setting.permission_service import get_user_permissions
+from app.modules.auth.service import save_user_profile_picture
 from collections import defaultdict
 
 
@@ -47,6 +48,7 @@ def create_user(request): # Test done & pass
     # file
     # file = request.files.get("signature")
     signatureFile = request.files.get("signatureFile")
+    profileFile = request.files.get("profilePicture")
     # role check
     role = Role.query.filter_by(name=role_name).first()
     if not role:
@@ -80,6 +82,12 @@ def create_user(request): # Test done & pass
             fileName="signature"
         )
 
+    if profileFile:
+        _, pic_error = save_user_profile_picture(user, profileFile)
+        if pic_error:
+            db.session.rollback()
+            return res(pic_error, code=400)
+
     db.session.commit()
 
     data = [{
@@ -92,7 +100,8 @@ def create_user(request): # Test done & pass
         "whatsapp": user.wp_mobile,
         "role":user.global_role.name if user.global_role else None,
         "status":user.is_active,
-        "signatureUrl": user.signature
+        "signatureUrl": user.signature,
+        "profilePictureUrl": user.profile_picture
 
     }]
     return res(
@@ -1028,6 +1037,7 @@ def get_user_by_id(userId):
         "status": user.is_active,
         "password": "",
         "signatureUrl": user.signature,
+        "profilePictureUrl": user.profile_picture,
         **_audit(user),
     }]
 
@@ -1115,6 +1125,14 @@ def update_user(userId, request):
 
     )
     user.signature = supporting_file or user.signature
+
+    profileFile = request.files.get("profilePicture")
+    if profileFile:
+        _, pic_error = save_user_profile_picture(user, profileFile)
+        if pic_error:
+            db.session.rollback()
+            return res(pic_error, code=400)
+
     db.session.commit()
 
     data = [{
@@ -1127,7 +1145,8 @@ def update_user(userId, request):
         "whatsapp": user.wp_mobile,
         "role": user.global_role.name if user.global_role else None,
         "status": user.is_active,
-        "signatureUrl": supporting_file
+        "signatureUrl": supporting_file,
+        "profilePictureUrl": user.profile_picture
     }]
 
     return res("User updated successfully", data, 200)

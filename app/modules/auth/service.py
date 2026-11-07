@@ -134,28 +134,25 @@ PROFILE_PIC_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 PROFILE_PIC_MAX_BYTES = 5 * 1024 * 1024
 
 
-def upload_profile_picture(file):
-    """Upload/replace the logged-in user's profile picture."""
+def save_user_profile_picture(user, file):
+    """Validate + upload `file` as `user`'s profile picture (does not commit).
+    Returns (url, error_message). Used by /auth/profile-picture and the
+    Settings → User create/update forms."""
     import time
-    from flask import g
     from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 
     if not file or not file.filename:
-        return res("No file provided", code=400)
+        return None, "No file provided"
 
     extension = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if extension not in PROFILE_PIC_EXTENSIONS:
-        return res("Only JPG, PNG or WEBP images are allowed", code=400)
+        return None, "Profile photo: only JPG, PNG or WEBP images are allowed"
 
     file.stream.seek(0, 2)
     size = file.stream.tell()
     file.stream.seek(0)
     if size > PROFILE_PIC_MAX_BYTES:
-        return res("Image must be 5 MB or smaller", code=400)
-
-    user = User.query.get(g.current_user["id"])
-    if not user:
-        return res("User not found", code=404)
+        return None, "Profile photo must be 5 MB or smaller"
 
     # Same folder as the user's signature: users/<username>_<id>/
     url = upload_file_to_bunny(
@@ -165,13 +162,26 @@ def upload_profile_picture(file):
         fileName=f"profile_{int(time.time())}",
     )
     if not url:
-        return res("Upload failed", code=500)
+        return None, "Profile photo upload failed"
 
     old_url = user.profile_picture
     user.profile_picture = url
-    db.session.commit()
     if old_url and old_url != url:
         delete_file_from_storage(old_url)
+    return url, None
 
+
+def upload_profile_picture(file):
+    """Upload/replace the logged-in user's own profile picture."""
+    from flask import g
+
+    user = User.query.get(g.current_user["id"])
+    if not user:
+        return res("User not found", code=404)
+
+    url, error = save_user_profile_picture(user, file)
+    if error:
+        return res(error, code=500 if error.endswith("failed") else 400)
+
+    db.session.commit()
     return res("Profile picture updated", [{"id": user.id, "profilePicture": url}])
-
