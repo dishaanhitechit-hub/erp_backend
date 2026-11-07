@@ -372,7 +372,7 @@ def get_details_by_invoice_no(data):
             "billToAddress":     sale_bill.bill_to_address,
             "shipToAddress":     sale_bill.ship_to_address,
             "certifiedBillNo":   sale_bill.certified_bill_no or sale_bill.bill_abstract_no or "",
-            "certifiedBillDate": _fmt_date(sale_bill.bill_abstract_date),
+            "certifiedBillDate": _fmt_date(sale_bill.reference_date),
             "certifiedBillId":   sale_bill.certified_bill_id,
             "ogSaleOrderNo":     sale_bill.sale_order_no or (og_so.og_sale_order_erp_no if og_so else None),
             "ogSaleOrderId":     sale_bill.sale_order_id,
