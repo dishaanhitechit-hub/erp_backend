@@ -3,6 +3,7 @@ from app.middleware.auth_middleware import login_required
 from app.modules.finance.purchase_bill.service import (
     get_vendor_orders,
     get_brr_list_for_order,
+    get_available_brrs,
     get_brr_items_grouped,
     create_purchase_bill,
     get_purchase_bill_list,
@@ -31,6 +32,13 @@ def api_vendor_orders():
 @login_required
 def api_brr_list():
     return get_brr_list_for_order(request.args.to_dict())
+
+
+# ── 2b. AVAILABLE BRRs (flat list for picker) ────────────────────
+@purchase_bill_bp.route("/available-brrs", methods=["GET"])
+@login_required
+def api_available_brrs():
+    return get_available_brrs(request.args.to_dict())
 
 
 # ── 3. BRR ITEMS GROUPED BY CC CODE ──────────────────────────────

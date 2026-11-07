@@ -378,6 +378,89 @@ def get_brr_list_for_order(data):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 2b. AVAILABLE BRRs (flat list — Free/Pending only, for picker)
+# ══════════════════════════════════════════════════════════════════
+
+def get_available_brrs(data):
+    try:
+        vendor_id    = data.get("vendorId")
+        project_code = data.get("projectCode")
+
+        if not vendor_id or not project_code:
+            return res("vendorId and projectCode required", [], 400)
+
+        rows = (
+            BrrMaster.query
+            .filter(
+                BrrMaster.vendor_id      == int(vendor_id),
+                BrrMaster.project_code   == project_code,
+                BrrMaster.workflow_status == "Approved",
+            )
+            .order_by(BrrMaster.brr_date.desc())
+            .all()
+        )
+
+        # Batch-resolve billing status
+        brr_ids = [r.id for r in rows]
+        linked_bills = (
+            PurchaseBillMaster.query
+            .filter(PurchaseBillMaster.brr_id.in_(brr_ids))
+            .with_entities(PurchaseBillMaster.brr_id, PurchaseBillMaster.workflow_status)
+            .all()
+        ) if brr_ids else []
+
+        brr_status_map = {}
+        for lb in linked_bills:
+            brr_status_map.setdefault(lb.brr_id, set()).add(lb.workflow_status)
+
+        def _resolve_status(brr_id):
+            statuses = brr_status_map.get(brr_id, set())
+            if not statuses:
+                return "Free"
+            if "Approved" in statuses:
+                return "Booked"
+            if any(s in statuses for s in ("Draft", "Submitted")) or \
+               any(s.startswith("Pending") for s in statuses):
+                return "Pending"
+            return "Free"
+
+        # Batch-resolve order numbers (polymorphic: GRN → OrderMaster, SRN → ProjectWorkOrderMaster)
+        grn_ids = list({r.order_id    for r in rows if r.order_type == "GRN" and r.order_id})
+        srn_ids = list({r.pw_order_id for r in rows if r.order_type == "SRN" and r.pw_order_id})
+
+        grn_map = {o.id: o.order_no for o in OrderMaster.query.filter(OrderMaster.id.in_(grn_ids)).all()} if grn_ids else {}
+        srn_map = {o.id: o.order_no for o in ProjectWorkOrderMaster.query.filter(ProjectWorkOrderMaster.id.in_(srn_ids)).all()} if srn_ids else {}
+
+        result = []
+        for r in rows:
+            billing_status = _resolve_status(r.id)
+            if billing_status == "Booked":
+                continue
+
+            order_no = (grn_map.get(r.order_id, "") if r.order_type == "GRN"
+                        else srn_map.get(r.pw_order_id, ""))
+
+            result.append({
+                "id":            r.id,
+                "brrNo":         r.brr_no,
+                "brrDate":       _fmt_date(r.brr_date),
+                "partyBillNo":   r.party_bill_no or "",
+                "partyDate":     _fmt_date(r.party_date),
+                "basicAmount":   float(r.basic_amount or 0),
+                "orderNo":       order_no,
+                "orderType":     r.order_type or "GRN",
+                "billingStatus": billing_status,
+            })
+
+        return res("Available BRRs fetched", result, 200)
+
+    except ValueError as e:
+        return res(str(e), [], 400)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 3. BRR ITEMS GROUPED BY CC CODE
 # ══════════════════════════════════════════════════════════════════
 
@@ -403,7 +486,7 @@ def get_brr_items_grouped(data):
 
         brbs = (
             BrbMaster.query
-            .filter_by(brr_id=brr.id, workflow_status="Approved")
+            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status != "Rejected")
             .all()
         )
 
