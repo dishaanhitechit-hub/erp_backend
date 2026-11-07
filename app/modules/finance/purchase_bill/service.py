@@ -74,10 +74,9 @@ def _cc_summary_from_brb(brb_id, billing_type):
                 func.sum(BrbItem.amount).label("basic_amount"),
                 func.sum(BrbItem.gst_amount).label("gst_amount"),
             )
-            .join(GrnItem,   GrnItem.id   == BrbItem.grn_item_id)
-            .join(OrderItem, OrderItem.id == GrnItem.order_item_id)
-            .join(Item,      Item.item_code == OrderItem.item_code)
-            .join(CCCode,    CCCode.id == Item.cc_code_id)
+            .join(GrnItem, GrnItem.id      == BrbItem.grn_item_id)
+            .join(Item,    Item.item_code  == GrnItem.item_code)
+            .join(CCCode,  CCCode.id       == Item.cc_code_id)
             .filter(BrbItem.brb_id == brb_id)
             .group_by(CCCode.cc_code, CCCode.cc_name)
             .all()
@@ -415,14 +414,13 @@ def get_available_brrs(data):
 
         def _resolve_status(brr_id):
             statuses = brr_status_map.get(brr_id, set())
-            if not statuses:
+            # Filter out only Rejected — treat everything else as "in-use"
+            active = {s for s in statuses if s != "Rejected"}
+            if not active:
                 return "Free"
-            if "Approved" in statuses:
+            if "Approved" in active:
                 return "Booked"
-            if any(s in statuses for s in ("Draft", "Submitted")) or \
-               any(s.startswith("Pending") for s in statuses):
-                return "Pending"
-            return "Free"
+            return "Pending"
 
         # Batch-resolve order numbers (polymorphic: GRN → OrderMaster, SRN → ProjectWorkOrderMaster)
         grn_ids = list({r.order_id    for r in rows if r.order_type == "GRN" and r.order_id})
@@ -434,7 +432,8 @@ def get_available_brrs(data):
         result = []
         for r in rows:
             billing_status = _resolve_status(r.id)
-            if billing_status == "Booked":
+            # Exclude BRRs that already have any active (non-Rejected) purchase bill
+            if billing_status in ("Booked", "Pending"):
                 continue
 
             order_no = (grn_map.get(r.order_id, "") if r.order_type == "GRN"
