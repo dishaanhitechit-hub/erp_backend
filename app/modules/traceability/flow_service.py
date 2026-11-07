@@ -45,9 +45,10 @@ from app.models.brbMaster import BrbMaster, BrbItem
 from app.models.purchaseBill import PurchaseBillMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 from app.models.ogSaleOrder import OgSaleOrderMaster
-from app.models.saleBill import SaleBillMaster
+from app.models.saleBill import SaleBillMaster, SaleBillSource
 from app.models.saleReceipt import SaleReceiptMaster
 from app.models.saleReceiptBilling import SaleReceiptBillingMaster
+from app.models.billingMaster import BillingMaster
 
 from app.modules.traceability.access import TraceAccess
 from app.modules.traceability.registry import (
@@ -115,7 +116,12 @@ class FlowGraph:
         if len(ids) > room:
             self.truncated = True
         model = DOC_TYPES[dt]["model"]
-        rows = model.query.filter(model.id.in_(ids)).order_by(model.id).limit(room).all()
+        q = model.query.filter(model.id.in_(ids))
+        # Doc types that share a table (Claim vs Certified bill) filter by row_filter (e.g. mode).
+        row_filter = DOC_TYPES[dt].get("row_filter")
+        if row_filter is not None:
+            q = q.filter(row_filter(model))
+        rows = q.order_by(model.id).limit(room).all()
         for r in rows:
             self.docs[dt][r.id] = r
         return {r.id for r in rows}
@@ -196,15 +202,40 @@ class FlowGraph:
                     r.id for r in BillPaymentReceiptMaster.query.filter(
                         BillPaymentReceiptMaster.purchase_bill_id.in_(pbs)).all()})
 
-            # Sales lifecycle: OG Sale Order → Sale Bill + Sale Receipt Billing → Sale Receipt
+            # ── Sales lifecycle (downward) ──────────────────────────────
+            # OG Sale Order → Claim Bill → Certified Bill → Sales Invoice (M:N via sources)
+            #              → Sale Receipt Billing → Sale Receipt
             og_sos = (docs.get("OG_SALE_ORDER") or set()) | nd["OG_SALE_ORDER"]
             if og_sos:
-                nd["SALE_BILL"] |= self.add_docs("SALE_BILL", {
-                    r.id for r in SaleBillMaster.query.filter(
-                        SaleBillMaster.sale_order_id.in_(og_sos)).all()})
+                nd["CLAIM_BILL"] |= self.add_docs("CLAIM_BILL", {
+                    r.id for r in BillingMaster.query.filter(
+                        BillingMaster.mode == "sale_claim_bill",
+                        BillingMaster.og_sale_order_id.in_(og_sos)).all()})
                 nd["SALE_RECEIPT_BILLING"] |= self.add_docs("SALE_RECEIPT_BILLING", {
                     r.id for r in SaleReceiptBillingMaster.query.filter(
                         SaleReceiptBillingMaster.og_sale_order_id.in_(og_sos)).all()})
+                # Fallback: invoices with no sale_bill_sources still attach to the order directly
+                nd["SALE_BILL"] |= self.add_docs("SALE_BILL", {
+                    r.id for r in SaleBillMaster.query.filter(
+                        SaleBillMaster.sale_order_id.in_(og_sos)).all()})
+
+            claims = (docs.get("CLAIM_BILL") or set()) | nd["CLAIM_BILL"]
+            if claims:
+                nd["CERTIFIED_BILL"] |= self.add_docs("CERTIFIED_BILL", {
+                    r.id for r in BillingMaster.query.filter(
+                        BillingMaster.mode == "sale_certified_bill",
+                        BillingMaster.claim_bill_id.in_(claims)).all()})
+
+            certs = (docs.get("CERTIFIED_BILL") or set()) | nd["CERTIFIED_BILL"]
+            if certs:
+                # Certified Bill → Sales Invoice (many-to-many via sale_bill_sources)
+                nd["SALE_BILL"] |= self.add_docs("SALE_BILL", {
+                    s.sale_bill_id for s in SaleBillSource.query.filter(
+                        SaleBillSource.certified_bill_id.in_(certs)).all() if s.sale_bill_id})
+                # Certified Bill → Sale Receipt Billing (allocation)
+                nd["SALE_RECEIPT_BILLING"] |= self.add_docs("SALE_RECEIPT_BILLING", {
+                    r.id for r in SaleReceiptBillingMaster.query.filter(
+                        SaleReceiptBillingMaster.certified_bill_id.in_(certs)).all()})
 
             srbs = (docs.get("SALE_RECEIPT_BILLING") or set()) | nd["SALE_RECEIPT_BILLING"]
             if srbs:
@@ -260,33 +291,58 @@ class FlowGraph:
                     if expand_order_lines and added:
                         self.complete_docs(dt, added, nl, nd)
 
-            # Sales lifecycle (upward): traverse from child → OG Sale Order
+            # ── Sales lifecycle (upward): child → … → OG Sale Order ──────
             sale_rcpts = docs.get("SALE_RECEIPT") or set()
             if sale_rcpts:
-                srb_rows = SaleReceiptBillingMaster.query.filter(
-                    SaleReceiptBillingMaster.receipt_id.in_(sale_rcpts)).all()
-                nd["SALE_RECEIPT_BILLING"] |= self.add_docs(
-                    "SALE_RECEIPT_BILLING", {r.id for r in srb_rows})
+                nd["SALE_RECEIPT_BILLING"] |= self.add_docs("SALE_RECEIPT_BILLING", {
+                    r.id for r in SaleReceiptBillingMaster.query.filter(
+                        SaleReceiptBillingMaster.receipt_id.in_(sale_rcpts)).all()})
 
+            # Sales Invoice → Certified Bill (many-to-many via sale_bill_sources)
             sale_bills = docs.get("SALE_BILL") or set()
-            srb_up = (docs.get("SALE_RECEIPT_BILLING") or set()) | nd["SALE_RECEIPT_BILLING"]
-
-            og_so_ids = set()
             if sale_bills:
-                og_so_ids |= {self.docs["SALE_BILL"][i].sale_order_id
-                              for i in sale_bills
-                              if i in self.docs["SALE_BILL"]
-                              and self.docs["SALE_BILL"][i].sale_order_id}
+                nd["CERTIFIED_BILL"] |= self.add_docs("CERTIFIED_BILL", {
+                    s.certified_bill_id for s in SaleBillSource.query.filter(
+                        SaleBillSource.sale_bill_id.in_(sale_bills)).all() if s.certified_bill_id})
+
+            # Sale Receipt Billing → Certified Bill + its Sale Receipt
+            srb_up = (docs.get("SALE_RECEIPT_BILLING") or set()) | nd["SALE_RECEIPT_BILLING"]
             if srb_up:
-                og_so_ids |= {self.docs["SALE_RECEIPT_BILLING"][i].og_sale_order_id
-                              for i in srb_up
-                              if i in self.docs["SALE_RECEIPT_BILLING"]
-                              and self.docs["SALE_RECEIPT_BILLING"][i].og_sale_order_id}
+                nd["CERTIFIED_BILL"] |= self.add_docs("CERTIFIED_BILL", {
+                    self.docs["SALE_RECEIPT_BILLING"][i].certified_bill_id
+                    for i in srb_up
+                    if i in self.docs["SALE_RECEIPT_BILLING"]
+                    and self.docs["SALE_RECEIPT_BILLING"][i].certified_bill_id})
                 nd["SALE_RECEIPT"] |= self.add_docs("SALE_RECEIPT", {
                     self.docs["SALE_RECEIPT_BILLING"][i].receipt_id
                     for i in srb_up
                     if i in self.docs["SALE_RECEIPT_BILLING"]
                     and self.docs["SALE_RECEIPT_BILLING"][i].receipt_id})
+
+            # Certified Bill → Claim Bill (claim_bill_id)
+            certs = (docs.get("CERTIFIED_BILL") or set()) | nd["CERTIFIED_BILL"]
+            if certs:
+                nd["CLAIM_BILL"] |= self.add_docs("CLAIM_BILL", {
+                    self.docs["CERTIFIED_BILL"][i].claim_bill_id
+                    for i in certs
+                    if i in self.docs["CERTIFIED_BILL"]
+                    and self.docs["CERTIFIED_BILL"][i].claim_bill_id})
+
+            # Claim / Certified / Invoice / SRB → OG Sale Order
+            og_so_ids = set()
+            for i in sale_bills:
+                r = self.docs["SALE_BILL"].get(i)
+                if r and getattr(r, "sale_order_id", None):
+                    og_so_ids.add(r.sale_order_id)
+            for dt_ in ("CLAIM_BILL", "CERTIFIED_BILL"):
+                for i in (docs.get(dt_) or set()) | nd[dt_]:
+                    r = self.docs[dt_].get(i)
+                    if r and getattr(r, "og_sale_order_id", None):
+                        og_so_ids.add(r.og_sale_order_id)
+            for i in srb_up:
+                r = self.docs["SALE_RECEIPT_BILLING"].get(i)
+                if r and getattr(r, "og_sale_order_id", None):
+                    og_so_ids.add(r.og_sale_order_id)
             if og_so_ids:
                 nd["OG_SALE_ORDER"] |= self.add_docs("OG_SALE_ORDER", og_so_ids)
 
@@ -424,6 +480,32 @@ def _build_edges(graph):
         if brb.workflow_status == APPROVED:
             for pid in pb_by_brr.get(brb.brr_id, []):
                 edge("BRB", bid, "PURCHASE_BILL", pid, "VIA_BRR", "Booked (CC-level)")
+
+    # Certified Bill → Sales Invoice (many-to-many via sale_bill_sources).
+    # One edge per (certified, invoice) pair; de-duplicated by the edge() key.
+    sb_ids = set(graph.docs["SALE_BILL"])
+    cert_ids = set(graph.docs["CERTIFIED_BILL"])
+    invoices_with_cert = set()
+    if sb_ids and cert_ids:
+        for s in SaleBillSource.query.filter(
+                SaleBillSource.sale_bill_id.in_(sb_ids),
+                SaleBillSource.certified_bill_id.in_(cert_ids)).all():
+            if s.sale_bill_id in graph.docs["SALE_BILL"] and s.certified_bill_id in graph.docs["CERTIFIED_BILL"]:
+                edge("CERTIFIED_BILL", s.certified_bill_id, "SALE_BILL", s.sale_bill_id, "ASSOC", "Invoiced")
+                invoices_with_cert.add(s.sale_bill_id)
+
+    # Fallback direct → OG Sale Order edges, drawn ONLY when the certified-bill chain is
+    # absent in-graph (keeps the lifecycle path clean when claim/certified bills are present).
+    for sid, sb in graph.docs["SALE_BILL"].items():
+        og = getattr(sb, "sale_order_id", None)
+        if sid not in invoices_with_cert and og and og in graph.docs["OG_SALE_ORDER"]:
+            edge("OG_SALE_ORDER", og, "SALE_BILL", sid, "HEADER", "Invoiced")
+    for rid, srb in graph.docs["SALE_RECEIPT_BILLING"].items():
+        cert = getattr(srb, "certified_bill_id", None)
+        og = getattr(srb, "og_sale_order_id", None)
+        has_cert_parent = cert and cert in graph.docs["CERTIFIED_BILL"]
+        if not has_cert_parent and og and og in graph.docs["OG_SALE_ORDER"]:
+            edge("OG_SALE_ORDER", og, "SALE_RECEIPT_BILLING", rid, "HEADER", "Receipt")
 
     out = []
     for e in edges.values():

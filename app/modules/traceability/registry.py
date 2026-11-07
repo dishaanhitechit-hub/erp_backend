@@ -24,6 +24,7 @@ from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.saleBill import SaleBillMaster
 from app.models.saleReceipt import SaleReceiptMaster
 from app.models.saleReceiptBilling import SaleReceiptBillingMaster
+from app.models.billingMaster import BillingMaster  # Claim + Certified bills (split by `mode`)
 from app.models.contraEntry import ContraEntryMaster
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher
 # NOTE: Debit Note / Credit Note are intentionally excluded from the Workbench
@@ -42,6 +43,8 @@ STAGES = [
     ("PAYMENT", "Payment"),
     # Sales lifecycle
     ("SALES_ORDER", "Sales Order"),
+    ("SALES_CLAIM", "Claim Bill"),
+    ("SALES_CERTIFIED", "Certified Bill"),
     ("SALES_INVOICE", "Sales Invoice"),
     ("SALES_RECEIPT", "Sales Receipt"),
     # Standalone financial documents
@@ -124,6 +127,20 @@ DOC_TYPES = {
         projects=("project_code",), pages=("og_sale_order",), stage="SALES_ORDER", flow="SALES",
         line=None, amount="total_amount",
     ),
+    # Claim + Certified bills share billing_master; `row_filter` selects by mode.
+    # billing_no (manual ref, ~all rows) is the display number; amount is total_claim.
+    "CLAIM_BILL": dict(
+        label="Claim Bill", model=BillingMaster, no="billing_no", date="billing_date",
+        projects=("project_code",), pages=("billing",), stage="SALES_CLAIM", flow="SALES",
+        line=None, amount="total_claim",
+        row_filter=lambda m: m.mode == "sale_claim_bill",
+    ),
+    "CERTIFIED_BILL": dict(
+        label="Certified Bill", model=BillingMaster, no="billing_no", date="billing_date",
+        projects=("project_code",), pages=("billing",), stage="SALES_CERTIFIED", flow="SALES",
+        line=None, amount="total_claim",
+        row_filter=lambda m: m.mode == "sale_certified_bill",
+    ),
     "SALE_BILL": dict(
         label="Sales Invoice", model=SaleBillMaster, no="sale_bill_no", date="invoice_date",
         projects=("project_code",), pages=("sale_bill",), stage="SALES_INVOICE", flow="SALES",
@@ -195,9 +212,24 @@ HEADER_LINKS = [
     ("PURCHASE_BILL", "brr_id", "BRR", "HEADER", "Booked"),
     ("BILL_PAYMENT", "purchase_bill_id", "PURCHASE_BILL", "HEADER", "Paid"),
     # Sales lifecycle (FK-confirmed from models)
-    ("SALE_BILL", "sale_order_id", "OG_SALE_ORDER", "HEADER", "Invoiced"),
-    ("SALE_RECEIPT_BILLING", "og_sale_order_id", "OG_SALE_ORDER", "HEADER", "Receipt"),
+    #   OG Sale Order → Claim Bill → Certified Bill → Sales Invoice (via sale_bill_sources, see ASSOC_LINKS)
+    ("CLAIM_BILL", "og_sale_order_id", "OG_SALE_ORDER", "HEADER", "Claimed"),
+    ("CERTIFIED_BILL", "claim_bill_id", "CLAIM_BILL", "HEADER", "Certified"),
+    # Sale Receipt Billing: allocates a receipt against a certified bill, grouped under a Sale Receipt.
+    ("SALE_RECEIPT_BILLING", "certified_bill_id", "CERTIFIED_BILL", "HEADER", "Allocated"),
     ("SALE_RECEIPT_BILLING", "receipt_id", "SALE_RECEIPT", "HEADER", "Grouped"),
+    # NOTE: direct → OG_SALE_ORDER edges for SALE_BILL and SALE_RECEIPT_BILLING are NOT static
+    # header links. Both reach their OG through the certified-bill chain; a *direct* edge is drawn
+    # only as a fallback when that chain is absent in-graph (see _build_edges in flow_service).
+    # SALE_BILL ↔ CERTIFIED_BILL is a many-to-many via sale_bill_sources (ASSOC_LINKS below).
+]
+
+# Association-table links: a child/parent pair connected through a bridge table,
+# not a direct FK on either master. (assoc_model, left_doc, left_fk, right_doc, right_fk, kind, meaning)
+# Direction is parent(right) → child(left) downstream: Certified Bill → Sales Invoice.
+ASSOC_LINKS = [
+    ("sale_bill_sources", "SALE_BILL", "sale_bill_id", "CERTIFIED_BILL", "certified_bill_id",
+     "ASSOC", "Invoiced"),
 ]
 
 

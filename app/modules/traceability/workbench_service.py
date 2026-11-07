@@ -22,6 +22,7 @@ from app.models.purchaseBill import PurchaseBillItem, PurchaseBillGst
 from app.models.billPaymentReceipt import BillPaymentReceiptItem, BillPaymentReceiptGst
 from app.models.saleBill import SaleBillItem, SaleBillGst
 from app.models.saleReceiptBilling import SaleReceiptItem, SaleReceiptGst
+from app.models.billingMaster import BillingItem, BillingBoqItem
 
 from app.modules.traceability.access import TraceAccess
 from app.modules.traceability.registry import (
@@ -124,6 +125,10 @@ def _doc_select(dt, pattern, allowed, limit):
         stmt = stmt.select_from(model).outerjoin(Vendor, Vendor.id == vendor_join_fk)
     if pattern:
         stmt = stmt.where(no_col.ilike(pattern, escape="\\"))
+    # Shared-table doc types (Claim vs Certified bill) restrict rows by their mode filter.
+    row_filter = meta.get("row_filter")
+    if row_filter is not None:
+        stmt = stmt.where(row_filter(model))
     pf = _project_filter(dt, allowed)
     if pf is not None:
         stmt = stmt.where(pf)
@@ -274,6 +279,15 @@ HEADER_FIELDS = {
     "OG_SALE_ORDER": [("Order Title", "order_title", "text"), ("Order No", "order_no", "text"),
                       ("Validity", "order_validity", "date"), ("Taxable", "basic_amount", "amount"),
                       ("GST", "gst_amount", "amount"), ("Total", "total_amount", "amount")],
+    "CLAIM_BILL": [("Bill No", "billing_no", "text"), ("ERP No", "erp_no", "text"),
+                   ("OG Sale Order", "og_sale_order_erp_no", "text"), ("Job Location", "job_location", "text"),
+                   ("This Bill Claim", "this_bill_claim", "amount"), ("GST", "gst_amount", "amount"),
+                   ("Total Claim", "total_claim", "amount")],
+    "CERTIFIED_BILL": [("Bill No", "billing_no", "text"), ("ERP No", "erp_no", "text"),
+                       ("OG Sale Order", "og_sale_order_erp_no", "text"),
+                       ("Pre-certified", "pre_certified_amount", "amount"),
+                       ("This Bill Claim", "this_bill_claim", "amount"), ("GST", "gst_amount", "amount"),
+                       ("Total Certified", "total_claim", "amount")],
     "SALE_BILL": [("Mode", "mode", "text"), ("Sale Order No", "sale_order_no", "text"),
                   ("Certified Bill No", "certified_bill_no", "text"), ("Taxable", "basic_amount", "amount"),
                   ("GST", "gst_amount", "amount"), ("Discount", "discount", "amount"),
@@ -435,6 +449,18 @@ def _cc_lines(dt, doc_id):
             "gstLines": [{"gstType": g.gst_type, "ccCode": g.cc_code, "percent": _num(g.percent),
                           "booked": _num(g.booked_amount), "amount": _num(g.current_amount),
                           "selected": bool(g.is_selected)} for g in gst],
+        }
+    if dt in ("CLAIM_BILL", "CERTIFIED_BILL"):
+        # Claim/Certified bills carry item + BOQ lines (quantity-based, with per-line GST).
+        items = BillingItem.query.filter_by(billing_id=doc_id).order_by(BillingItem.sl_no).all()
+        boq = BillingBoqItem.query.filter_by(billing_id=doc_id).order_by(BillingBoqItem.sl_no).all()
+        def _row(i, section):
+            return {"slNo": i.sl_no, "section": section, "itemCode": i.item_code,
+                    "itemName": i.item_name, "unit": i.unit, "claimQty": _num(i.claim_qty, 4),
+                    "rate": _num(i.rate, 4), "amount": _num(i.amount),
+                    "gstPercent": _num(i.gst_percent), "gstAmount": _num(i.gst_amount)}
+        return {
+            "billingLines": [_row(i, "ITEM") for i in items] + [_row(i, "BOQ") for i in boq],
         }
     return {}
 
