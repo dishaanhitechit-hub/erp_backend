@@ -33,6 +33,15 @@ from collections import defaultdict
 
 
 
+
+def _site_num(value, lo, hi):
+    """Number within [lo, hi] from a form value, or None (blank / invalid)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if lo <= v <= hi else None
+
 def create_user(request): # Test done & pass
 
     username = request.form.get("username")
@@ -155,6 +164,9 @@ def create_project(data): #Test done & pass
             initial_order_value=data.get("initialOrderValue"),
             revised_order_value=data.get("revisedOrderValue"),
             company_billing_address=data.get("companyBillingAddress"),
+            site_latitude=_site_num(data.get("siteLatitude"), -90, 90),
+            site_longitude=_site_num(data.get("siteLongitude"), -180, 180),
+            site_radius_m=int(_site_num(data.get("siteRadiusM"), 50, 50000) or 500),
             state=data.get("state"),
             state_code=data.get("stateCode"),
             status=status,
@@ -930,6 +942,9 @@ def get_project_by_id(projectId):
         "shippingAddress2": project.shipping_address_2,
         "shippingAddress3": project.shipping_address_3,
         "companyBillingAddress" : project.company_billing_address,
+        "siteLatitude": project.site_latitude,
+        "siteLongitude": project.site_longitude,
+        "siteRadiusM": project.site_radius_m or 500,
         "projectManager": project.project_manager,
 
         "initialOrderValue": project.initial_order_value,
@@ -987,6 +1002,13 @@ def update_project(projectId, data):
         project.initial_order_value = data.get("initialOrderValue", project.initial_order_value)
         project.revised_order_value = data.get("revisedOrderValue", project.revised_order_value)
         project.state = data.get("state", project.state)
+        # Site location for Daily Progress Report photos ("" clears it).
+        if "siteLatitude" in data:
+            project.site_latitude = _site_num(data.get("siteLatitude"), -90, 90)
+        if "siteLongitude" in data:
+            project.site_longitude = _site_num(data.get("siteLongitude"), -180, 180)
+        if "siteRadiusM" in data:
+            project.site_radius_m = int(_site_num(data.get("siteRadiusM"), 50, 50000) or 500)
         project.state_code = data.get("stateCode", project.state_code)
         project.status = status if status else project.status
 
@@ -1194,6 +1216,7 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
     from app.models.hindranceRegister import HindranceRegister
     from app.models.concrete_registry import ConcreteRegistry
     from app.models.drawingRegister import DrawingRegister
+    from app.models.siteReport import DailyProgressReport
 
     # Each entry: (Model, billing_type_filter, project_filter_fn)
     # billing_type_filter — None or a string value to filter Model.billing_type
@@ -1225,6 +1248,7 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
         "hindrance_register":    [(HindranceRegister,      None, None)],
         "concrete_registry":     [(ConcreteRegistry,       None, None)],
         "drawing_register":      [(DrawingRegister,        None, None)],
+        "daily_progress_report": [(DailyProgressReport,    None, None)],
     }
 
     entries = _MAP.get(module_code)

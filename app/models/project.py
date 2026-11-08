@@ -33,6 +33,11 @@ class Project(db.Model):
     company_billing_address=db.Column(db.String(400),nullable=True)
     status = db.Column(db.String(50))  # ongoing / hold / completed
 
+    # Site location — photos taken farther than site_radius_m are marked "off-site".
+    site_latitude = db.Column(db.Float, nullable=True)
+    site_longitude = db.Column(db.Float, nullable=True)
+    site_radius_m = db.Column(db.Integer, nullable=True, default=500)
+
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     # needed update

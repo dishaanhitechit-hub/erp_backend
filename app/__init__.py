@@ -138,6 +138,12 @@ def create_app():
 
     from .models import hindranceRegister  # noqa — registers HindranceRegister with Alembic
 
+    # Daily Progress Report: site photos → AI → daily report
+    from .modules.project_mgmt.site_report.routes import dpr_bp
+    app.register_blueprint(dpr_bp, url_prefix="/project-mgmt/dpr")
+
+    from .models import siteReport  # noqa — registers SitePhoto / DailyProgressReport with Alembic
+
     from .modules.project_mgmt.custom_billing.billing.routes import billing_bp
     app.register_blueprint(billing_bp, url_prefix="/project-mgmt/billing")
 

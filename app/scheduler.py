@@ -43,6 +43,45 @@ def _run_all_summaries(app):
                     pass
 
 
+def _single_run(app, lock_key, fn):
+    """Run `fn` in only one gunicorn worker at a time (Postgres advisory lock)."""
+    with app.app_context():
+        from sqlalchemy import text
+        from app.extensions import db
+
+        got = db.session.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": lock_key}).scalar()
+        if not got:
+            db.session.rollback()
+            return
+        try:
+            fn()
+        except Exception:
+            logger.exception("Scheduled job %s failed", lock_key)
+            db.session.rollback()
+        finally:
+            db.session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": lock_key})
+            db.session.commit()
+            db.session.remove()
+
+
+def _add_dpr_jobs(scheduler, app, tz):
+    """Daily Progress Report: retry photos waiting for AI; write drafts every evening."""
+    import os
+    from app.modules.project_mgmt.site_report import service as dpr
+
+    scheduler.add_job(
+        func=_single_run, args=[app, 480801, dpr.sweep_pending],
+        trigger="interval", minutes=5, id="dpr_photo_sweep", replace_existing=True,
+        max_instances=1, coalesce=True,
+    )
+    hour = int(os.getenv("DPR_AUTO_HOUR") or 19)
+    scheduler.add_job(
+        func=_single_run, args=[app, 480802, dpr.auto_generate_today],
+        trigger=CronTrigger(hour=hour, minute=0, timezone=tz), id="dpr_auto_generate",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+
+
 def init_scheduler(app):
     day  = app.config.get("MAIL_SCHEDULE_DAY",  1)
     hour = app.config.get("MAIL_SCHEDULE_HOUR", 8)
@@ -57,6 +96,7 @@ def init_scheduler(app):
         name="Monthly ERP Email Reports",
         replace_existing=True,
     )
+    _add_dpr_jobs(scheduler, app, tz)
     scheduler.start()
     logger.info(
         "Monthly report scheduler started — fires on day=%s at %s:00 (%s)", day, hour, tz
