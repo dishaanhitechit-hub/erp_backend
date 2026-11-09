@@ -111,7 +111,6 @@ def _build_line_payload(line):
         "customerRef":    line.customer_ref,
         "accountCode":    account_code,
         "accountName":    account_name,
-        "description":  line.description or "",
         "debitAmount":  float(line.debit_amount  or 0),
         "creditAmount": float(line.credit_amount or 0),
     }
@@ -211,7 +210,6 @@ def create_journal_entry(data, user_id):
                 cc_id         = cc_id,
                 vendor_id     = vendor_id,
                 customer_ref  = customer_ref,
-                description   = row.get("description") or None,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))

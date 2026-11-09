@@ -1,4 +1,4 @@
-"""je line description
+"""je line description (no-op — description derived from docket at query time)
 
 Revision ID: c1d2e3f4a5b6
 Revises: b7c8d9e0f1a2
@@ -15,11 +15,8 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        'journal_entry_lines',
-        sa.Column('description', sa.String(255), nullable=True)
-    )
+    pass
 
 
 def downgrade():
-    op.drop_column('journal_entry_lines', 'description')
+    pass

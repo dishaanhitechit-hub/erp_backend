@@ -12,6 +12,7 @@ from app.models.billPaymentReceipt import (
 )
 from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
+from app.models.journalVoucher import PettyCashJournalVoucher
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -291,9 +292,14 @@ def _build_voucher_detail_payload(r):
         entries = JournalEntryMaster.query.filter(JournalEntryMaster.id.in_(je_ids)).all()
         je_by_id = {e.id: e for e in entries}
 
-    # Pre-compute paid maps per unique JE
+    # Pre-compute paid maps and docket description maps per unique JE
     unique_je_ids = list(je_by_id.keys()) or ([r.journal_entry_id] if r.journal_entry_id else [])
     paid_by_je = {jid: _paid_je_line_map(jid, exclude_id=r.id) for jid in unique_je_ids}
+    desc_by_je = {
+        jid: _docket_desc_map(jid)
+        for jid, e in je_by_id.items()
+        if e.entry_mode == "bulk_docket"
+    }
 
     items = []
     for i in r.items:
@@ -312,6 +318,7 @@ def _build_voucher_detail_payload(r):
             "slNo":            i.sl_no,
             "ccCode":          i.cc_code,
             "ccName":          i.cc_name,
+            "description":     desc_by_je.get(je_id, {}).get(i.cc_code or "", ""),
             "bookedAmount":    booked,
             "paidAmount":      paid,
             "balanceAmount":   max(booked - paid, 0),
@@ -761,6 +768,18 @@ def get_approved_journal_vouchers(data):
         return res(str(e), [], 500)
 
 
+def _docket_desc_map(je_id):
+    """Build {cc_code: short_description} from docket lines linked to a bulk_docket JE.
+    If multiple docket lines share the same cc_code, the last one wins (order by sl_no)."""
+    desc_map = {}
+    dockets = PettyCashJournalVoucher.query.filter_by(linked_journal_id=je_id).all()
+    for docket in dockets:
+        for dl in docket.lines:
+            if dl.cc_code:
+                desc_map[dl.cc_code] = dl.short_description or ""
+    return desc_map
+
+
 def get_journal_voucher_payment_items(je_id):
     """Return DR CC lines of a journal entry with paid/balance for voucher payment."""
     try:
@@ -773,6 +792,7 @@ def get_journal_voucher_payment_items(je_id):
             return res("Only new_voucher and bulk_docket entries can be paid as vouchers", [], 400)
 
         paid_map = _paid_je_line_map(je.id)
+        desc_map = _docket_desc_map(je.id) if je.entry_mode == "bulk_docket" else {}
 
         dr_lines = [l for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
         items = []
@@ -781,12 +801,13 @@ def get_journal_voucher_payment_items(je_id):
             paid    = paid_map.get(line.id, 0)
             balance = max(booked - paid, 0)
             cc      = line.cc
+            cc_code = cc.cc_code if cc else ""
             items.append({
                 "jeLineId":     line.id,
                 "slNo":         idx,
-                "ccCode":       cc.cc_code  if cc else "",
-                "ccName":       cc.cc_name  if cc else "",
-                "description":  line.description or "",
+                "ccCode":       cc_code,
+                "ccName":       cc.cc_name if cc else "",
+                "description":  desc_map.get(cc_code, ""),
                 "bookedAmount": booked,
                 "paidAmount":   paid,
                 "balanceAmount": balance,
@@ -841,6 +862,7 @@ def get_journal_vouchers_payment_items_multi(je_ids):
 
         for je in entries:
             paid_map = _paid_je_line_map(je.id)
+            desc_map = _docket_desc_map(je.id) if je.entry_mode == "bulk_docket" else {}
             dr_lines = [l for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
 
             for idx, line in enumerate(dr_lines, start=1):
@@ -848,15 +870,16 @@ def get_journal_vouchers_payment_items_multi(je_ids):
                 paid    = paid_map.get(line.id, 0)
                 balance = max(booked - paid, 0)
                 cc      = line.cc
+                cc_code = cc.cc_code if cc else ""
                 all_items.append({
                     "jeLineId":       line.id,
                     "journalEntryId": je.id,
                     "voucherNo":      je.voucher_no,
                     "entryDate":      _fmt_date(je.entry_date),
                     "slNo":           idx,
-                    "ccCode":         cc.cc_code if cc else "",
+                    "ccCode":         cc_code,
                     "ccName":         cc.cc_name if cc else "",
-                    "description":    line.description or "",
+                    "description":    desc_map.get(cc_code, ""),
                     "bookedAmount":   booked,
                     "paidAmount":     paid,
                     "balanceAmount":  balance,

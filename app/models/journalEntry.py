@@ -73,8 +73,6 @@ class JournalEntryLine(db.Model):
     vendor_id    = db.Column(db.Integer, db.ForeignKey("vendors.id"),  nullable=True)
     customer_ref = db.Column(db.String(300), nullable=True)  # client_name snapshot from project
 
-    description   = db.Column(db.String(255), nullable=True)
-
     debit_amount  = db.Column(db.Numeric(14, 2), default=0)
     credit_amount = db.Column(db.Numeric(14, 2), default=0)
 
