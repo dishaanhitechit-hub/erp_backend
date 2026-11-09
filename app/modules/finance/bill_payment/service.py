@@ -673,8 +673,12 @@ def get_purchase_bills_payment_items_multi(bill_ids):
 # VOUCHER PAYMENT HELPERS
 # ══════════════════════════════════════════════════════════════════
 
-def _paid_je_line_map(je_id, exclude_id=None):
-    """Sum current_amount per je_line_id from ALL Approved receipts for a journal entry."""
+def _paid_je_line_map(je_id, exclude_id=None, include_active=False):
+    """Sum current_amount per je_line_id from Approved (and optionally active) receipts.
+
+    include_active=True also counts Draft/Pending/Reback amounts so the picker shows
+    true remaining balance when a receipt is already in-flight for this JE.
+    """
     line_ids = [
         row.id for row in
         JournalEntryLine.query.filter_by(journal_id=je_id)
@@ -682,6 +686,13 @@ def _paid_je_line_map(je_id, exclude_id=None):
     ]
     if not line_ids:
         return {}
+
+    terminal_statuses = ["Rejected"]
+    if include_active:
+        status_filter = ~BillPaymentReceiptMaster.workflow_status.in_(terminal_statuses)
+    else:
+        status_filter = BillPaymentReceiptMaster.workflow_status == "Approved"
+
     q = (
         db.session.query(
             BillPaymentReceiptItem.je_line_id,
@@ -690,7 +701,7 @@ def _paid_je_line_map(je_id, exclude_id=None):
         .join(BillPaymentReceiptMaster, BillPaymentReceiptMaster.id == BillPaymentReceiptItem.receipt_id)
         .filter(
             BillPaymentReceiptItem.je_line_id.in_(line_ids),
-            BillPaymentReceiptMaster.workflow_status == "Approved",
+            status_filter,
         )
     )
     if exclude_id:
@@ -735,12 +746,17 @@ def get_approved_journal_vouchers(data):
 
         result = []
         for je in rows:
-            paid_map = _paid_je_line_map(je.id)
-            total_booked = float(je.total_debit or 0)
-            total_paid   = sum(paid_map.values())
+            # include_active so balance reflects amounts locked in Draft/Pending receipts too
+            paid_map = _paid_je_line_map(je.id, include_active=True)
+            total_booked  = float(je.total_debit or 0)
+            total_paid    = sum(paid_map.values())
             total_balance = max(total_booked - total_paid, 0)
 
-            # Check for active (non-approved, non-rejected) payment receipts
+            # Skip fully-paid JEs
+            if total_balance == 0 and total_booked > 0:
+                continue
+
+            # Check active (Draft/Pending/Reback) receipts via primary journal_entry_id
             active_receipt = (
                 BillPaymentReceiptMaster.query
                 .filter(
@@ -750,15 +766,33 @@ def get_approved_journal_vouchers(data):
                 .first()
             )
 
+            # Also check secondary JEs: any active receipt whose items reference this JE's Dr lines
+            if not active_receipt:
+                dr_line_ids = [l.id for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
+                if dr_line_ids:
+                    active_receipt_id_sq = (
+                        db.session.query(BillPaymentReceiptItem.receipt_id)
+                        .filter(BillPaymentReceiptItem.je_line_id.in_(dr_line_ids))
+                        .subquery()
+                    )
+                    active_receipt = (
+                        BillPaymentReceiptMaster.query
+                        .filter(
+                            BillPaymentReceiptMaster.id.in_(active_receipt_id_sq),
+                            BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
+                        )
+                        .first()
+                    )
+
             result.append({
-                "id":           je.id,
-                "voucherNo":    je.voucher_no,
-                "entryDate":    _fmt_date(je.entry_date),
-                "entryMode":    je.entry_mode,
-                "totalDebit":   total_booked,
-                "totalPaid":    total_paid,
+                "id":            je.id,
+                "voucherNo":     je.voucher_no,
+                "entryDate":     _fmt_date(je.entry_date),
+                "entryMode":     je.entry_mode,
+                "totalDebit":    total_booked,
+                "totalPaid":     total_paid,
                 "balanceAmount": total_balance,
-                "isLocked":     active_receipt is not None,
+                "isLocked":      active_receipt is not None,
                 "paymentStatus": active_receipt.workflow_status if active_receipt else None,
             })
 
@@ -934,6 +968,31 @@ def _create_voucher_payment(data, user_id, project_code):
             return res(f"Journal entry {je.voucher_no} is not Approved", [], 400)
         if je.entry_mode not in ("new_voucher", "bulk_docket"):
             return res(f"Journal entry {je.voucher_no} is not a voucher type", [], 400)
+
+        # Guard: reject if this JE already has an active (non-terminal) payment receipt
+        active_primary = BillPaymentReceiptMaster.query.filter(
+            BillPaymentReceiptMaster.journal_entry_id == je.id,
+            BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
+        ).first()
+        if not active_primary:
+            dr_line_ids = [l.id for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
+            if dr_line_ids:
+                active_primary = (
+                    BillPaymentReceiptMaster.query
+                    .filter(
+                        BillPaymentReceiptMaster.id.in_(
+                            db.session.query(BillPaymentReceiptItem.receipt_id)
+                            .filter(BillPaymentReceiptItem.je_line_id.in_(dr_line_ids))
+                        ),
+                        BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
+                    )
+                    .first()
+                )
+        if active_primary:
+            return res(
+                f"Journal entry {je.voucher_no} already has an active payment in {active_primary.workflow_status} status",
+                [], 400
+            )
 
     primary_je = entries[je_ids[0]]
 
