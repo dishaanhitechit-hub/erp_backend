@@ -216,6 +216,15 @@ def create_journal_entry(data, user_id):
 
         db.session.commit()
 
+        # Mark dockets as journalized so they won't appear in the picker again
+        if entry_mode == "bulk_docket":
+            docket_ids = data.get("docketIds") or []
+            if docket_ids:
+                PettyCashJournalVoucher.query.filter(
+                    PettyCashJournalVoucher.id.in_([int(d) for d in docket_ids])
+                ).update({"linked_journal_id": entry.id}, synchronize_session=False)
+                db.session.commit()
+
         return res("Journal entry created", {
             "id":          entry.id,
             "voucherNo":   entry.voucher_no,
@@ -823,6 +832,7 @@ def get_approved_dockets(params):
             .filter(
                 PettyCashJournalVoucher.project_code == project_code,
                 PettyCashJournalVoucher.workflow_status == "Approved",
+                PettyCashJournalVoucher.linked_journal_id == None,  # noqa: E711
             )
             .order_by(PettyCashJournalVoucher.voucher_date.desc())
             .all()
