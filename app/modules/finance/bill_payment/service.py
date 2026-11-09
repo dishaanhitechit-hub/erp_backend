@@ -165,7 +165,7 @@ def _build_detail_payload(r):
             "slNo":            i.sl_no,
             "ccCode":          i.cc_code,
             "ccName":          i.cc_name,
-            "description":     i.description,
+            "description":     pbi.description if pbi else None,
             "bookedAmount":    booked,
             "paidAmount":      paid,
             "balanceAmount":   max(booked - paid, 0),
