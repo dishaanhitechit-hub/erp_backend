@@ -584,6 +584,12 @@ def create_bill_payment_receipt(data, user_id):
         if not allowed:
             return res("You are not authorized to create bill payment receipts", [], 403)
 
+        payment_mode = data.get("paymentMode")
+        if payment_mode == "Bank" and not data.get("bankAcId"):
+            return res("Bank account is required for Bank payment mode", [], 400)
+        if payment_mode == "Cash" and not data.get("cashAcId"):
+            return res("Cash account is required for Cash payment mode", [], 400)
+
         items = data.get("items", [])
         if not items:
             return res("At least one BASIC item required", [], 400)
@@ -777,6 +783,12 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         allowed = is_creator(r.project_code, _MODULE, user_id)
         if not allowed:
             return res("You are not authorized to edit bill payment receipts", [], 403)
+
+        payment_mode = data.get("paymentMode") or r.payment_mode
+        if payment_mode == "Bank" and not (data.get("bankAcId") or r.bank_ac_id):
+            return res("Bank account is required for Bank payment mode", [], 400)
+        if payment_mode == "Cash" and not (data.get("cashAcId") or r.cash_ac_id):
+            return res("Cash account is required for Cash payment mode", [], 400)
 
         items = data.get("items", [])
         if not items:
