@@ -11,6 +11,7 @@ from app.models.billPaymentReceipt import (
     BillPaymentReceiptGst,
 )
 from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
+from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -125,6 +126,12 @@ def _paid_gst_map(purchase_bill_id, exclude_id=None):
 
 
 def _build_detail_payload(r):
+    is_voucher = (r.payment_type or "bill") == "voucher"
+
+    if is_voucher:
+        return _build_voucher_detail_payload(r)
+
+    # ── BILL PAYMENT ─────────────────────────────────────────────
     # Batch-load PurchaseBillItem → PurchaseBillMaster for per-item bill info
     pb_item_ids = [i.pb_item_id for i in r.items if i.pb_item_id]
     pbi_by_id = {}
@@ -137,7 +144,7 @@ def _build_detail_payload(r):
         bills_by_id = {b.id: b for b in bill_rows}
 
     # Pre-compute paid maps per unique bill
-    unique_bill_ids = list(bills_by_id.keys()) or [r.purchase_bill_id]
+    unique_bill_ids = list(bills_by_id.keys()) or ([r.purchase_bill_id] if r.purchase_bill_id else [])
     paid_basic_by_bill = {bid: _paid_item_map(bid, exclude_id=r.id) for bid in unique_bill_ids}
     paid_gst_by_bill   = {bid: _paid_gst_map(bid,  exclude_id=r.id) for bid in unique_bill_ids}
 
@@ -225,6 +232,7 @@ def _build_detail_payload(r):
         "id":                  r.id,
         "receiptNo":           r.receipt_no,
         "receiptUuid":         r.receipt_uuid,
+        "paymentType":         r.payment_type or "bill",
         "paymentDate":         _fmt_date(r.payment_date),
         "purchaseBillId":      r.purchase_bill_id,
         "purchaseBillNo":      primary_bill.purchase_bill_no if primary_bill else None,
@@ -265,6 +273,100 @@ def _build_detail_payload(r):
         "bills":               bills_summary,
         "items":               items,
         "gstLines":            gst_lines,
+    }
+
+
+def _build_voucher_detail_payload(r):
+    """Build detail payload for voucher-type payment receipts."""
+    je = r.journal_entry
+
+    # Collect unique JE IDs from items
+    je_line_ids = [i.je_line_id for i in r.items if i.je_line_id]
+    je_line_by_id = {}
+    je_by_id = {}
+    if je_line_ids:
+        lines = JournalEntryLine.query.filter(JournalEntryLine.id.in_(je_line_ids)).all()
+        je_line_by_id = {l.id: l for l in lines}
+        je_ids = list({l.journal_id for l in lines})
+        entries = JournalEntryMaster.query.filter(JournalEntryMaster.id.in_(je_ids)).all()
+        je_by_id = {e.id: e for e in entries}
+
+    # Pre-compute paid maps per unique JE
+    unique_je_ids = list(je_by_id.keys()) or ([r.journal_entry_id] if r.journal_entry_id else [])
+    paid_by_je = {jid: _paid_je_line_map(jid, exclude_id=r.id) for jid in unique_je_ids}
+
+    items = []
+    for i in r.items:
+        booked  = float(i.booked_amount  or 0)
+        current = float(i.current_amount or 0)
+        jel     = je_line_by_id.get(i.je_line_id)
+        entry   = je_by_id.get(jel.journal_id) if jel else None
+        je_id   = entry.id if entry else r.journal_entry_id
+        paid    = paid_by_je.get(je_id, {}).get(i.je_line_id, 0)
+        items.append({
+            "id":              i.id,
+            "jeLineId":        i.je_line_id,
+            "journalEntryId":  je_id,
+            "voucherNo":       entry.voucher_no if entry else (je.voucher_no if je else None),
+            "entryDate":       _fmt_date(entry.entry_date) if entry else None,
+            "slNo":            i.sl_no,
+            "ccCode":          i.cc_code,
+            "ccName":          i.cc_name,
+            "bookedAmount":    booked,
+            "paidAmount":      paid,
+            "balanceAmount":   max(booked - paid, 0),
+            "currentAmount":   current,
+        })
+
+    entries_summary = []
+    for jid in unique_je_ids:
+        e = je_by_id.get(jid)
+        if e:
+            entries_summary.append({
+                "id":        e.id,
+                "voucherNo": e.voucher_no,
+                "entryDate": _fmt_date(e.entry_date),
+            })
+
+    return {
+        "id":                  r.id,
+        "receiptNo":           r.receipt_no,
+        "receiptUuid":         r.receipt_uuid,
+        "paymentType":         "voucher",
+        "paymentDate":         _fmt_date(r.payment_date),
+        "journalEntryId":      r.journal_entry_id,
+        "voucherNo":           je.voucher_no if je else None,
+        "projectCode":         r.project_code,
+        "vendorId":            r.vendor_id,
+        "vendorName":          r.vendor.ledger_name if r.vendor else None,
+        "paymentMode":         r.payment_mode,
+        "cashAcId":            r.cash_ac_id,
+        "cashAcName":          r.cash_account.bank_holder_name    if r.cash_account else None,
+        "cashAcNo":            r.cash_account.bank_account_number if r.cash_account else None,
+        "bankAcId":            r.bank_ac_id,
+        "bankAcName":          r.bank_account.bank_holder_name    if r.bank_account else None,
+        "bankAcNo":            r.bank_account.bank_account_number if r.bank_account else None,
+        "utrVoucherNo":        r.utr_voucher_no,
+        "paymentRemarks":      r.payment_remarks,
+        "basicAmount":         float(r.basic_amount         or 0),
+        "gstAmount":           0,
+        "discount":            float(r.discount             or 0),
+        "roundOff":            float(r.round_off            or 0),
+        "totalInvoiceAmount":  float(r.total_invoice_amount or 0),
+        "workflowStatus":      r.workflow_status,
+        "currentLevel":        r.current_level,
+        "locked":              r.locked,
+        "createdBy":           r.creator.username   if r.creator   else None,
+        "createdAt":           _fmt_date(r.created_at),
+        "submittedBy":         r.submitter.username if r.submitter else None,
+        "submittedAt":         _fmt_date(r.submitted_at),
+        "approvedBy":          r.approver.username  if r.approver  else None,
+        "finalApprovedAt":     _fmt_date(r.final_approved_at),
+        "rejectedBy":          r.rejector.username  if r.rejector  else None,
+        "rejectedAt":          _fmt_date(r.rejected_at),
+        "entries":             entries_summary,
+        "items":               items,
+        "gstLines":            [],
     }
 
 
@@ -561,8 +663,315 @@ def get_purchase_bills_payment_items_multi(bill_ids):
 
 
 # ══════════════════════════════════════════════════════════════════
+# VOUCHER PAYMENT HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def _paid_je_line_map(je_id, exclude_id=None):
+    """Sum current_amount per je_line_id from ALL Approved receipts for a journal entry."""
+    line_ids = [
+        row.id for row in
+        JournalEntryLine.query.filter_by(journal_id=je_id)
+        .with_entities(JournalEntryLine.id).all()
+    ]
+    if not line_ids:
+        return {}
+    q = (
+        db.session.query(
+            BillPaymentReceiptItem.je_line_id,
+            func.coalesce(func.sum(BillPaymentReceiptItem.current_amount), 0).label("paid"),
+        )
+        .join(BillPaymentReceiptMaster, BillPaymentReceiptMaster.id == BillPaymentReceiptItem.receipt_id)
+        .filter(
+            BillPaymentReceiptItem.je_line_id.in_(line_ids),
+            BillPaymentReceiptMaster.workflow_status == "Approved",
+        )
+    )
+    if exclude_id:
+        q = q.filter(BillPaymentReceiptMaster.id != exclude_id)
+    return {r.je_line_id: float(r.paid) for r in q.group_by(BillPaymentReceiptItem.je_line_id).all()}
+
+
+def get_approved_journal_vouchers(data):
+    """List approved new_voucher/bulk_docket journal entries for the voucher picker."""
+    try:
+        project_code = (data.get("projectCode") or "").strip()
+        if not project_code:
+            return res("projectCode required", [], 400)
+
+        query = (
+            JournalEntryMaster.query
+            .filter(
+                JournalEntryMaster.project_code    == project_code,
+                JournalEntryMaster.workflow_status == "Approved",
+                JournalEntryMaster.entry_mode.in_(["new_voucher", "bulk_docket"]),
+            )
+        )
+
+        vendor_id = data.get("vendorId")
+        if vendor_id:
+            # Match JEs that have a Cr line with this vendor_id, OR no Cr lines (single-entry)
+            je_ids_with_cr_vendor = db.session.query(JournalEntryLine.journal_id).filter(
+                JournalEntryLine.dr_cr == "Cr",
+                JournalEntryLine.vendor_id == int(vendor_id),
+            ).distinct().subquery()
+            je_ids_no_cr = db.session.query(JournalEntryLine.journal_id).filter(
+                JournalEntryLine.dr_cr == "Cr",
+            ).distinct().subquery()
+            query = query.filter(
+                db.or_(
+                    JournalEntryMaster.id.in_(je_ids_with_cr_vendor),
+                    JournalEntryMaster.id.notin_(je_ids_no_cr),
+                )
+            )
+
+        rows = query.order_by(JournalEntryMaster.id.desc()).all()
+
+        result = []
+        for je in rows:
+            paid_map = _paid_je_line_map(je.id)
+            total_booked = float(je.total_debit or 0)
+            total_paid   = sum(paid_map.values())
+            total_balance = max(total_booked - total_paid, 0)
+
+            # Check for active (non-approved, non-rejected) payment receipts
+            active_receipt = (
+                BillPaymentReceiptMaster.query
+                .filter(
+                    BillPaymentReceiptMaster.journal_entry_id == je.id,
+                    BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected"]),
+                )
+                .first()
+            )
+
+            result.append({
+                "id":           je.id,
+                "voucherNo":    je.voucher_no,
+                "entryDate":    _fmt_date(je.entry_date),
+                "entryMode":    je.entry_mode,
+                "totalDebit":   total_booked,
+                "totalPaid":    total_paid,
+                "balanceAmount": total_balance,
+                "isLocked":     active_receipt is not None,
+                "paymentStatus": active_receipt.workflow_status if active_receipt else None,
+            })
+
+        return res("Approved journal vouchers fetched", result, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_journal_voucher_payment_items(je_id):
+    """Return DR CC lines of a journal entry with paid/balance for voucher payment."""
+    try:
+        je = JournalEntryMaster.query.get(je_id)
+        if not je:
+            return res("Journal entry not found", [], 404)
+        if je.workflow_status != "Approved":
+            return res("Only Approved journal entries can be paid", [], 400)
+        if je.entry_mode not in ("new_voucher", "bulk_docket"):
+            return res("Only new_voucher and bulk_docket entries can be paid as vouchers", [], 400)
+
+        paid_map = _paid_je_line_map(je.id)
+
+        dr_lines = [l for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
+        items = []
+        for idx, line in enumerate(dr_lines, start=1):
+            booked  = float(line.debit_amount or 0)
+            paid    = paid_map.get(line.id, 0)
+            balance = max(booked - paid, 0)
+            cc      = line.cc
+            items.append({
+                "jeLineId":     line.id,
+                "slNo":         idx,
+                "ccCode":       cc.cc_code  if cc else "",
+                "ccName":       cc.cc_name  if cc else "",
+                "bookedAmount": booked,
+                "paidAmount":   paid,
+                "balanceAmount": balance,
+                "currentAmount": 0,
+            })
+
+        # Cr line info (vendor or customer)
+        cr_lines = [l for l in je.lines if l.dr_cr == "Cr"]
+        cr_vendor_id   = cr_lines[0].vendor_id    if cr_lines else None
+        cr_vendor_name = cr_lines[0].vendor.ledger_name if (cr_lines and cr_lines[0].vendor) else None
+        cr_customer    = cr_lines[0].customer_ref  if cr_lines else None
+
+        return res("Journal voucher payment items fetched", {
+            "journalEntryId": je.id,
+            "voucherNo":      je.voucher_no,
+            "entryDate":      _fmt_date(je.entry_date),
+            "entryMode":      je.entry_mode,
+            "vendorId":       cr_vendor_id,
+            "vendorName":     cr_vendor_name,
+            "customerRef":    cr_customer,
+            "totalDebit":     float(je.total_debit or 0),
+            "items":          items,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+def get_journal_vouchers_payment_items_multi(je_ids):
+    """Return combined DR CC lines for multiple journal entries."""
+    try:
+        if not je_ids:
+            return res("je_ids required", [], 400)
+
+        entries = JournalEntryMaster.query.filter(
+            JournalEntryMaster.id.in_([int(j) for j in je_ids])
+        ).all()
+
+        if not entries:
+            return res("No journal entries found", [], 404)
+
+        invalid = [e for e in entries if e.workflow_status != "Approved"]
+        if invalid:
+            return res(f"Entries {[e.voucher_no for e in invalid]} are not Approved", [], 400)
+
+        invalid_mode = [e for e in entries if e.entry_mode not in ("new_voucher", "bulk_docket")]
+        if invalid_mode:
+            return res(f"Entries {[e.voucher_no for e in invalid_mode]} are not voucher type", [], 400)
+
+        all_items = []
+        entries_meta = []
+
+        for je in entries:
+            paid_map = _paid_je_line_map(je.id)
+            dr_lines = [l for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
+
+            for idx, line in enumerate(dr_lines, start=1):
+                booked  = float(line.debit_amount or 0)
+                paid    = paid_map.get(line.id, 0)
+                balance = max(booked - paid, 0)
+                cc      = line.cc
+                all_items.append({
+                    "jeLineId":       line.id,
+                    "journalEntryId": je.id,
+                    "voucherNo":      je.voucher_no,
+                    "entryDate":      _fmt_date(je.entry_date),
+                    "slNo":           idx,
+                    "ccCode":         cc.cc_code if cc else "",
+                    "ccName":         cc.cc_name if cc else "",
+                    "bookedAmount":   booked,
+                    "paidAmount":     paid,
+                    "balanceAmount":  balance,
+                    "currentAmount":  0,
+                })
+
+            cr_lines = [l for l in je.lines if l.dr_cr == "Cr"]
+            entries_meta.append({
+                "id":          je.id,
+                "voucherNo":   je.voucher_no,
+                "entryDate":   _fmt_date(je.entry_date),
+                "vendorId":    cr_lines[0].vendor_id    if cr_lines else None,
+                "vendorName":  cr_lines[0].vendor.ledger_name if (cr_lines and cr_lines[0].vendor) else None,
+            })
+
+        return res("Multi-voucher payment items fetched", {
+            "entries": entries_meta,
+            "items":   all_items,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 1. CREATE
 # ══════════════════════════════════════════════════════════════════
+
+def _create_voucher_payment(data, user_id, project_code):
+    """Create a voucher-type bill payment receipt."""
+    payment_mode = data.get("paymentMode")
+    if payment_mode == "Bank" and not data.get("bankAcId"):
+        return res("Bank account is required for Bank payment mode", [], 400)
+    if payment_mode == "Cash" and not data.get("cashAcId"):
+        return res("Cash account is required for Cash payment mode", [], 400)
+
+    je_ids = data.get("journalEntryIds") or []
+    if not je_ids and data.get("journalEntryId"):
+        je_ids = [data["journalEntryId"]]
+    je_ids = [int(j) for j in je_ids]
+    if not je_ids:
+        return res("journalEntryId(s) required for voucher payment", [], 400)
+
+    entries = {je.id: je for je in JournalEntryMaster.query.filter(
+        JournalEntryMaster.id.in_(je_ids)
+    ).all()}
+    for jid in je_ids:
+        je = entries.get(jid)
+        if not je:
+            return res(f"Journal entry {jid} not found", [], 404)
+        if je.workflow_status != "Approved":
+            return res(f"Journal entry {je.voucher_no} is not Approved", [], 400)
+        if je.entry_mode not in ("new_voucher", "bulk_docket"):
+            return res(f"Journal entry {je.voucher_no} is not a voucher type", [], 400)
+
+    primary_je = entries[je_ids[0]]
+
+    items = data.get("items", [])
+    if not items:
+        return res("At least one item required", [], 400)
+
+    basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
+    discount    = Decimal(str(data.get("discount")  or 0))
+    round_off   = Decimal(str(data.get("roundOff")  or 0))
+    total       = basic_total - discount + round_off
+
+    try:
+        r = BillPaymentReceiptMaster(
+            receipt_no       = _generate_receipt_no(),
+            receipt_uuid     = str(_uuid.uuid4()),
+            payment_type     = "voucher",
+            payment_date     = _parse_date(data.get("paymentDate")) or date.today(),
+            purchase_bill_id = None,
+            journal_entry_id = je_ids[0],
+            project_code     = project_code,
+            vendor_id        = data.get("vendorId") or None,
+            payment_mode     = payment_mode,
+            cash_ac_id       = data.get("cashAcId") or None,
+            bank_ac_id       = data.get("bankAcId") or None,
+            utr_voucher_no   = data.get("utrVoucherNo"),
+            payment_remarks  = data.get("paymentRemarks"),
+            basic_amount         = basic_total,
+            gst_amount           = Decimal("0"),
+            discount             = discount,
+            round_off            = round_off,
+            total_invoice_amount = total,
+            workflow_status = "Draft",
+            current_level   = 0,
+            locked          = False,
+            created_by      = user_id,
+        )
+        db.session.add(r)
+        db.session.flush()
+
+        for idx, row in enumerate(items, start=1):
+            db.session.add(BillPaymentReceiptItem(
+                receipt_id     = r.id,
+                pb_item_id     = None,
+                je_line_id     = row.get("jeLineId") or None,
+                sl_no          = row.get("slNo") or idx,
+                cc_code        = row.get("ccCode"),
+                cc_name        = row.get("ccName"),
+                booked_amount  = Decimal(str(row.get("bookedAmount")  or 0)),
+                current_amount = Decimal(str(row.get("currentAmount") or 0)),
+            ))
+
+        db.session.commit()
+        return res("Voucher payment receipt created", {
+            "id":          r.id,
+            "receiptNo":   r.receipt_no,
+            "receiptUuid": r.receipt_uuid,
+        }, 201)
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
 
 def create_bill_payment_receipt(data, user_id):
     try:
@@ -570,6 +979,16 @@ def create_bill_payment_receipt(data, user_id):
         if not project_code:
             return res("projectCode required", [], 400)
 
+        payment_type = data.get("paymentType") or "bill"
+
+        allowed = is_creator(project_code, _MODULE, user_id)
+        if not allowed:
+            return res("You are not authorized to create bill payment receipts", [], 403)
+
+        if payment_type == "voucher":
+            return _create_voucher_payment(data, user_id, project_code)
+
+        # ── BILL PAYMENT ─────────────────────────────────────────────
         # Support multi-bill: purchaseBillIds (array) or single purchaseBillId
         purchase_bill_ids = data.get("purchaseBillIds") or []
         if not purchase_bill_ids and data.get("purchaseBillId"):
@@ -593,10 +1012,6 @@ def create_bill_payment_receipt(data, user_id):
         primary_bill_id = purchase_bill_ids[0]
         bill = bills_map[primary_bill_id]
         is_multi = len(purchase_bill_ids) > 1
-
-        allowed = is_creator(project_code, _MODULE, user_id)
-        if not allowed:
-            return res("You are not authorized to create bill payment receipts", [], 403)
 
         payment_mode = data.get("paymentMode")
         if payment_mode == "Bank" and not data.get("bankAcId"):
@@ -627,6 +1042,7 @@ def create_bill_payment_receipt(data, user_id):
         r = BillPaymentReceiptMaster(
             receipt_no       = _generate_receipt_no(),
             receipt_uuid     = str(_uuid.uuid4()),
+            payment_type     = "bill",
             payment_date     = _parse_date(data.get("paymentDate")) or date.today(),
             purchase_bill_id = primary_bill_id,
             bvs_date         = bill.processing_date,
@@ -808,8 +1224,6 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         if not items:
             return res("At least one BASIC item required", [], 400)
 
-        gst_lines = data.get("gstLines", [])
-
         for key, attr in [
             ("paymentDate",    "payment_date"),
             ("paymentMode",    "payment_mode"),
@@ -826,39 +1240,54 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         BillPaymentReceiptGst.query.filter_by(receipt_id=r.id).delete()
         db.session.flush()
 
+        is_voucher = (r.payment_type or "bill") == "voucher"
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
-        gst_total = sum(
-            Decimal(str(g.get("currentAmount") or 0))
-            for g in gst_lines if g.get("isSelected")
-        )
+
+        if is_voucher:
+            for idx, row in enumerate(items, start=1):
+                db.session.add(BillPaymentReceiptItem(
+                    receipt_id     = r.id,
+                    pb_item_id     = None,
+                    je_line_id     = row.get("jeLineId") or None,
+                    sl_no          = row.get("slNo") or idx,
+                    cc_code        = row.get("ccCode"),
+                    cc_name        = row.get("ccName"),
+                    booked_amount  = Decimal(str(row.get("bookedAmount")  or 0)),
+                    current_amount = Decimal(str(row.get("currentAmount") or 0)),
+                ))
+            gst_total = Decimal("0")
+        else:
+            gst_lines = data.get("gstLines", [])
+            gst_total = sum(
+                Decimal(str(g.get("currentAmount") or 0))
+                for g in gst_lines if g.get("isSelected")
+            )
+            for idx, row in enumerate(items, start=1):
+                db.session.add(BillPaymentReceiptItem(
+                    receipt_id     = r.id,
+                    pb_item_id     = row.get("pbItemId") or None,
+                    sl_no          = row.get("slNo") or idx,
+                    cc_code        = row.get("ccCode"),
+                    cc_name        = row.get("ccName"),
+                    booked_amount  = Decimal(str(row.get("bookedAmount")  or 0)),
+                    current_amount = Decimal(str(row.get("currentAmount") or 0)),
+                ))
+            edit_is_multi = any(":" in (g.get("gstType") or "") for g in gst_lines)
+            for g in gst_lines:
+                raw_gst_type = g.get("gstType") or ""
+                gst_type_stored = raw_gst_type if (edit_is_multi or ":" in raw_gst_type) else raw_gst_type
+                db.session.add(BillPaymentReceiptGst(
+                    receipt_id     = r.id,
+                    gst_type       = gst_type_stored,
+                    cc_code        = g.get("ccCode"),
+                    cc_name        = g.get("ccName"),
+                    booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
+                    current_amount = Decimal(str(g.get("currentAmount") or 0)),
+                    is_selected    = bool(g.get("isSelected")),
+                ))
+
         discount  = Decimal(str(data.get("discount")  or 0))
         round_off = Decimal(str(data.get("roundOff")  or 0))
-
-        for idx, row in enumerate(items, start=1):
-            db.session.add(BillPaymentReceiptItem(
-                receipt_id     = r.id,
-                pb_item_id     = row.get("pbItemId") or None,
-                sl_no          = row.get("slNo") or idx,
-                cc_code        = row.get("ccCode"),
-                cc_name        = row.get("ccName"),
-                booked_amount  = Decimal(str(row.get("bookedAmount")  or 0)),
-                current_amount = Decimal(str(row.get("currentAmount") or 0)),
-            ))
-
-        # Determine if this is a multi-bill payment by checking if any GST type has a prefix
-        edit_is_multi = any(":" in (g.get("gstType") or "") for g in gst_lines)
-        for g in gst_lines:
-            raw_gst_type = g.get("gstType") or ""
-            gst_type_stored = raw_gst_type if (edit_is_multi or ":" in raw_gst_type) else raw_gst_type
-            db.session.add(BillPaymentReceiptGst(
-                receipt_id     = r.id,
-                gst_type       = gst_type_stored,
-                cc_code        = g.get("ccCode"),
-                cc_name        = g.get("ccName"),
-                booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
-                current_amount = Decimal(str(g.get("currentAmount") or 0)),
-                is_selected    = bool(g.get("isSelected")),
-            ))
 
         r.basic_amount         = basic_total
         r.gst_amount           = gst_total
