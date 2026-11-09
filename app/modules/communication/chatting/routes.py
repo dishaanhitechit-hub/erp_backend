@@ -791,5 +791,7 @@ def remove_device():
 @jwt_required()
 def heartbeat():
     user_id = int(get_jwt_identity())
-    presence_integration_service.record_heartbeat(user_id)
+    # Body (optional): {"source": "web" | "app" | "app_bg"}
+    data = request.get_json(silent=True) or {}
+    presence_integration_service.record_heartbeat(user_id, data.get("source") or "web")
     return jsonify({"ok": True}), 200

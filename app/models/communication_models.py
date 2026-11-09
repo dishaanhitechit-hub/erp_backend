@@ -519,3 +519,19 @@ class CommAnnouncementRead(db.Model):
             name="uq_comm_announcement_read",
         ),
     )
+
+
+class CommPresence(db.Model):
+    """Last check-in per user, for "online" in chat. In the database (not
+    server memory) so it survives restarts and is shared by every worker."""
+
+    __tablename__ = "comm_presence"
+
+    user_id      = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_now)   # any check-in
+    # Last check-in with the website or app open (short window) …
+    fg_seen_at   = db.Column(db.DateTime(timezone=True), nullable=True)
+    # … and from the app in the background / closed but reachable by push (long window).
+    bg_seen_at   = db.Column(db.DateTime(timezone=True), nullable=True)
+    # web | app | app_bg — the latest check-in's kind
+    source       = db.Column(db.String(10), nullable=False, default="web")

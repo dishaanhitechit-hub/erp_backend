@@ -111,7 +111,8 @@ def _send(app, user_ids, title, body, kind):
             msg = messaging.MulticastMessage(
                 tokens=tokens,
                 data={"type": kind, "title": title[:200], "body": body[:500]},
-                android=messaging.AndroidConfig(priority="high", ttl=3600),
+                # A call is only worth ringing for a minute; other pushes keep an hour.
+                android=messaging.AndroidConfig(priority="high", ttl=60 if kind == "incoming_call" else 3600),
             )
             resp = messaging.send_each_for_multicast(msg)
 
