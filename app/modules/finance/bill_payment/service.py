@@ -10,7 +10,7 @@ from app.models.billPaymentReceipt import (
     BillPaymentReceiptItem,
     BillPaymentReceiptGst,
 )
-from app.models.purchaseBill import PurchaseBillMaster
+from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -68,7 +68,16 @@ def _generate_receipt_no():
 
 
 def _paid_item_map(purchase_bill_id, exclude_id=None):
-    """Sum current_amount per pb_item_id from all Approved receipts for a purchase bill."""
+    """Sum current_amount per pb_item_id from ALL Approved receipts for a purchase bill.
+    Looks at items directly so multi-bill payments (where purchase_bill_id is the first bill)
+    are correctly accounted for across all bills."""
+    pb_item_ids = [
+        row.id for row in
+        PurchaseBillItem.query.filter_by(purchase_bill_id=purchase_bill_id)
+        .with_entities(PurchaseBillItem.id).all()
+    ]
+    if not pb_item_ids:
+        return {}
     q = (
         db.session.query(
             BillPaymentReceiptItem.pb_item_id,
@@ -76,8 +85,8 @@ def _paid_item_map(purchase_bill_id, exclude_id=None):
         )
         .join(BillPaymentReceiptMaster, BillPaymentReceiptMaster.id == BillPaymentReceiptItem.receipt_id)
         .filter(
-            BillPaymentReceiptMaster.purchase_bill_id  == purchase_bill_id,
-            BillPaymentReceiptMaster.workflow_status   == "Approved",
+            BillPaymentReceiptItem.pb_item_id.in_(pb_item_ids),
+            BillPaymentReceiptMaster.workflow_status == "Approved",
         )
     )
     if exclude_id:
@@ -86,7 +95,9 @@ def _paid_item_map(purchase_bill_id, exclude_id=None):
 
 
 def _paid_gst_map(purchase_bill_id, exclude_id=None):
-    """Sum current_amount per gst_type from all Approved receipts for a purchase bill."""
+    """Sum current_amount per gst_type from ALL Approved receipts for a purchase bill.
+    Handles both single-bill (plain 'IGST') and multi-bill ('{bill_id}:IGST') gst_type formats."""
+    prefix = f"{purchase_bill_id}:"
     q = (
         db.session.query(
             BillPaymentReceiptGst.gst_type,
@@ -94,62 +105,127 @@ def _paid_gst_map(purchase_bill_id, exclude_id=None):
         )
         .join(BillPaymentReceiptMaster, BillPaymentReceiptMaster.id == BillPaymentReceiptGst.receipt_id)
         .filter(
-            BillPaymentReceiptMaster.purchase_bill_id == purchase_bill_id,
-            BillPaymentReceiptMaster.workflow_status  == "Approved",
+            db.or_(
+                db.and_(
+                    BillPaymentReceiptMaster.purchase_bill_id == purchase_bill_id,
+                    ~BillPaymentReceiptGst.gst_type.contains(":"),
+                ),
+                BillPaymentReceiptGst.gst_type.startswith(prefix),
+            ),
+            BillPaymentReceiptMaster.workflow_status == "Approved",
         )
     )
     if exclude_id:
         q = q.filter(BillPaymentReceiptMaster.id != exclude_id)
-    return {r.gst_type: float(r.paid) for r in q.group_by(BillPaymentReceiptGst.gst_type).all()}
+    result = {}
+    for r in q.group_by(BillPaymentReceiptGst.gst_type).all():
+        key = r.gst_type.split(":", 1)[1] if ":" in r.gst_type else r.gst_type
+        result[key] = result.get(key, 0) + float(r.paid)
+    return result
 
 
 def _build_detail_payload(r):
-    paid_basic = _paid_item_map(r.purchase_bill_id, exclude_id=r.id)
-    paid_gst   = _paid_gst_map(r.purchase_bill_id,  exclude_id=r.id)
+    # Batch-load PurchaseBillItem → PurchaseBillMaster for per-item bill info
+    pb_item_ids = [i.pb_item_id for i in r.items if i.pb_item_id]
+    pbi_by_id = {}
+    bills_by_id = {}
+    if pb_item_ids:
+        pbi_rows = PurchaseBillItem.query.filter(PurchaseBillItem.id.in_(pb_item_ids)).all()
+        pbi_by_id = {p.id: p for p in pbi_rows}
+        bill_ids = list({p.purchase_bill_id for p in pbi_rows})
+        bill_rows = PurchaseBillMaster.query.filter(PurchaseBillMaster.id.in_(bill_ids)).all()
+        bills_by_id = {b.id: b for b in bill_rows}
+
+    # Pre-compute paid maps per unique bill
+    unique_bill_ids = list(bills_by_id.keys()) or [r.purchase_bill_id]
+    paid_basic_by_bill = {bid: _paid_item_map(bid, exclude_id=r.id) for bid in unique_bill_ids}
+    paid_gst_by_bill   = {bid: _paid_gst_map(bid,  exclude_id=r.id) for bid in unique_bill_ids}
+
+    def _bill_order_no(b):
+        if not b or not b.brr:
+            return None
+        return (b.brr.order.order_no if b.brr.order else None) or (b.brr.pw_order.order_no if b.brr.pw_order else None)
 
     items = []
     for i in r.items:
-        booked  = float(i.booked_amount  or 0)
-        current = float(i.current_amount or 0)
-        paid    = paid_basic.get(i.pb_item_id, 0)
+        booked   = float(i.booked_amount  or 0)
+        current  = float(i.current_amount or 0)
+        pbi      = pbi_by_id.get(i.pb_item_id)
+        bill     = bills_by_id.get(pbi.purchase_bill_id) if pbi else None
+        bill_id  = bill.id if bill else r.purchase_bill_id
+        paid     = paid_basic_by_bill.get(bill_id, {}).get(i.pb_item_id, 0)
         items.append({
-            "id":            i.id,
-            "pbItemId":      i.pb_item_id,
-            "slNo":          i.sl_no,
-            "ccCode":        i.cc_code,
-            "ccName":        i.cc_name,
-            "bookedAmount":  booked,
-            "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
-            "currentAmount": current,
+            "id":              i.id,
+            "pbItemId":        i.pb_item_id,
+            "purchaseBillId":  bill_id,
+            "purchaseBillNo":  bill.purchase_bill_no if bill else None,
+            "brrNo":           bill.brr_no           if bill else None,
+            "brrDate":         _fmt_date(bill.brr_date) if bill else None,
+            "orderNo":         _bill_order_no(bill),
+            "slNo":            i.sl_no,
+            "ccCode":          i.cc_code,
+            "ccName":          i.cc_name,
+            "bookedAmount":    booked,
+            "paidAmount":      paid,
+            "balanceAmount":   max(booked - paid, 0),
+            "currentAmount":   current,
         })
 
     gst_lines = []
     for g in r.gst_lines:
         booked  = float(g.booked_amount  or 0)
         current = float(g.current_amount or 0)
-        paid    = paid_gst.get(g.gst_type, 0)
+        # Parse bill prefix from gst_type for multi-bill records
+        if ":" in (g.gst_type or ""):
+            raw_bill_id, gst_type_key = g.gst_type.split(":", 1)
+            try:
+                gst_bill_id = int(raw_bill_id)
+            except ValueError:
+                gst_bill_id = r.purchase_bill_id
+                gst_type_key = g.gst_type
+        else:
+            gst_bill_id  = r.purchase_bill_id
+            gst_type_key = g.gst_type
+        bill = bills_by_id.get(gst_bill_id)
+        paid = paid_gst_by_bill.get(gst_bill_id, {}).get(gst_type_key, 0)
         gst_lines.append({
-            "id":            g.id,
-            "gstType":       g.gst_type,
-            "ccCode":        g.cc_code,
-            "ccName":        g.cc_name,
-            "percent":       float(g.percent or 0) if hasattr(g, "percent") else 0,
-            "bookedAmount":  booked,
-            "paidAmount":    paid,
-            "balanceAmount": max(booked - paid, 0),
-            "currentAmount": current,
-            "isSelected":    g.is_selected,
+            "id":             g.id,
+            "gstType":        gst_type_key,
+            "purchaseBillId": gst_bill_id,
+            "purchaseBillNo": bill.purchase_bill_no if bill else None,
+            "ccCode":         g.cc_code,
+            "ccName":         g.cc_name,
+            "percent":        float(g.percent or 0) if hasattr(g, "percent") else 0,
+            "bookedAmount":   booked,
+            "paidAmount":     paid,
+            "balanceAmount":  max(booked - paid, 0),
+            "currentAmount":  current,
+            "isSelected":     g.is_selected,
         })
 
-    bill = r.purchase_bill
+    # Per-bill summary (for multi-bill display)
+    bills_summary = []
+    for bid in unique_bill_ids:
+        b = bills_by_id.get(bid)
+        if b:
+            bills_summary.append({
+                "id":             b.id,
+                "purchaseBillNo": b.purchase_bill_no,
+                "brrNo":          b.brr_no,
+                "brrDate":        _fmt_date(b.brr_date),
+                "orderNo":        _bill_order_no(b),
+            })
+
+    primary_bill = r.purchase_bill
     return {
         "id":                  r.id,
         "receiptNo":           r.receipt_no,
         "receiptUuid":         r.receipt_uuid,
         "paymentDate":         _fmt_date(r.payment_date),
         "purchaseBillId":      r.purchase_bill_id,
-        "purchaseBillNo":      bill.purchase_bill_no if bill else None,
+        "purchaseBillNo":      primary_bill.purchase_bill_no if primary_bill else None,
+        "brrNo":               primary_bill.brr_no           if primary_bill else None,
+        "brrDate":             _fmt_date(primary_bill.brr_date) if primary_bill else None,
         "bvsDate":             _fmt_date(r.bvs_date),
         "vendorBillNo":        r.vendor_bill_no,
         "vendorBillDate":      _fmt_date(r.vendor_bill_date),
@@ -182,6 +258,7 @@ def _build_detail_payload(r):
         "finalApprovedAt":     _fmt_date(r.final_approved_at),
         "rejectedBy":          r.rejector.username  if r.rejector  else None,
         "rejectedAt":          _fmt_date(r.rejected_at),
+        "bills":               bills_summary,
         "items":               items,
         "gstLines":            gst_lines,
     }
@@ -276,6 +353,8 @@ def get_approved_purchase_bills(data):
                 "vendorId":       r.vendor_id,
                 "vendorBillNo":   r.vendor_bill_no,
                 "vendorBillDate": _fmt_date(r.vendor_bill_date),
+                "brrNo":          r.brr_no,
+                "brrDate":        _fmt_date(r.brr_date),
                 "orderNo":        (
                     (r.brr.order.order_no    if r.brr and r.brr.order    else None) or
                     (r.brr.pw_order.order_no if r.brr and r.brr.pw_order else None)
@@ -353,6 +432,8 @@ def get_purchase_bill_payment_items(bill_id):
             "bvsDate":             _fmt_date(bill.processing_date),
             "vendorBillNo":        bill.vendor_bill_no,
             "vendorBillDate":      _fmt_date(bill.vendor_bill_date),
+            "brrNo":               bill.brr_no,
+            "brrDate":             _fmt_date(bill.brr_date),
             "orderNo":             order_no,
             "vendorId":            bill.vendor_id,
             "vendorName":          bill.vendor.ledger_name if bill.vendor else None,
@@ -361,6 +442,104 @@ def get_purchase_bill_payment_items(bill_id):
             "totalBookedInvoice":  float(bill.total_invoice_amount or 0),
             "items":               items,
             "gstLines":            gst_lines,
+        }, 200)
+
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# LOOKUP — Multi-bill items + GST with paid/balance
+# ══════════════════════════════════════════════════════════════════
+
+def get_purchase_bills_payment_items_multi(bill_ids):
+    """Return combined items and GST for multiple purchase bills.
+    GST types are prefixed with '{bill_id}:' so they remain distinct per bill."""
+    try:
+        if not bill_ids:
+            return res("bill_ids required", [], 400)
+
+        bills = PurchaseBillMaster.query.filter(
+            PurchaseBillMaster.id.in_([int(b) for b in bill_ids])
+        ).all()
+
+        if not bills:
+            return res("No purchase bills found", [], 404)
+
+        invalid = [b for b in bills if b.workflow_status != "Approved"]
+        if invalid:
+            return res(
+                f"Bills {[b.purchase_bill_no for b in invalid]} are not Approved",
+                [], 400
+            )
+
+        all_items = []
+        all_gst = []
+        bills_meta = []
+
+        for bill in bills:
+            paid_basic = _paid_item_map(bill.id)
+            paid_gst   = _paid_gst_map(bill.id)
+
+            order_no = (
+                (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
+                (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
+            )
+
+            for i in bill.items:
+                booked  = float(i.basic_amount or 0)
+                paid    = paid_basic.get(i.id, 0)
+                balance = max(booked - paid, 0)
+                all_items.append({
+                    "pbItemId":        i.id,
+                    "purchaseBillId":  bill.id,
+                    "purchaseBillNo":  bill.purchase_bill_no,
+                    "brrNo":           bill.brr_no,
+                    "brrDate":         _fmt_date(bill.brr_date),
+                    "orderNo":         order_no,
+                    "slNo":            i.sl_no,
+                    "ccCode":          i.cc_code,
+                    "ccName":          i.cc_name,
+                    "bookedAmount":    booked,
+                    "paidAmount":      paid,
+                    "balanceAmount":   balance,
+                    "currentAmount":   0,
+                })
+
+            for g in bill.gst_lines:
+                booked  = float(g.gst_amount or 0)
+                paid    = paid_gst.get(g.gst_type, 0)
+                balance = max(booked - paid, 0)
+                all_gst.append({
+                    "gstType":        f"{bill.id}:{g.gst_type}",
+                    "purchaseBillId": bill.id,
+                    "purchaseBillNo": bill.purchase_bill_no,
+                    "ccCode":         g.cc_code,
+                    "ccName":         g.cc_name,
+                    "percent":        float(g.percent or 0),
+                    "bookedAmount":   booked,
+                    "paidAmount":     paid,
+                    "balanceAmount":  balance,
+                    "currentAmount":  0,
+                    "isSelected":     g.is_selected,
+                })
+
+            bills_meta.append({
+                "id":             bill.id,
+                "purchaseBillNo": bill.purchase_bill_no,
+                "brrNo":          bill.brr_no,
+                "brrDate":        _fmt_date(bill.brr_date),
+                "vendorBillNo":   bill.vendor_bill_no,
+                "vendorBillDate": _fmt_date(bill.vendor_bill_date),
+                "orderNo":        order_no,
+                "vendorId":       bill.vendor_id,
+                "vendorName":     bill.vendor.ledger_name if bill.vendor else None,
+            })
+
+        return res("Multi-bill payment items fetched", {
+            "bills":    bills_meta,
+            "items":    all_items,
+            "gstLines": all_gst,
         }, 200)
 
     except Exception as e:
@@ -377,15 +556,29 @@ def create_bill_payment_receipt(data, user_id):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        purchase_bill_id = data.get("purchaseBillId")
-        if not purchase_bill_id:
-            return res("purchaseBillId required", [], 400)
+        # Support multi-bill: purchaseBillIds (array) or single purchaseBillId
+        purchase_bill_ids = data.get("purchaseBillIds") or []
+        if not purchase_bill_ids and data.get("purchaseBillId"):
+            purchase_bill_ids = [data["purchaseBillId"]]
+        purchase_bill_ids = [int(b) for b in purchase_bill_ids]
+        if not purchase_bill_ids:
+            return res("purchaseBillId(s) required", [], 400)
 
-        bill = PurchaseBillMaster.query.get(int(purchase_bill_id))
-        if not bill:
-            return res("Purchase bill not found", [], 404)
-        if bill.workflow_status != "Approved":
-            return res("Only Approved purchase bills can be paid", [], 400)
+        # Load and validate all bills
+        bills_map = {b.id: b for b in PurchaseBillMaster.query.filter(
+            PurchaseBillMaster.id.in_(purchase_bill_ids)
+        ).all()}
+        for bid in purchase_bill_ids:
+            b = bills_map.get(bid)
+            if not b:
+                return res(f"Purchase bill {bid} not found", [], 404)
+            if b.workflow_status != "Approved":
+                return res(f"Purchase bill {b.purchase_bill_no} is not Approved", [], 400)
+
+        # Primary bill (first in list) used for the FK and header fields
+        primary_bill_id = purchase_bill_ids[0]
+        bill = bills_map[primary_bill_id]
+        is_multi = len(purchase_bill_ids) > 1
 
         allowed = is_creator(project_code, _MODULE, user_id)
         if not allowed:
@@ -415,7 +608,7 @@ def create_bill_payment_receipt(data, user_id):
             receipt_no       = _generate_receipt_no(),
             receipt_uuid     = str(_uuid.uuid4()),
             payment_date     = _parse_date(data.get("paymentDate")) or date.today(),
-            purchase_bill_id = int(purchase_bill_id),
+            purchase_bill_id = primary_bill_id,
             bvs_date         = bill.processing_date,
             vendor_bill_no   = bill.vendor_bill_no,
             vendor_bill_date = bill.vendor_bill_date,
@@ -452,9 +645,13 @@ def create_bill_payment_receipt(data, user_id):
             ))
 
         for g in gst_lines:
+            raw_gst_type = g.get("gstType") or ""
+            # For multi-bill: frontend sends "{bill_id}:IGST"; store as-is.
+            # For single-bill: store plain "IGST" (no prefix) for backward compat.
+            gst_type_stored = raw_gst_type if (is_multi or ":" in raw_gst_type) else raw_gst_type
             db.session.add(BillPaymentReceiptGst(
                 receipt_id     = r.id,
-                gst_type       = g.get("gstType"),
+                gst_type       = gst_type_stored,
                 cc_code        = g.get("ccCode"),
                 cc_name        = g.get("ccName"),
                 booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
@@ -622,10 +819,14 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
                 current_amount = Decimal(str(row.get("currentAmount") or 0)),
             ))
 
+        # Determine if this is a multi-bill payment by checking if any GST type has a prefix
+        edit_is_multi = any(":" in (g.get("gstType") or "") for g in gst_lines)
         for g in gst_lines:
+            raw_gst_type = g.get("gstType") or ""
+            gst_type_stored = raw_gst_type if (edit_is_multi or ":" in raw_gst_type) else raw_gst_type
             db.session.add(BillPaymentReceiptGst(
                 receipt_id     = r.id,
-                gst_type       = g.get("gstType"),
+                gst_type       = gst_type_stored,
                 cc_code        = g.get("ccCode"),
                 cc_name        = g.get("ccName"),
                 booked_amount  = Decimal(str(g.get("bookedAmount")  or 0)),
