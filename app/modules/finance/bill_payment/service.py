@@ -193,6 +193,9 @@ def _build_detail_payload(r):
             "gstType":        gst_type_key,
             "purchaseBillId": gst_bill_id,
             "purchaseBillNo": bill.purchase_bill_no if bill else None,
+            "orderNo":        _bill_order_no(bill),
+            "brrNo":          bill.brr_no if bill else None,
+            "brrDate":        _fmt_date(bill.brr_date) if bill else None,
             "ccCode":         g.cc_code,
             "ccName":         g.cc_name,
             "percent":        float(g.percent or 0) if hasattr(g, "percent") else 0,
@@ -404,27 +407,32 @@ def get_purchase_bill_payment_items(bill_id):
                 "currentAmount": 0,
             })
 
+        order_no = (
+            (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
+            (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
+        )
+
         gst_lines = []
         for g in bill.gst_lines:
             booked  = float(g.gst_amount or 0)
             paid    = paid_gst.get(g.gst_type, 0)
             balance = max(booked - paid, 0)
             gst_lines.append({
-                "gstType":       g.gst_type,
-                "ccCode":        g.cc_code,
-                "ccName":        g.cc_name,
-                "percent":       float(g.percent or 0),
-                "bookedAmount":  booked,
-                "paidAmount":    paid,
-                "balanceAmount": balance,
-                "currentAmount": 0,
-                "isSelected":    g.is_selected,
+                "gstType":        g.gst_type,
+                "purchaseBillId": bill.id,
+                "purchaseBillNo": bill.purchase_bill_no,
+                "orderNo":        order_no,
+                "brrNo":          bill.brr_no,
+                "brrDate":        _fmt_date(bill.brr_date),
+                "ccCode":         g.cc_code,
+                "ccName":         g.cc_name,
+                "percent":        float(g.percent or 0),
+                "bookedAmount":   booked,
+                "paidAmount":     paid,
+                "balanceAmount":  balance,
+                "currentAmount":  0,
+                "isSelected":     g.is_selected,
             })
-
-        order_no = (
-            (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
-            (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
-        )
 
         return res("Purchase bill payment items fetched", {
             "purchaseBillId":      bill.id,
@@ -514,6 +522,9 @@ def get_purchase_bills_payment_items_multi(bill_ids):
                     "gstType":        f"{bill.id}:{g.gst_type}",
                     "purchaseBillId": bill.id,
                     "purchaseBillNo": bill.purchase_bill_no,
+                    "orderNo":        order_no,
+                    "brrNo":          bill.brr_no,
+                    "brrDate":        _fmt_date(bill.brr_date),
                     "ccCode":         g.cc_code,
                     "ccName":         g.cc_name,
                     "percent":        float(g.percent or 0),
