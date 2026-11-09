@@ -1,5 +1,6 @@
 from app.extensions import db
 from datetime import datetime
+# JournalEntryMaster and JournalEntryLine are referenced by FK only; imported here for lazy relationship resolution
 
 
 class BillPaymentReceiptMaster(db.Model):
@@ -12,10 +13,18 @@ class BillPaymentReceiptMaster(db.Model):
 
     payment_date = db.Column(db.Date, nullable=False)
 
+    payment_type = db.Column(db.String(20), nullable=False, default="bill")  # bill | voucher
+
     purchase_bill_id = db.Column(
         db.Integer,
         db.ForeignKey("purchase_bill_master.id"),
-        nullable=False,
+        nullable=True,
+    )
+
+    journal_entry_id = db.Column(
+        db.Integer,
+        db.ForeignKey("journal_entry_master.id"),
+        nullable=True,
     )
 
     # Snapshots auto-populated from the linked purchase bill
@@ -65,8 +74,9 @@ class BillPaymentReceiptMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # Relationships
-    project       = db.relationship("Project",          backref="bill_payment_receipts")
-    purchase_bill = db.relationship("PurchaseBillMaster", backref="bill_payment_receipts")
+    project        = db.relationship("Project",             backref="bill_payment_receipts")
+    purchase_bill  = db.relationship("PurchaseBillMaster",  backref="bill_payment_receipts")
+    journal_entry  = db.relationship("JournalEntryMaster",  backref="bill_payment_receipts", foreign_keys=[journal_entry_id])
     vendor        = db.relationship("Vendor",            backref="bill_payment_receipts")
     cash_account  = db.relationship("BankCash", foreign_keys=[cash_ac_id])
     bank_account  = db.relationship("BankCash", foreign_keys=[bank_ac_id])
@@ -89,8 +99,11 @@ class BillPaymentReceiptItem(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     receipt_id = db.Column(db.Integer, db.ForeignKey("bill_payment_receipt_master.id"), nullable=False)
 
-    # Reference to originating purchase bill item (for paid-amount tracking)
+    # Reference to originating purchase bill item (for paid-amount tracking; bill payments)
     pb_item_id = db.Column(db.Integer, db.ForeignKey("purchase_bill_items.id"), nullable=True)
+
+    # Reference to journal entry line (for voucher payments)
+    je_line_id = db.Column(db.Integer, db.ForeignKey("journal_entry_lines.id"), nullable=True)
 
     sl_no          = db.Column(db.Integer,      nullable=False)
     cc_code        = db.Column(db.String(50),   nullable=True)
@@ -100,7 +113,8 @@ class BillPaymentReceiptItem(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    pb_item = db.relationship("PurchaseBillItem")
+    pb_item  = db.relationship("PurchaseBillItem",  foreign_keys=[pb_item_id])
+    je_line  = db.relationship("JournalEntryLine",  foreign_keys=[je_line_id])
 
 
 class BillPaymentReceiptGst(db.Model):

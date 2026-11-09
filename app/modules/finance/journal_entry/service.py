@@ -160,12 +160,13 @@ def create_journal_entry(data, user_id):
             return res("You are not authorized to create journal entries", [], 403)
 
         lines_data = data.get("lines", [])
-        if len(lines_data) < 2:
-            return res("At least one Dr and one Cr line required", [], 400)
+        if len(lines_data) < 1:
+            return res("At least one Dr line required", [], 400)
 
+        has_cr = any(l.get("drCr") == "Cr" for l in lines_data)
         total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
         total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
-        if total_debit != total_credit:
+        if has_cr and total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         entry_mode = data.get("entryMode", "new_voucher")
@@ -214,6 +215,15 @@ def create_journal_entry(data, user_id):
             ))
 
         db.session.commit()
+
+        # Mark dockets as journalized so they won't appear in the picker again
+        if entry_mode == "bulk_docket":
+            docket_ids = data.get("docketIds") or []
+            if docket_ids:
+                PettyCashJournalVoucher.query.filter(
+                    PettyCashJournalVoucher.id.in_([int(d) for d in docket_ids])
+                ).update({"linked_journal_id": entry.id}, synchronize_session=False)
+                db.session.commit()
 
         return res("Journal entry created", {
             "id":          entry.id,
@@ -335,12 +345,13 @@ def edit_journal_entry(entry_id, data, user_id):
             return res("You are not authorized to edit this journal entry", [], 403)
 
         lines_data = data.get("lines", [])
-        if len(lines_data) < 2:
-            return res("At least one Dr and one Cr line required", [], 400)
+        if len(lines_data) < 1:
+            return res("At least one Dr line required", [], 400)
 
+        has_cr = any(l.get("drCr") == "Cr" for l in lines_data)
         total_debit  = sum(Decimal(str(l.get("debitAmount")  or 0)) for l in lines_data)
         total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
-        if total_debit != total_credit:
+        if has_cr and total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
 
         if data.get("remarks") is not None:
@@ -369,6 +380,7 @@ def edit_journal_entry(entry_id, data, user_id):
                 cc_id        = cc_id,
                 vendor_id    = vendor_id,
                 customer_ref = customer_ref,
+                description  = row.get("description") or None,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
@@ -821,6 +833,7 @@ def get_approved_dockets(params):
             .filter(
                 PettyCashJournalVoucher.project_code == project_code,
                 PettyCashJournalVoucher.workflow_status == "Approved",
+                PettyCashJournalVoucher.linked_journal_id == None,  # noqa: E711
             )
             .order_by(PettyCashJournalVoucher.voucher_date.desc())
             .all()

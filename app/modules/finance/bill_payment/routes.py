@@ -3,6 +3,10 @@ from app.middleware.auth_middleware import login_required
 from app.modules.finance.bill_payment.service import (
     get_approved_purchase_bills,
     get_purchase_bill_payment_items,
+    get_purchase_bills_payment_items_multi,
+    get_approved_journal_vouchers,
+    get_journal_voucher_payment_items,
+    get_journal_vouchers_payment_items_multi,
     create_bill_payment_receipt,
     get_bill_payment_list,
     get_bill_payment_details,
@@ -31,6 +35,43 @@ def api_approved_purchase_bills():
 @login_required
 def api_purchase_bill_payment_items(bill_id):
     return get_purchase_bill_payment_items(bill_id)
+
+
+# ── LOOKUP: Combined items + GST for multiple bills ───────────────
+@bill_payment_bp.route("/purchase-bill-items-multi", methods=["GET"])
+@login_required
+def api_purchase_bill_payment_items_multi():
+    # Accepts ?billIds=1&billIds=2&... or ?billIds=1,2,...
+    raw = request.args.getlist("billIds") or request.args.getlist("bill_ids")
+    bill_ids = []
+    for v in raw:
+        bill_ids.extend(x.strip() for x in v.split(",") if x.strip())
+    return get_purchase_bills_payment_items_multi(bill_ids)
+
+
+# ── LOOKUP: Approved journal vouchers for voucher payment ─────────
+@bill_payment_bp.route("/approved-journal-vouchers", methods=["GET"])
+@login_required
+def api_approved_journal_vouchers():
+    return get_approved_journal_vouchers(request.args.to_dict())
+
+
+# ── LOOKUP: DR lines of a journal entry for voucher payment ───────
+@bill_payment_bp.route("/journal-voucher-items/<int:je_id>", methods=["GET"])
+@login_required
+def api_journal_voucher_payment_items(je_id):
+    return get_journal_voucher_payment_items(je_id)
+
+
+# ── LOOKUP: DR lines for multiple journal entries ─────────────────
+@bill_payment_bp.route("/journal-voucher-items-multi", methods=["GET"])
+@login_required
+def api_journal_voucher_payment_items_multi():
+    raw = request.args.getlist("jeIds") or request.args.getlist("je_ids")
+    je_ids = []
+    for v in raw:
+        je_ids.extend(x.strip() for x in v.split(",") if x.strip())
+    return get_journal_vouchers_payment_items_multi(je_ids)
 
 
 # ── 1. CREATE ─────────────────────────────────────────────────────

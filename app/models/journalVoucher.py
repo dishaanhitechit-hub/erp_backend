@@ -13,6 +13,8 @@ class PettyCashJournalVoucher(db.Model):
     project_code  = db.Column(db.String(50), db.ForeignKey("projects.project_code"), nullable=False)
     total_amount  = db.Column(db.Numeric(14, 2), default=0)
 
+    linked_journal_id = db.Column(db.Integer, db.ForeignKey("journal_entry_master.id"), nullable=True)
+
     workflow_status   = db.Column(db.String(30), default="Draft")
     current_level     = db.Column(db.Integer,    default=0)
     locked            = db.Column(db.Boolean,    default=False)

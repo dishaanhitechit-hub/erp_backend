@@ -7,7 +7,7 @@ import uuid as _uuid
 
 from app.models.saleReceiptBilling import SaleReceiptBillingMaster, SaleReceiptItem, SaleReceiptGst
 from app.models.saleReceipt import SaleReceiptMaster
-from app.models.saleBill import SaleBillMaster, SaleBillGst
+from app.models.saleBill import SaleBillMaster, SaleBillGst, SaleBillItem
 from app.models.billingMaster import BillingMaster
 from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.item import Item
@@ -101,6 +101,34 @@ def _group_by_cc(billing_items):
     ]
 
 
+def _srb_items_with_desc(srb):
+    # Build cc_code → description map from the original sale bill
+    cc_desc = {}
+    if srb.invoice_no and srb.project_code:
+        bill = SaleBillMaster.query.filter_by(
+            sale_bill_no=srb.invoice_no, project_code=srb.project_code
+        ).first()
+        if bill:
+            for bi in bill.items:
+                cc = bi.cc_code or "GENERAL"
+                if cc not in cc_desc:
+                    cc_desc[cc] = bi.description
+    return [
+        {
+            "id":             i.id,
+            "slNo":           i.sl_no,
+            "ccCode":         i.cc_code,
+            "ccName":         i.cc_name,
+            "description":    cc_desc.get(i.cc_code or "GENERAL"),
+            "bookedAmount":   float(i.booked_amount   or 0),
+            "receivedAmount": float(i.received_amount or 0),
+            "balanceAmount":  float(i.balance_amount  or 0),
+            "currentAmount":  float(i.current_amount  or 0),
+        }
+        for i in srb.items
+    ]
+
+
 def _build_srb_payload(srb):
     # Payment account from parent receipt (single FK access — no N+1)
     receipt = srb.receipt
@@ -156,19 +184,7 @@ def _build_srb_payload(srb):
         "finalApprovedAt":    _fmt_date(srb.final_approved_at),
         "rejectedBy":         srb.rejector.username  if srb.rejector  else None,
         "rejectedAt":         _fmt_date(srb.rejected_at),
-        "items": [
-            {
-                "id":             i.id,
-                "slNo":           i.sl_no,
-                "ccCode":         i.cc_code,
-                "ccName":         i.cc_name,
-                "bookedAmount":   float(i.booked_amount   or 0),
-                "receivedAmount": float(i.received_amount or 0),
-                "balanceAmount":  float(i.balance_amount  or 0),
-                "currentAmount":  float(i.current_amount  or 0),
-            }
-            for i in srb.items
-        ],
+        "items": _srb_items_with_desc(srb),
         "gstLines": [
             {
                 "id":             g.id,
@@ -319,7 +335,7 @@ def get_details_by_invoice_no(data):
         for item in sale_bill.items:
             cc = item.cc_code or "GENERAL"
             if cc not in cc_map:
-                cc_map[cc] = {"ccName": item.cc_name or "General", "basicAmount": Decimal("0")}
+                cc_map[cc] = {"ccName": item.cc_name or "General", "description": item.description, "basicAmount": Decimal("0")}
             cc_map[cc]["basicAmount"] += Decimal(str(item.basic_amount or 0))
 
         result_items = []
@@ -340,6 +356,7 @@ def get_details_by_invoice_no(data):
                 "slNo":           sl_no,
                 "ccCode":         cc_code,
                 "ccName":         g["ccName"],
+                "description":    g.get("description"),
                 "bookedAmount":   float(booked),
                 "receivedAmount": float(received),
                 "balanceAmount":  float(booked - received),
