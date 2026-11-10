@@ -232,6 +232,7 @@ def get_all_vendors(ledger_type=None):
             "ledgerCode":  v.ledger_code,
             "ledgerName":  v.ledger_name,
             "isDebtor":    bool(v.is_debtor),
+            "gstin":       v.gstin or "",
             "categoryName": (v.vendor_category.category_name if v.vendor_category else None),
             "whatsappNumber": v.whatsapp_number,
             "supplierTypes":  v.supplier_types or [],
