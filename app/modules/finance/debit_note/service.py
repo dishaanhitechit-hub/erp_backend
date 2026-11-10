@@ -5,7 +5,6 @@ from datetime import datetime, date
 import uuid as _uuid
 
 from app.models.debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst
-from app.models.vendor import Vendor
 from app.models.orderMaster import OrderMaster
 from app.models.brrMaster import BrrMaster
 from app.response import res
@@ -633,27 +632,7 @@ def get_debit_note_by_uuid(dn_uuid):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 12. CREDITOR VENDORS (is_debtor=False)
-# ══════════════════════════════════════════════════════════════════
-
-def get_creditor_vendors():
-    try:
-        vendors = Vendor.query.filter_by(is_debtor=False).order_by(Vendor.vendor_name).all()
-        result = [
-            {
-                "id":         v.id,
-                "vendorName": v.vendor_name,
-                "gstin":      v.gstin or "",
-            }
-            for v in vendors
-        ]
-        return res("Creditor vendors fetched", result, 200)
-    except Exception as e:
-        return res(str(e), [], 500)
-
-
-# ══════════════════════════════════════════════════════════════════
-# 13. ORDER PICKER — approved material orders with BRR details
+# 12. ORDER PICKER — approved material orders with BRR details
 # ══════════════════════════════════════════════════════════════════
 
 def get_dn_order_picker(project_code):
