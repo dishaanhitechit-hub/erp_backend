@@ -12,6 +12,8 @@ from app.modules.finance.debit_note.service import (
     get_debit_note_history,
     get_dn_my_approval_status,
     get_debit_note_by_uuid,
+    get_creditor_vendors,
+    get_dn_order_picker,
 )
 
 debit_note_bp = Blueprint("debit_note", __name__)
@@ -110,3 +112,18 @@ def api_debit_note_by_uuid(dn_uuid):
 def api_delete_debit_note(dn_id):
     from .service import delete_debit_note
     return delete_debit_note(dn_id)
+
+
+# ── 12. CREDITOR VENDORS ─────────────────────────────────────────
+@debit_note_bp.route("/creditor-vendors", methods=["GET"])
+@login_required
+def api_creditor_vendors():
+    return get_creditor_vendors()
+
+
+# ── 13. ORDER PICKER ─────────────────────────────────────────────
+@debit_note_bp.route("/order-picker", methods=["GET"])
+@login_required
+def api_dn_order_picker():
+    project_code = request.args.get("projectCode", "")
+    return get_dn_order_picker(project_code)
