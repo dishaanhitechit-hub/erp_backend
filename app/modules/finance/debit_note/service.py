@@ -5,7 +5,6 @@ from datetime import datetime, date
 import uuid as _uuid
 
 from app.models.debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst
-from app.models.orderMaster import OrderMaster
 from app.models.brrMaster import BrrMaster
 from app.response import res
 from app.modules.work_flow import (
@@ -57,9 +56,13 @@ def _generate_dn_no():
 
 
 def _build_dn_payload(dn):
-    # Derive order details from FK if set, else fall back to stored text fields
-    order_no   = dn.order.order_no   if dn.order else dn.order_number
-    order_date = _fmt_date(dn.order.order_date) if dn.order else _fmt_date(dn.order_date)
+    # Derive fields from BRR FK if set, else fall back to stored text fields
+    brr         = dn.brr
+    order       = brr.order if brr else None
+    order_no    = order.order_no          if order  else dn.order_number
+    order_date  = _fmt_date(order.order_date) if order else _fmt_date(dn.order_date)
+    bill_number = brr.party_bill_no       if brr   else dn.bill_number
+    bill_date   = _fmt_date(brr.party_date) if brr  else _fmt_date(dn.bill_date)
     vendor_gstn = dn.vendor.gstin if dn.vendor else None
 
     return {
@@ -68,9 +71,10 @@ def _build_dn_payload(dn):
         "debitNoteUuid":   dn.debit_note_uuid,
         "entryDate":       _fmt_date(dn.entry_date),
         "projectCode":     dn.project_code,
-        "billNumber":      dn.bill_number,
-        "billDate":        _fmt_date(dn.bill_date),
-        "orderId":         dn.order_id,
+        "brrId":           dn.brr_id,
+        "brrNo":           brr.brr_no if brr else None,
+        "billNumber":      bill_number,
+        "billDate":        bill_date,
         "orderNumber":     order_no,
         "orderDate":       order_date,
         "vendorId":        dn.vendor_id,
@@ -151,9 +155,9 @@ def create_debit_note(data, user_id):
             debit_note_uuid  = str(_uuid.uuid4()),
             entry_date       = _parse_date(data.get("entryDate")) or date.today(),
             project_code     = project_code,
+            brr_id           = data.get("brrId") or None,
             bill_number      = data.get("billNumber"),
             bill_date        = _parse_date(data.get("billDate")),
-            order_id         = data.get("orderId") or None,
             order_number     = data.get("orderNumber"),
             order_date       = _parse_date(data.get("orderDate")),
             vendor_id        = data.get("vendorId") or None,
@@ -302,9 +306,9 @@ def edit_debit_note(dn_id, data, user_id):
         date_fields = {"bill_date", "order_date", "credit_note_date", "entry_date"}
         for key, attr in [
             ("entryDate",      "entry_date"),
+            ("brrId",          "brr_id"),
             ("billNumber",     "bill_number"),
             ("billDate",       "bill_date"),
-            ("orderId",        "order_id"),
             ("orderNumber",    "order_number"),
             ("orderDate",      "order_date"),
             ("vendorId",       "vendor_id"),
@@ -632,60 +636,46 @@ def get_debit_note_by_uuid(dn_uuid):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 12. ORDER PICKER — approved material orders with BRR details
+# 12. BRR PICKER — approved BRRs (bills) for debit note reference
 # ══════════════════════════════════════════════════════════════════
 
-def get_dn_order_picker(project_code, vendor_id=None):
+def get_dn_brr_picker(project_code, vendor_id=None):
     try:
         if not project_code:
             return res("projectCode required", [], 400)
 
-        q = OrderMaster.query.filter(
-            OrderMaster.project_code == project_code,
-            OrderMaster.workflow_status == "Approved",
+        q = (
+            BrrMaster.query
+            .join(BrrMaster.order)
+            .filter(
+                BrrMaster.order.has(project_code=project_code),
+                BrrMaster.workflow_status == "Approved",
+            )
         )
 
-        # Only show orders belonging to the selected creditor vendor
         if vendor_id:
-            q = q.filter(OrderMaster.vendor_id == vendor_id)
+            q = q.filter(BrrMaster.vendor_id == vendor_id)
 
-        orders = q.order_by(OrderMaster.id.desc()).all()
-
-        # Build a map of order_id → latest approved BRR (highest id wins)
-        order_ids = [o.id for o in orders]
-        brr_map = {}
-        if order_ids:
-            brrs = (
-                BrrMaster.query
-                .filter(
-                    BrrMaster.order_id.in_(order_ids),
-                    BrrMaster.workflow_status == "Approved",
-                )
-                .order_by(BrrMaster.id.asc())
-                .all()
-            )
-            for b in brrs:
-                brr_map[b.order_id] = b
+        brrs = q.order_by(BrrMaster.id.desc()).all()
 
         result = []
-        for o in orders:
-            brr    = brr_map.get(o.id)
-            vendor = o.vendor
+        for b in brrs:
+            order  = b.order
+            vendor = b.vendor or (order.vendor if order else None)
             result.append({
-                "orderId":     o.id,
-                "orderNo":     o.order_no,
-                "orderDate":   _fmt_date(o.order_date),
-                "category":    o.category_code or "",
+                "brrId":       b.id,
+                "brrNo":       b.brr_no,
+                "partyBillNo": b.party_bill_no or "",
+                "partyDate":   _fmt_date(b.party_date),
+                "orderNo":     order.order_no         if order  else "",
+                "orderDate":   _fmt_date(order.order_date) if order else "",
+                "category":    order.category_code or "" if order else "",
                 "vendorId":    vendor.id          if vendor else None,
                 "vendorName":  vendor.ledger_name if vendor else "",
                 "vendorGstin": vendor.gstin        if vendor else "",
-                "hasBrr":      brr is not None,
-                "partyBillNo": brr.party_bill_no  if brr else "",
-                "partyDate":   _fmt_date(brr.party_date) if brr else "",
-                "brrNo":       brr.brr_no          if brr else "",
             })
 
-        return res("Order picker fetched", result, 200)
+        return res("BRR picker fetched", result, 200)
     except Exception as e:
         return res(str(e), [], 500)
 

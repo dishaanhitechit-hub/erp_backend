@@ -12,7 +12,7 @@ from app.modules.finance.debit_note.service import (
     get_debit_note_history,
     get_dn_my_approval_status,
     get_debit_note_by_uuid,
-    get_dn_order_picker,
+    get_dn_brr_picker,
 )
 
 debit_note_bp = Blueprint("debit_note", __name__)
@@ -113,11 +113,11 @@ def api_delete_debit_note(dn_id):
     return delete_debit_note(dn_id)
 
 
-# ── 12. ORDER PICKER ─────────────────────────────────────────────
-@debit_note_bp.route("/order-picker", methods=["GET"])
+# ── 12. BRR PICKER ───────────────────────────────────────────────
+@debit_note_bp.route("/brr-picker", methods=["GET"])
 @login_required
-def api_dn_order_picker():
-    project_code = request.args.get("projectCode", "")
+def api_dn_brr_picker():
+    project_code  = request.args.get("projectCode", "")
     vendor_id_raw = request.args.get("vendorId")
     vendor_id = int(vendor_id_raw) if vendor_id_raw and vendor_id_raw.isdigit() else None
-    return get_dn_order_picker(project_code, vendor_id)
+    return get_dn_brr_picker(project_code, vendor_id)

@@ -20,7 +20,7 @@ class DebitNoteMaster(db.Model):
     vendor_id   = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
     vendor_name = db.Column(db.String(300), nullable=True)
 
-    order_id    = db.Column(db.Integer, db.ForeignKey("order_master.id"), nullable=True)
+    brr_id      = db.Column(db.Integer, db.ForeignKey("brr_master.id"), nullable=True)
 
     credit_note_no   = db.Column(db.String(200), nullable=True)
     credit_note_date = db.Column(db.Date,        nullable=True)
@@ -49,7 +49,7 @@ class DebitNoteMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     project   = db.relationship("Project",      backref="debit_notes")
-    order     = db.relationship("OrderMaster",  foreign_keys=[order_id])
+    brr       = db.relationship("BrrMaster",    foreign_keys=[brr_id])
     items     = db.relationship("DebitNoteItem", backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteItem.sl_no")
     gst_lines = db.relationship("DebitNoteGst",  backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteGst.id")
     creator   = db.relationship("User", foreign_keys=[created_by])
