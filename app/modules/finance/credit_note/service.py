@@ -1,10 +1,13 @@
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 from app.extensions import db
 from datetime import datetime, date
 import uuid as _uuid
 
 from app.models.creditNote import CreditNoteMaster, CreditNoteItem, CreditNoteGst
+from app.models.saleBill import SaleBillMaster
+from app.models.vendor import Vendor as VendorModel
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -55,18 +58,22 @@ def _generate_cn_no():
 
 
 def _build_cn_payload(cn):
+    sb     = cn.sale_bill
+    so     = sb.og_so if sb else None
     return {
         "id":              cn.id,
         "creditNoteNo":    cn.credit_note_no,
         "creditNoteUuid":  cn.credit_note_uuid,
         "entryDate":       _fmt_date(cn.entry_date),
         "projectCode":     cn.project_code,
-        "billNumber":      cn.bill_number,
-        "billDate":        _fmt_date(cn.bill_date),
-        "orderNumber":     cn.order_number,
-        "orderDate":       _fmt_date(cn.order_date),
-        "vendorName":      cn.vendor_name,
-        "vendorGstn":      cn.vendor_gstn,
+        "saleBillId":      cn.sale_bill_id,
+        "saleBillNo":      sb.sale_bill_no              if sb    else None,
+        "billDate":        _fmt_date(sb.invoice_date)   if sb    else None,
+        "orderNumber":     so.erp_no                    if so    else None,
+        "orderDate":       _fmt_date(so.og_sale_order_date) if so else None,
+        "vendorId":        cn.vendor_id,
+        "vendorName":      cn.vendor.ledger_name if cn.vendor else None,
+        "vendorGstn":      cn.vendor.gstin       if cn.vendor else None,
         "debitNoteNo":     cn.debit_note_no,
         "debitNoteDate":   _fmt_date(cn.debit_note_date),
         "basicAmount":     float(cn.basic_amount or 0),
@@ -142,13 +149,8 @@ def create_credit_note(data, user_id):
             credit_note_uuid = str(_uuid.uuid4()),
             entry_date       = _parse_date(data.get("entryDate")) or date.today(),
             project_code     = project_code,
-            bill_number      = data.get("billNumber"),
-            bill_date        = _parse_date(data.get("billDate")),
-            order_number     = data.get("orderNumber"),
-            order_date       = _parse_date(data.get("orderDate")),
+            sale_bill_id     = data.get("saleBillId") or None,
             vendor_id        = data.get("vendorId") or None,
-            vendor_name      = data.get("vendorName"),
-            vendor_gstn      = data.get("vendorGstn"),
             debit_note_no    = data.get("debitNoteNo"),
             debit_note_date  = _parse_date(data.get("debitNoteDate")),
             basic_amount     = basic_total,
@@ -212,19 +214,20 @@ def get_credit_note_list(data):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        query = CreditNoteMaster.query.filter(
-            CreditNoteMaster.project_code == project_code
+        query = (
+            CreditNoteMaster.query
+            .filter(CreditNoteMaster.project_code == project_code)
+            .options(joinedload(CreditNoteMaster.sale_bill), joinedload(CreditNoteMaster.vendor))
         )
 
         if data.get("workflowStatus"):
             query = query.filter(CreditNoteMaster.workflow_status == data.get("workflowStatus"))
         if data.get("search"):
             term  = f"%{data.get('search')}%"
-            query = query.filter(
+            query = query.join(CreditNoteMaster.vendor, isouter=True).filter(
                 db.or_(
                     CreditNoteMaster.credit_note_no.ilike(term),
-                    CreditNoteMaster.bill_number.ilike(term),
-                    CreditNoteMaster.vendor_name.ilike(term),
+                    VendorModel.ledger_name.ilike(term),
                 )
             )
 
@@ -235,8 +238,8 @@ def get_credit_note_list(data):
                 "id":             r.id,
                 "creditNoteNo":   r.credit_note_no,
                 "entryDate":      _fmt_date(r.entry_date),
-                "billNumber":     r.bill_number,
-                "vendorName":     r.vendor_name,
+                "saleBillNo":     r.sale_bill.sale_bill_no  if r.sale_bill else None,
+                "vendorName":     r.vendor.ledger_name      if r.vendor    else None,
                 "basicAmount":    float(r.basic_amount or 0),
                 "gstAmount":      float(r.gst_amount   or 0),
                 "totalAmount":    float(r.total_amount  or 0),
@@ -290,16 +293,11 @@ def edit_credit_note(cn_id, data, user_id):
         if not items:
             return res("At least one item required", [], 400)
 
-        date_fields = {"bill_date", "order_date", "debit_note_date", "entry_date"}
+        date_fields = {"debit_note_date", "entry_date"}
         for key, attr in [
             ("entryDate",     "entry_date"),
-            ("billNumber",    "bill_number"),
-            ("billDate",      "bill_date"),
-            ("orderNumber",   "order_number"),
-            ("orderDate",     "order_date"),
+            ("saleBillId",    "sale_bill_id"),
             ("vendorId",      "vendor_id"),
-            ("vendorName",    "vendor_name"),
-            ("vendorGstn",    "vendor_gstn"),
             ("debitNoteNo",   "debit_note_no"),
             ("debitNoteDate", "debit_note_date"),
             ("remarks",       "remarks"),
@@ -618,6 +616,43 @@ def get_credit_note_by_uuid(cn_uuid):
         if not cn:
             return res("Credit note not found", [], 404)
         return res("Credit note details fetched", _build_cn_payload(cn), 200)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 12. SALE BILL PICKER
+# ══════════════════════════════════════════════════════════════════
+
+def get_cn_sale_bill_picker(project_code, debtor_id=None):
+    try:
+        q = (
+            SaleBillMaster.query
+            .filter(
+                SaleBillMaster.project_code == project_code,
+                SaleBillMaster.workflow_status == "Approved",
+            )
+        )
+        if debtor_id:
+            q = q.join(SaleBillMaster.og_so).filter(
+                SaleBillMaster.og_so.has(debtor_id=debtor_id)
+            )
+        bills = q.order_by(SaleBillMaster.id.desc()).all()
+        result = []
+        for sb in bills:
+            so     = sb.og_so
+            debtor = so.debtor if so else None
+            result.append({
+                "saleBillId":    sb.id,
+                "saleBillNo":    sb.sale_bill_no,
+                "invoiceDate":   _fmt_date(sb.invoice_date),
+                "saleOrderNo":   so.erp_no              if so     else "",
+                "saleOrderDate": _fmt_date(so.og_sale_order_date) if so else "",
+                "debtorId":      debtor.id              if debtor else None,
+                "debtorName":    debtor.ledger_name     if debtor else "",
+                "debtorGstin":   debtor.gstin           if debtor else "",
+            })
+        return res("Sale bill picker fetched", result, 200)
     except Exception as e:
         return res(str(e), [], 500)
 

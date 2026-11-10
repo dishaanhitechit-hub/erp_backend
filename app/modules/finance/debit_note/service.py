@@ -1,11 +1,13 @@
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 from app.extensions import db
 from datetime import datetime, date
 import uuid as _uuid
 
 from app.models.debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst
 from app.models.brrMaster import BrrMaster
+from app.models.vendor import Vendor as VendorModel
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -56,14 +58,9 @@ def _generate_dn_no():
 
 
 def _build_dn_payload(dn):
-    # Derive fields from BRR FK if set, else fall back to stored text fields
-    brr         = dn.brr
-    order       = brr.order if brr else None
-    order_no    = order.order_no          if order  else dn.order_number
-    order_date  = _fmt_date(order.order_date) if order else _fmt_date(dn.order_date)
-    bill_number = brr.party_bill_no       if brr   else dn.bill_number
-    bill_date   = _fmt_date(brr.party_date) if brr  else _fmt_date(dn.bill_date)
-    vendor_gstn = dn.vendor.gstin if dn.vendor else None
+    brr    = dn.brr
+    order  = brr.order if brr else None
+    vendor = dn.vendor
 
     return {
         "id":              dn.id,
@@ -72,14 +69,14 @@ def _build_dn_payload(dn):
         "entryDate":       _fmt_date(dn.entry_date),
         "projectCode":     dn.project_code,
         "brrId":           dn.brr_id,
-        "brrNo":           brr.brr_no if brr else None,
-        "billNumber":      bill_number,
-        "billDate":        bill_date,
-        "orderNumber":     order_no,
-        "orderDate":       order_date,
+        "brrNo":           brr.brr_no              if brr   else None,
+        "billNumber":      brr.party_bill_no        if brr   else None,
+        "billDate":        _fmt_date(brr.party_date) if brr  else None,
+        "orderNumber":     order.order_no            if order else None,
+        "orderDate":       _fmt_date(order.order_date) if order else None,
         "vendorId":        dn.vendor_id,
-        "vendorName":      dn.vendor_name,
-        "vendorGstn":      vendor_gstn,
+        "vendorName":      vendor.ledger_name if vendor else None,
+        "vendorGstn":      vendor.gstin       if vendor else None,
         "creditNoteNo":    dn.credit_note_no,
         "creditNoteDate":  _fmt_date(dn.credit_note_date),
         "basicAmount":     float(dn.basic_amount or 0),
@@ -156,12 +153,7 @@ def create_debit_note(data, user_id):
             entry_date       = _parse_date(data.get("entryDate")) or date.today(),
             project_code     = project_code,
             brr_id           = data.get("brrId") or None,
-            bill_number      = data.get("billNumber"),
-            bill_date        = _parse_date(data.get("billDate")),
-            order_number     = data.get("orderNumber"),
-            order_date       = _parse_date(data.get("orderDate")),
             vendor_id        = data.get("vendorId") or None,
-            vendor_name      = data.get("vendorName"),
             credit_note_no   = data.get("creditNoteNo"),
             credit_note_date = _parse_date(data.get("creditNoteDate")),
             basic_amount     = basic_total,
@@ -225,19 +217,20 @@ def get_debit_note_list(data):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        query = DebitNoteMaster.query.filter(
-            DebitNoteMaster.project_code == project_code
+        query = (
+            DebitNoteMaster.query
+            .filter(DebitNoteMaster.project_code == project_code)
+            .options(joinedload(DebitNoteMaster.brr), joinedload(DebitNoteMaster.vendor))
         )
 
         if data.get("workflowStatus"):
             query = query.filter(DebitNoteMaster.workflow_status == data.get("workflowStatus"))
         if data.get("search"):
             term  = f"%{data.get('search')}%"
-            query = query.filter(
+            query = query.join(DebitNoteMaster.vendor, isouter=True).filter(
                 db.or_(
                     DebitNoteMaster.debit_note_no.ilike(term),
-                    DebitNoteMaster.bill_number.ilike(term),
-                    DebitNoteMaster.vendor_name.ilike(term),
+                    VendorModel.ledger_name.ilike(term),
                 )
             )
 
@@ -248,8 +241,9 @@ def get_debit_note_list(data):
                 "id":             r.id,
                 "debitNoteNo":    r.debit_note_no,
                 "entryDate":      _fmt_date(r.entry_date),
-                "billNumber":     r.bill_number,
-                "vendorName":     r.vendor_name,
+                "brrNo":          r.brr.brr_no       if r.brr    else None,
+                "billNumber":     r.brr.party_bill_no if r.brr    else None,
+                "vendorName":     r.vendor.ledger_name if r.vendor else None,
                 "basicAmount":    float(r.basic_amount or 0),
                 "gstAmount":      float(r.gst_amount   or 0),
                 "totalAmount":    float(r.total_amount  or 0),
@@ -303,16 +297,11 @@ def edit_debit_note(dn_id, data, user_id):
         if not items:
             return res("At least one item required", [], 400)
 
-        date_fields = {"bill_date", "order_date", "credit_note_date", "entry_date"}
+        date_fields = {"credit_note_date", "entry_date"}
         for key, attr in [
             ("entryDate",      "entry_date"),
             ("brrId",          "brr_id"),
-            ("billNumber",     "bill_number"),
-            ("billDate",       "bill_date"),
-            ("orderNumber",    "order_number"),
-            ("orderDate",      "order_date"),
             ("vendorId",       "vendor_id"),
-            ("vendorName",     "vendor_name"),
             ("creditNoteNo",   "credit_note_no"),
             ("creditNoteDate", "credit_note_date"),
             ("remarks",        "remarks"),

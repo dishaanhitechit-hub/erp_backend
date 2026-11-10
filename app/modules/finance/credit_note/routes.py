@@ -12,6 +12,7 @@ from app.modules.finance.credit_note.service import (
     get_credit_note_history,
     get_cn_my_approval_status,
     get_credit_note_by_uuid,
+    get_cn_sale_bill_picker,
 )
 
 credit_note_bp = Blueprint("credit_note", __name__)
@@ -110,3 +111,13 @@ def api_credit_note_by_uuid(cn_uuid):
 def api_delete_credit_note(cn_id):
     from .service import delete_credit_note
     return delete_credit_note(cn_id)
+
+
+# ── 12. SALE BILL PICKER ─────────────────────────────────────────
+@credit_note_bp.route("/sale-bill-picker", methods=["GET"])
+@login_required
+def api_cn_sale_bill_picker():
+    project_code   = request.args.get("projectCode", "")
+    debtor_id_raw  = request.args.get("debtorId")
+    debtor_id = int(debtor_id_raw) if debtor_id_raw and debtor_id_raw.isdigit() else None
+    return get_cn_sale_bill_picker(project_code, debtor_id)

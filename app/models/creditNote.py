@@ -12,14 +12,9 @@ class CreditNoteMaster(db.Model):
     entry_date   = db.Column(db.Date, nullable=False)
     project_code = db.Column(db.String(50), db.ForeignKey("projects.project_code"), nullable=False)
 
-    bill_number  = db.Column(db.String(200), nullable=True)
-    bill_date    = db.Column(db.Date,        nullable=True)
-    order_number = db.Column(db.String(200), nullable=True)
-    order_date   = db.Column(db.Date,        nullable=True)
+    sale_bill_id = db.Column(db.Integer, db.ForeignKey("sale_bill_master.id"), nullable=True)
 
     vendor_id   = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
-    vendor_name = db.Column(db.String(300), nullable=True)
-    vendor_gstn = db.Column(db.String(50),  nullable=True)
 
     debit_note_no   = db.Column(db.String(200), nullable=True)
     debit_note_date = db.Column(db.Date,        nullable=True)
@@ -47,7 +42,9 @@ class CreditNoteMaster(db.Model):
     rejected_at        = db.Column(db.DateTime)
     correction_sent_at = db.Column(db.DateTime)
 
-    project   = db.relationship("Project",       backref="credit_notes")
+    project    = db.relationship("Project",        backref="credit_notes")
+    sale_bill  = db.relationship("SaleBillMaster", foreign_keys=[sale_bill_id])
+    vendor     = db.relationship("Vendor",         foreign_keys=[vendor_id])
     items     = db.relationship("CreditNoteItem", backref="credit_note", cascade="all,delete-orphan", order_by="CreditNoteItem.sl_no")
     gst_lines = db.relationship("CreditNoteGst",  backref="credit_note", cascade="all,delete-orphan", order_by="CreditNoteGst.id")
     creator   = db.relationship("User", foreign_keys=[created_by])

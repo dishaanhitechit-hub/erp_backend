@@ -12,15 +12,9 @@ class DebitNoteMaster(db.Model):
     entry_date   = db.Column(db.Date, nullable=False)
     project_code = db.Column(db.String(50), db.ForeignKey("projects.project_code"), nullable=False)
 
-    bill_number  = db.Column(db.String(200), nullable=True)
-    bill_date    = db.Column(db.Date,        nullable=True)
-    order_number = db.Column(db.String(200), nullable=True)
-    order_date   = db.Column(db.Date,        nullable=True)
+    brr_id      = db.Column(db.Integer, db.ForeignKey("brr_master.id"), nullable=True)
 
     vendor_id   = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
-    vendor_name = db.Column(db.String(300), nullable=True)
-
-    brr_id      = db.Column(db.Integer, db.ForeignKey("brr_master.id"), nullable=True)
 
     credit_note_no   = db.Column(db.String(200), nullable=True)
     credit_note_date = db.Column(db.Date,        nullable=True)
@@ -50,6 +44,7 @@ class DebitNoteMaster(db.Model):
 
     project   = db.relationship("Project",      backref="debit_notes")
     brr       = db.relationship("BrrMaster",    foreign_keys=[brr_id])
+    vendor    = db.relationship("Vendor",       foreign_keys=[vendor_id])
     items     = db.relationship("DebitNoteItem", backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteItem.sl_no")
     gst_lines = db.relationship("DebitNoteGst",  backref="debit_note", cascade="all,delete-orphan", order_by="DebitNoteGst.id")
     creator   = db.relationship("User", foreign_keys=[created_by])
