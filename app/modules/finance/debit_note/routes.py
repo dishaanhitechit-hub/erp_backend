@@ -118,4 +118,6 @@ def api_delete_debit_note(dn_id):
 @login_required
 def api_dn_order_picker():
     project_code = request.args.get("projectCode", "")
-    return get_dn_order_picker(project_code)
+    vendor_id_raw = request.args.get("vendorId")
+    vendor_id = int(vendor_id_raw) if vendor_id_raw and vendor_id_raw.isdigit() else None
+    return get_dn_order_picker(project_code, vendor_id)

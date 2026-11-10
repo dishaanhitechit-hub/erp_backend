@@ -635,22 +635,23 @@ def get_debit_note_by_uuid(dn_uuid):
 # 12. ORDER PICKER — approved material orders with BRR details
 # ══════════════════════════════════════════════════════════════════
 
-def get_dn_order_picker(project_code):
+def get_dn_order_picker(project_code, vendor_id=None):
     try:
         if not project_code:
             return res("projectCode required", [], 400)
 
-        orders = (
-            OrderMaster.query
-            .filter(
-                OrderMaster.project_code == project_code,
-                OrderMaster.workflow_status == "Approved",
-            )
-            .order_by(OrderMaster.id.desc())
-            .all()
+        q = OrderMaster.query.filter(
+            OrderMaster.project_code == project_code,
+            OrderMaster.workflow_status == "Approved",
         )
 
-        # Build a map of order_id → latest approved BRR
+        # Only show orders belonging to the selected creditor vendor
+        if vendor_id:
+            q = q.filter(OrderMaster.vendor_id == vendor_id)
+
+        orders = q.order_by(OrderMaster.id.desc()).all()
+
+        # Build a map of order_id → latest approved BRR (highest id wins)
         order_ids = [o.id for o in orders]
         brr_map = {}
         if order_ids:
@@ -664,24 +665,24 @@ def get_dn_order_picker(project_code):
                 .all()
             )
             for b in brrs:
-                brr_map[b.order_id] = b  # last one wins (highest id)
+                brr_map[b.order_id] = b
 
         result = []
         for o in orders:
-            brr = brr_map.get(o.id)
+            brr    = brr_map.get(o.id)
             vendor = o.vendor
             result.append({
-                "orderId":      o.id,
-                "orderNo":      o.order_no,
-                "orderDate":    _fmt_date(o.order_date),
-                "category":     o.category_code or "",
-                "vendorId":     vendor.id         if vendor else None,
-                "vendorName":   vendor.vendor_name if vendor else "",
-                "vendorGstin":  vendor.gstin       if vendor else "",
-                "hasBrr":       brr is not None,
-                "partyBillNo":  brr.party_bill_no  if brr else "",
-                "partyDate":    _fmt_date(brr.party_date) if brr else "",
-                "brrNo":        brr.brr_no         if brr else "",
+                "orderId":     o.id,
+                "orderNo":     o.order_no,
+                "orderDate":   _fmt_date(o.order_date),
+                "category":    o.category_code or "",
+                "vendorId":    vendor.id          if vendor else None,
+                "vendorName":  vendor.ledger_name if vendor else "",
+                "vendorGstin": vendor.gstin        if vendor else "",
+                "hasBrr":      brr is not None,
+                "partyBillNo": brr.party_bill_no  if brr else "",
+                "partyDate":   _fmt_date(brr.party_date) if brr else "",
+                "brrNo":       brr.brr_no          if brr else "",
             })
 
         return res("Order picker fetched", result, 200)
