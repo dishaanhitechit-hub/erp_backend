@@ -9,6 +9,7 @@ from app.models.creditNote import CreditNoteMaster, CreditNoteItem, CreditNoteGs
 from app.models.saleBill import SaleBillMaster
 from app.models.vendor import Vendor as VendorModel
 from app.response import res
+from app.utils.date_utils import parse_date, fmt_date
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -24,21 +25,6 @@ from app.modules.work_flow import (
 _MODULE = "credit_note"
 
 
-def _fmt_date(d):
-    if d is None:
-        return None
-    if isinstance(d, datetime):
-        return d.strftime("%Y-%m-%d %H:%M")
-    return d.strftime("%Y-%m-%d")
-
-
-def _parse_date(s):
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
 
 
 def _generate_cn_no():
@@ -64,18 +50,18 @@ def _build_cn_payload(cn):
         "id":              cn.id,
         "creditNoteNo":    cn.credit_note_no,
         "creditNoteUuid":  cn.credit_note_uuid,
-        "entryDate":       _fmt_date(cn.entry_date),
+        "entryDate":       fmt_date(cn.entry_date),
         "projectCode":     cn.project_code,
         "saleBillId":      cn.sale_bill_id,
         "saleBillNo":      sb.sale_bill_no              if sb    else None,
-        "billDate":        _fmt_date(sb.invoice_date)   if sb    else None,
+        "billDate":        fmt_date(sb.invoice_date)   if sb    else None,
         "orderNumber":     so.erp_no                    if so    else None,
-        "orderDate":       _fmt_date(so.og_sale_order_date) if so else None,
+        "orderDate":       fmt_date(so.og_sale_order_date) if so else None,
         "vendorId":        cn.vendor_id,
         "vendorName":      cn.vendor.ledger_name if cn.vendor else None,
         "vendorGstn":      cn.vendor.gstin       if cn.vendor else None,
         "debitNoteNo":     cn.debit_note_no,
-        "debitNoteDate":   _fmt_date(cn.debit_note_date),
+        "debitNoteDate":   fmt_date(cn.debit_note_date),
         "basicAmount":     float(cn.basic_amount or 0),
         "gstAmount":       float(cn.gst_amount   or 0),
         "totalAmount":     float(cn.total_amount  or 0),
@@ -84,13 +70,13 @@ def _build_cn_payload(cn):
         "currentLevel":    cn.current_level,
         "locked":          cn.locked,
         "createdBy":       cn.creator.username   if cn.creator   else None,
-        "createdAt":       _fmt_date(cn.created_at),
+        "createdAt":       fmt_date(cn.created_at),
         "submittedBy":     cn.submitter.username if cn.submitter else None,
-        "submittedAt":     _fmt_date(cn.submitted_at),
+        "submittedAt":     fmt_date(cn.submitted_at),
         "approvedBy":      cn.approver.username  if cn.approver  else None,
-        "finalApprovedAt": _fmt_date(cn.final_approved_at),
+        "finalApprovedAt": fmt_date(cn.final_approved_at),
         "rejectedBy":      cn.rejector.username  if cn.rejector  else None,
-        "rejectedAt":      _fmt_date(cn.rejected_at),
+        "rejectedAt":      fmt_date(cn.rejected_at),
         "items": [
             {
                 "id":          i.id,
@@ -147,12 +133,12 @@ def create_credit_note(data, user_id):
         cn = CreditNoteMaster(
             credit_note_no   = _generate_cn_no(),
             credit_note_uuid = str(_uuid.uuid4()),
-            entry_date       = _parse_date(data.get("entryDate")) or date.today(),
+            entry_date       = parse_date(data.get("entryDate")) or date.today(),
             project_code     = project_code,
             sale_bill_id     = data.get("saleBillId") or None,
             vendor_id        = data.get("vendorId") or None,
             debit_note_no    = data.get("debitNoteNo"),
-            debit_note_date  = _parse_date(data.get("debitNoteDate")),
+            debit_note_date  = parse_date(data.get("debitNoteDate")),
             basic_amount     = basic_total,
             gst_amount       = gst_total,
             total_amount     = basic_total + gst_total,
@@ -237,7 +223,7 @@ def get_credit_note_list(data):
             {
                 "id":             r.id,
                 "creditNoteNo":   r.credit_note_no,
-                "entryDate":      _fmt_date(r.entry_date),
+                "entryDate":      fmt_date(r.entry_date),
                 "saleBillNo":     r.sale_bill.sale_bill_no  if r.sale_bill else None,
                 "vendorName":     r.vendor.ledger_name      if r.vendor    else None,
                 "basicAmount":    float(r.basic_amount or 0),
@@ -245,7 +231,7 @@ def get_credit_note_list(data):
                 "totalAmount":    float(r.total_amount  or 0),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
-                "createdAt":      _fmt_date(r.created_at),
+                "createdAt":      fmt_date(r.created_at),
             }
             for r in rows
         ]
@@ -303,7 +289,7 @@ def edit_credit_note(cn_id, data, user_id):
             ("remarks",       "remarks"),
         ]:
             if data.get(key) is not None:
-                val = _parse_date(data.get(key)) if attr in date_fields else (data.get(key) or None)
+                val = parse_date(data.get(key)) if attr in date_fields else (data.get(key) or None)
                 setattr(cn, attr, val)
 
         CreditNoteItem.query.filter_by(credit_note_id=cn.id).delete()
@@ -645,9 +631,9 @@ def get_cn_sale_bill_picker(project_code, debtor_id=None):
             result.append({
                 "saleBillId":    sb.id,
                 "saleBillNo":    sb.sale_bill_no,
-                "invoiceDate":   _fmt_date(sb.invoice_date),
+                "invoiceDate":   fmt_date(sb.invoice_date),
                 "saleOrderNo":   so.erp_no              if so     else "",
-                "saleOrderDate": _fmt_date(so.og_sale_order_date) if so else "",
+                "saleOrderDate": fmt_date(so.og_sale_order_date) if so else "",
                 "debtorId":      debtor.id              if debtor else None,
                 "debtorName":    debtor.ledger_name     if debtor else "",
                 "debtorGstin":   debtor.gstin           if debtor else "",

@@ -9,6 +9,7 @@ from app.models.debitNote import DebitNoteMaster, DebitNoteItem, DebitNoteGst
 from app.models.brrMaster import BrrMaster
 from app.models.vendor import Vendor as VendorModel
 from app.response import res
+from app.utils.date_utils import parse_date, fmt_date
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -24,21 +25,6 @@ from app.modules.work_flow import (
 _MODULE = "debit_note"
 
 
-def _fmt_date(d):
-    if d is None:
-        return None
-    if isinstance(d, datetime):
-        return d.strftime("%Y-%m-%d %H:%M")
-    return d.strftime("%Y-%m-%d")
-
-
-def _parse_date(s):
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
 
 
 def _generate_dn_no():
@@ -66,19 +52,19 @@ def _build_dn_payload(dn):
         "id":              dn.id,
         "debitNoteNo":     dn.debit_note_no,
         "debitNoteUuid":   dn.debit_note_uuid,
-        "entryDate":       _fmt_date(dn.entry_date),
+        "entryDate":       fmt_date(dn.entry_date),
         "projectCode":     dn.project_code,
         "brrId":           dn.brr_id,
         "brrNo":           brr.brr_no              if brr   else None,
         "billNumber":      brr.party_bill_no        if brr   else None,
-        "billDate":        _fmt_date(brr.party_date) if brr  else None,
+        "billDate":        fmt_date(brr.party_date) if brr  else None,
         "orderNumber":     order.order_no            if order else None,
-        "orderDate":       _fmt_date(order.order_date) if order else None,
+        "orderDate":       fmt_date(order.order_date) if order else None,
         "vendorId":        dn.vendor_id,
         "vendorName":      vendor.ledger_name if vendor else None,
         "vendorGstn":      vendor.gstin       if vendor else None,
         "creditNoteNo":    dn.credit_note_no,
-        "creditNoteDate":  _fmt_date(dn.credit_note_date),
+        "creditNoteDate":  fmt_date(dn.credit_note_date),
         "basicAmount":     float(dn.basic_amount or 0),
         "gstAmount":       float(dn.gst_amount   or 0),
         "totalAmount":     float(dn.total_amount  or 0),
@@ -87,13 +73,13 @@ def _build_dn_payload(dn):
         "currentLevel":    dn.current_level,
         "locked":          dn.locked,
         "createdBy":       dn.creator.username   if dn.creator   else None,
-        "createdAt":       _fmt_date(dn.created_at),
+        "createdAt":       fmt_date(dn.created_at),
         "submittedBy":     dn.submitter.username if dn.submitter else None,
-        "submittedAt":     _fmt_date(dn.submitted_at),
+        "submittedAt":     fmt_date(dn.submitted_at),
         "approvedBy":      dn.approver.username  if dn.approver  else None,
-        "finalApprovedAt": _fmt_date(dn.final_approved_at),
+        "finalApprovedAt": fmt_date(dn.final_approved_at),
         "rejectedBy":      dn.rejector.username  if dn.rejector  else None,
-        "rejectedAt":      _fmt_date(dn.rejected_at),
+        "rejectedAt":      fmt_date(dn.rejected_at),
         "items": [
             {
                 "id":          i.id,
@@ -150,12 +136,12 @@ def create_debit_note(data, user_id):
         dn = DebitNoteMaster(
             debit_note_no    = _generate_dn_no(),
             debit_note_uuid  = str(_uuid.uuid4()),
-            entry_date       = _parse_date(data.get("entryDate")) or date.today(),
+            entry_date       = parse_date(data.get("entryDate")) or date.today(),
             project_code     = project_code,
             brr_id           = data.get("brrId") or None,
             vendor_id        = data.get("vendorId") or None,
             credit_note_no   = data.get("creditNoteNo"),
-            credit_note_date = _parse_date(data.get("creditNoteDate")),
+            credit_note_date = parse_date(data.get("creditNoteDate")),
             basic_amount     = basic_total,
             gst_amount       = gst_total,
             total_amount     = basic_total + gst_total,
@@ -240,7 +226,7 @@ def get_debit_note_list(data):
             {
                 "id":             r.id,
                 "debitNoteNo":    r.debit_note_no,
-                "entryDate":      _fmt_date(r.entry_date),
+                "entryDate":      fmt_date(r.entry_date),
                 "brrNo":          r.brr.brr_no       if r.brr    else None,
                 "billNumber":     r.brr.party_bill_no if r.brr    else None,
                 "vendorName":     r.vendor.ledger_name if r.vendor else None,
@@ -249,7 +235,7 @@ def get_debit_note_list(data):
                 "totalAmount":    float(r.total_amount  or 0),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
-                "createdAt":      _fmt_date(r.created_at),
+                "createdAt":      fmt_date(r.created_at),
             }
             for r in rows
         ]
@@ -307,7 +293,7 @@ def edit_debit_note(dn_id, data, user_id):
             ("remarks",        "remarks"),
         ]:
             if data.get(key) is not None:
-                val = _parse_date(data.get(key)) if attr in date_fields else (data.get(key) or None)
+                val = parse_date(data.get(key)) if attr in date_fields else (data.get(key) or None)
                 setattr(dn, attr, val)
 
         DebitNoteItem.query.filter_by(debit_note_id=dn.id).delete()
@@ -655,9 +641,9 @@ def get_dn_brr_picker(project_code, vendor_id=None):
                 "brrId":       b.id,
                 "brrNo":       b.brr_no,
                 "partyBillNo": b.party_bill_no or "",
-                "partyDate":   _fmt_date(b.party_date),
+                "partyDate":   fmt_date(b.party_date),
                 "orderNo":     order.order_no         if order  else "",
-                "orderDate":   _fmt_date(order.order_date) if order else "",
+                "orderDate":   fmt_date(order.order_date) if order else "",
                 "category":    order.category_code or "" if order else "",
                 "vendorId":    vendor.id          if vendor else None,
                 "vendorName":  vendor.ledger_name if vendor else "",

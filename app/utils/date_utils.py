@@ -100,6 +100,17 @@ def parse_time(value, field_name="time"):
         )
 
 
+def fmt_date(d) -> str | None:
+    """Format a date or datetime to YYYY-MM-DD string for API responses.
+
+    Returns None for None input. Always strips time so the result is safe
+    for <input type="date"> on the frontend.
+    """
+    if d is None:
+        return None
+    return d.strftime("%Y-%m-%d")
+
+
 def last_month_range() -> tuple[datetime, datetime]:
     """Return (start, end) datetime for the previous calendar month (UTC-midnight boundaries)."""
     today = date.today()
