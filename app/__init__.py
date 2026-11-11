@@ -111,6 +111,10 @@ def create_app():
     from .modules.search.routes import search_bp
     app.register_blueprint(search_bp, url_prefix="/search")
 
+    # deep search: quick master search + 360 view (vendor / item)
+    from .modules.search.deep_routes import deep_search_bp
+    app.register_blueprint(deep_search_bp, url_prefix="/search")
+
     from .modules.billing.bill_receive_register.routes import brr_bp
     app.register_blueprint(brr_bp, url_prefix="/billing/brr")
 
