@@ -660,6 +660,16 @@ def approve_gin(gin_id, approved_by=None, comments=None):
             gin.approved_by = approved_by
             gin.final_approved_at = datetime.utcnow()
 
+            db.session.flush()
+
+            try:
+                from app.modules.finance.accounting.stock_posting_rules import post_gin_stock
+                from app.modules.finance.accounting.posting_engine import post_document
+                post_gin_stock(gin.id, user_id=approved_by)
+                post_document("gin", gin.id, user_id=approved_by)
+            except Exception:
+                pass
+
         gin.updated_by = approved_by
         gin.updated_at = datetime.utcnow()
 
@@ -1256,6 +1266,12 @@ def delete_gin(gin_id):
             return res("GIN not found", [], 404)
         if gin.locked:
             return res("Only draft GIN can be deleted", [], 400)
+        if gin.workflow_status != "Draft":
+            return res("Only draft GIN can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("GinMaster", gin_id)
+        if not can_delete:
+            return res(msg, [], 400)
         GinItem.query.filter_by(gin_id=gin.id).delete()
         db.session.delete(gin)
         db.session.commit()

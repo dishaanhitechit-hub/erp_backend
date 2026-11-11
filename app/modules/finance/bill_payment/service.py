@@ -1511,6 +1511,15 @@ def approve_bill_payment(receipt_id, approved_by, comments=None):
         r.updated_by = approved_by
         r.updated_at = datetime.utcnow()
 
+        if r.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("bill_payment", r.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for BPR {r.id}: {e}")
+
         db.session.commit()
 
         try:
@@ -1731,6 +1740,10 @@ def delete_bill_payment(receipt_id):
             return res("Bill Payment not found", [], 404)
         if receipt.locked:
             return res("Only draft Bill Payment can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("BillPaymentReceiptMaster", receipt_id)
+        if not can_delete:
+            return res(msg, [], 400)
         BillPaymentReceiptGst.query.filter_by(receipt_id=receipt.id).delete()
         BillPaymentReceiptItem.query.filter_by(receipt_id=receipt.id).delete()
         db.session.delete(receipt)

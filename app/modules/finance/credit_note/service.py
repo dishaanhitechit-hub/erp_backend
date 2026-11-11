@@ -444,6 +444,16 @@ def approve_credit_note(cn_id, approved_by, comments=None):
 
         cn.updated_by = approved_by
         cn.updated_at = datetime.utcnow()
+
+        if cn.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("credit_note", cn.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for CN {cn.id}: {e}")
+
         db.session.commit()
 
         return res("Credit note approved", {"id": cn.id, "workflowStatus": cn.workflow_status}, 200)
@@ -650,6 +660,10 @@ def delete_credit_note(cn_id):
             return res("Credit Note not found", [], 404)
         if cn.locked:
             return res("Only draft Credit Note can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("CreditNoteMaster", cn_id)
+        if not can_delete:
+            return res(msg, [], 400)
         CreditNoteGst.query.filter_by(credit_note_id=cn.id).delete()
         CreditNoteItem.query.filter_by(credit_note_id=cn.id).delete()
         db.session.delete(cn)

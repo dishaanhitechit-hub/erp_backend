@@ -448,6 +448,16 @@ def approve_debit_note(dn_id, approved_by, comments=None):
 
         dn.updated_by = approved_by
         dn.updated_at = datetime.utcnow()
+
+        if dn.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("debit_note", dn.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for DN {dn.id}: {e}")
+
         db.session.commit()
 
         return res("Debit note approved", {"id": dn.id, "workflowStatus": dn.workflow_status}, 200)
@@ -662,6 +672,10 @@ def delete_debit_note(dn_id):
             return res("Debit Note not found", [], 404)
         if dn.locked:
             return res("Only draft Debit Note can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("DebitNoteMaster", dn_id)
+        if not can_delete:
+            return res(msg, [], 400)
         DebitNoteGst.query.filter_by(debit_note_id=dn.id).delete()
         DebitNoteItem.query.filter_by(debit_note_id=dn.id).delete()
         db.session.delete(dn)

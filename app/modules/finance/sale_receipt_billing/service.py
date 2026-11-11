@@ -828,6 +828,15 @@ def approve_srb(srb_id, approved_by, comments=None):
         srb.updated_by = approved_by
         srb.updated_at = datetime.utcnow()
 
+        if srb.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("sale_receipt_billing", srb.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for SRB {srb.id}: {e}")
+
         db.session.commit()
 
         return res("Sale receipt billing approved", {
@@ -1029,6 +1038,10 @@ def delete_sale_receipt_billing(srb_id):
             return res("Sale Receipt Billing not found", [], 404)
         if srb.locked:
             return res("Only draft Sale Receipt Billing can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("SaleReceiptBillingMaster", srb_id)
+        if not can_delete:
+            return res(msg, [], 400)
         SaleReceiptGst.query.filter_by(receipt_id=srb.id).delete()
         SaleReceiptItem.query.filter_by(receipt_id=srb.id).delete()
         db.session.delete(srb)

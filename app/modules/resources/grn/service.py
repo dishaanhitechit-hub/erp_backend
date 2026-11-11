@@ -791,6 +791,16 @@ def approve_grn(grn_id, approved_by=None, comments=None):
             grn.approved_by = approved_by
             grn.final_approved_at = datetime.utcnow()
 
+            db.session.flush()
+
+            try:
+                from app.modules.finance.accounting.stock_posting_rules import post_grn_stock
+                from app.modules.finance.accounting.posting_engine import post_document
+                post_grn_stock(grn.id, user_id=approved_by)
+                post_document("grn", grn.id, user_id=approved_by)
+            except Exception:
+                pass
+
         grn.updated_by = approved_by
         grn.updated_at = datetime.utcnow()
 
@@ -1488,6 +1498,12 @@ def delete_grn(grn_id):
             return res("GRN not found", [], 404)
         if grn.locked:
             return res("Only draft GRN can be deleted", [], 400)
+        if grn.workflow_status != "Draft":
+            return res("Only draft GRN can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("GrnMaster", grn_id)
+        if not can_delete:
+            return res(msg, [], 400)
         GrnItem.query.filter_by(grn_id=grn.id).delete()
         db.session.delete(grn)
         db.session.commit()

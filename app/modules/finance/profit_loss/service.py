@@ -1,9 +1,13 @@
 from datetime import datetime
+from decimal import Decimal
+from sqlalchemy import func, case, literal_column
+
 from app.extensions import db
 from app.models.ogSaleOrder import OgSaleOrderMaster
 from app.models.budget import BudgetMaster, BudgetItem, BudgetItemCCCode
+from app.models.accounting import AccountingLedger, AccountingLedgerLine
+from app.models.cc_code import CCCode
 
-# DE sibling codes stored per-item — DRCW is their computed sum, not stored
 _DE_SIBLING_CODES = {"DRMC", "DRFD", "DRMH", "DRUS", "DRMR", "DRLC", "DRLS", "DRMS"}
 from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.response import res
@@ -18,7 +22,6 @@ def _parse_date(val):
         return None
 
 
-# All 50 codes in display order — only leaf codes, no section headers
 _ALL_CODES = [
     "CRIN", "CRHL", "CRAP", "UCAP", "WIPS", "INOC",
     "DRCW", "DRMC", "DRFD", "DRMH", "DRUS", "DRMR", "DRLC", "DRLS", "DRMS",
@@ -29,6 +32,105 @@ _ALL_CODES = [
 ]
 
 _SALE_CODES = {"CRIN", "CRHL", "CRAP", "UCAP", "WIPS", "INOC"}
+
+_STOCK_CODES = {"CARM", "DRMC", "DRFD", "DRMH", "DRUS", "DRMR", "DRLC", "DRLS", "DRMS"}
+
+
+def _actual_from_ledger(project_code=None, from_date=None, to_date=None):
+    """
+    Actual column: net posted amounts per CC code from the accounting ledger.
+    For expense codes: sum of Dr amounts (actual cost incurred).
+    For revenue codes: sum of Cr amounts (actual revenue recognised).
+    Returns {cc_code_upper: float}.
+    """
+    q = (
+        db.session.query(
+            func.upper(CCCode.cc_code).label("code"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("dr"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("cr"),
+        )
+        .join(CCCode, AccountingLedgerLine.cc_id == CCCode.id)
+        .join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+        .filter(AccountingLedgerLine.account_type == "CC")
+        .group_by(func.upper(CCCode.cc_code))
+    )
+    if project_code:
+        q = q.filter(AccountingLedger.project_code == project_code)
+    if from_date:
+        q = q.filter(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        q = q.filter(AccountingLedger.posting_date <= to_date)
+
+    result = {}
+    for row in q.all():
+        code = row.code
+        dr_val = float(row.dr or 0)
+        cr_val = float(row.cr or 0)
+        if code in _SALE_CODES:
+            result[code] = cr_val
+        else:
+            result[code] = dr_val
+    return result
+
+
+def _work_done_from_ledger(project_code=None, from_date=None, to_date=None):
+    """
+    Work Done column: same as actual for most codes (posted amounts).
+    For sale-side codes:
+      CRIN = actual invoiced revenue (Cr from sale_bill postings)
+      CRHL = certified amounts on hold (from JE postings to CAHL)
+      CRAP = certified amendment pending (from JE postings to CAAP)
+      UCAP = work done uncertified (from JE postings to CAUM)
+    """
+    return _actual_from_ledger(project_code, from_date, to_date)
+
+
+def _stock_from_ledger(project_code=None, from_date=None, to_date=None):
+    """
+    Stock column: net stock value per CC code.
+    For CARM and DE-sibling codes that have inventory impact:
+      Dr (stock received) - Cr (stock consumed) = closing stock value.
+    Uses accounting ledger Dr-Cr for CARM-related codes.
+    """
+    q = (
+        db.session.query(
+            func.upper(CCCode.cc_code).label("code"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("dr"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("cr"),
+        )
+        .join(CCCode, AccountingLedgerLine.cc_id == CCCode.id)
+        .join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+        .filter(
+            AccountingLedgerLine.account_type == "CC",
+            func.upper(CCCode.cc_code).in_([c.upper() for c in _STOCK_CODES]),
+        )
+        .group_by(func.upper(CCCode.cc_code))
+    )
+    if project_code:
+        q = q.filter(AccountingLedger.project_code == project_code)
+    if from_date:
+        q = q.filter(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        q = q.filter(AccountingLedger.posting_date <= to_date)
+
+    result = {}
+    for row in q.all():
+        net = float(row.dr or 0) - float(row.cr or 0)
+        if net != 0:
+            result[row.code] = net
+    return result
 
 
 def get_pl_report(args):
@@ -77,12 +179,9 @@ def get_pl_report(args):
         cc_rows = cc_query.group_by(BudgetItemCCCode.cc_code).all()
         cc_map  = {row.cc_code.strip().upper(): float(row.total or 0) for row in cc_rows}
 
-        # DRCW is no longer stored as its own BudgetItemCCCode row —
-        # derive it as the sum of all stored DE sibling codes.
         cc_map["DRCW"] = sum(cc_map.get(c, 0) for c in _DE_SIBLING_CODES)
 
         # ── B2. Overhead CC codes — estimated costs from BudgetMaster.overhead_data ──
-        # These live in a JSON column; aggregate in Python after fetching matching budgets.
         bm_filter = BudgetMaster.query.filter(
             BudgetMaster.workflow_status == "Approved",
             BudgetMaster.status          == "Active",
@@ -124,6 +223,20 @@ def get_pl_report(args):
             if row.cc_code
         }
 
+        # ── D. ACTUAL — posted amounts from accounting ledger ──
+        actual_map = _actual_from_ledger(project_code, from_date, to_date)
+
+        # ── E. WORK DONE — posted amounts (same source as actual) ──
+        work_done_map = _work_done_from_ledger(project_code, from_date, to_date)
+
+        # ── F. STOCK — closing stock values from accounting ledger ──
+        stock_map = _stock_from_ledger(project_code, from_date, to_date)
+
+        # Derive DRCW actual/workDone/stock as sum of DE siblings
+        actual_map["DRCW"] = sum(actual_map.get(c, 0) for c in _DE_SIBLING_CODES)
+        work_done_map["DRCW"] = sum(work_done_map.get(c, 0) for c in _DE_SIBLING_CODES)
+        stock_map["DRCW"] = sum(stock_map.get(c, 0) for c in _DE_SIBLING_CODES)
+
         # ── Build rows ──
         rows = []
         for code in _ALL_CODES:
@@ -137,10 +250,10 @@ def get_pl_report(args):
             rows.append({
                 "code":     code,
                 "order":    order_val,
-                "workDone": None,
+                "workDone": work_done_map.get(code),
                 "booked":   booked_val,
-                "stock":    None,
-                "actual":   None,
+                "stock":    stock_map.get(code),
+                "actual":   actual_map.get(code),
             })
 
         return res("Profit & Loss fetched", {"rows": rows}, 200)

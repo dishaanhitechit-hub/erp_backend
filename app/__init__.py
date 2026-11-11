@@ -239,6 +239,11 @@ def create_app():
     from .modules.finance.my_ledger.routes import my_ledger_bp
     app.register_blueprint(my_ledger_bp, url_prefix="/finance/my-ledger")
 
+    from .modules.finance.accounting.routes import accounting_bp
+    app.register_blueprint(accounting_bp, url_prefix="/finance/accounting")
+
+    from .models import accounting  # noqa — registers AccountingLedger, AccountingLedgerLine, FinancialYear
+
     from .modules.communication.routes import wa_bp
     app.register_blueprint(wa_bp)
 

@@ -351,9 +351,27 @@ def _sundry_debtors(project_code=None, from_date=None, to_date=None):
 
 def _grn_value(project_code=None, from_date=None, to_date=None):
     """
-    CARM = raw materials stock value tracked via JournalEntry lines
-    tagged with the CARM cc_code (debit side = received inventory).
+    CARM = raw materials stock value.
+    Primary source: stock_ledger running_value (when table exists).
+    Fallback: JournalEntry debit sum tagged to CARM cc_code.
     """
+    try:
+        from app.models.stockLedger import StockLedger
+        q = db.session.query(
+            db.func.coalesce(db.func.sum(StockLedger.running_value), 0)
+        )
+        if project_code:
+            q = q.filter(StockLedger.project_code == project_code)
+        if to_date:
+            q = q.filter(StockLedger.transaction_date <= to_date)
+        if from_date:
+            q = q.filter(StockLedger.transaction_date >= from_date)
+        q = q.filter(StockLedger.is_reversal == False)
+        stock_val = float(q.scalar() or 0)
+        if stock_val != 0:
+            return stock_val
+    except Exception:
+        pass
     return _journal_debit_sum(["CARM"], project_code=project_code,
                               from_date=from_date, to_date=to_date)
 
@@ -453,7 +471,7 @@ def get_balance_sheet(args):
             **kw,
         )
         jd = _bulk_journal_debit_sum(
-            ["CARM", "CAHL", "CAAP", "CAUM", "CAWP", "CART", "CAAE", "CAOP",
+            ["CARM", "CAHL", "CAAP", "CAUM", "CAWP", "CART", "CAAV", "CAAE", "CAOP",
              "CACI", "CATS", "CAOA",
              "APNM", "ASRV", "AOFG", "AELE", "AMEG", "ALGH",
              "AINF", "ASCF", "ASHT", "AEIT", "AETT", "ACAB",
@@ -528,9 +546,10 @@ def get_balance_sheet(args):
 
         cart = jd["CART"]
 
+        caav = jd["CAAV"]
         caae = jd["CAAE"]
         caop = jd["CAOP"]
-        cala_total = caae + caop
+        cala_total = caav + caae + caop
 
         caci = jd["CACI"]
         cats = jd["CATS"]

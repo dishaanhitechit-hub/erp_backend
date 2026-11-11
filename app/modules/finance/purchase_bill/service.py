@@ -998,6 +998,16 @@ def approve_purchase_bill(bill_id, approved_by, comments=None):
         bill.updated_by = approved_by
         bill.updated_at = datetime.utcnow()
 
+        # Post to central accounting ledger on final approval
+        if bill.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("purchase_bill", bill.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for PB {bill.id}: {e}")
+
         db.session.commit()
 
         try:
@@ -1245,6 +1255,10 @@ def delete_purchase_bill(bill_id):
             return res("Purchase Bill not found", [], 404)
         if bill.locked:
             return res("Only draft Purchase Bill can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("PurchaseBillMaster", bill_id)
+        if not can_delete:
+            return res(msg, [], 400)
         PurchaseBillGst.query.filter_by(purchase_bill_id=bill.id).delete()
         PurchaseBillItem.query.filter_by(purchase_bill_id=bill.id).delete()
         db.session.delete(bill)

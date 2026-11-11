@@ -416,6 +416,15 @@ def approve_contra_entry(entry_id, approved_by, comments=None):
         entry.updated_by = approved_by
         entry.updated_at = datetime.utcnow()
 
+        if entry.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("contra_entry", entry.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for CE {entry.id}: {e}")
+
         db.session.commit()
 
         return res("Contra entry approved", {
@@ -599,6 +608,10 @@ def delete_contra_entry(contra_id):
             return res("Contra Entry not found", [], 404)
         if contra.locked:
             return res("Only draft Contra Entry can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("ContraEntryMaster", contra_id)
+        if not can_delete:
+            return res(msg, [], 400)
         ContraEntryLine.query.filter_by(contra_id=contra.id).delete()
         db.session.delete(contra)
         db.session.commit()

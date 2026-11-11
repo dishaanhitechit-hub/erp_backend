@@ -503,6 +503,15 @@ def approve_payment_voucher(pvm_id, approved_by, comments=None):
         pvm.updated_by = approved_by
         pvm.updated_at = datetime.utcnow()
 
+        if pvm.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("payment_voucher", pvm.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for PV {pvm.id}: {e}")
+
         db.session.commit()
 
         try:
@@ -732,6 +741,10 @@ def delete_payment_voucher(voucher_id):
             return res("Payment Voucher not found", [], 404)
         if voucher.locked:
             return res("Only draft Payment Voucher can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("PaymentVoucherMaster", voucher_id)
+        if not can_delete:
+            return res(msg, [], 400)
         PaymentVoucherGst.query.filter_by(payment_voucher_id=voucher.id).delete()
         PaymentVoucherItem.query.filter_by(payment_voucher_id=voucher.id).delete()
         db.session.delete(voucher)

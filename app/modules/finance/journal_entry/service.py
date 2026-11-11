@@ -506,6 +506,15 @@ def approve_journal_entry(entry_id, approved_by, comments=None):
         entry.updated_by = approved_by
         entry.updated_at = datetime.utcnow()
 
+        if entry.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("journal_entry", entry.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for JE {entry.id}: {e}")
+
         db.session.commit()
 
         return res("Journal entry approved", {

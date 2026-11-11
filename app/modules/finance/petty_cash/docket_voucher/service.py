@@ -584,6 +584,15 @@ def approve_petty_cash_docket_voucher(voucher_id, approved_by, comments=None):
         voucher.updated_by = approved_by
         voucher.updated_at = datetime.utcnow()
 
+        if voucher.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("petty_cash_docket", voucher.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for PCDV {voucher.id}: {e}")
+
         db.session.commit()
 
         return res("Docket voucher approved", {"id": voucher.id, "workflowStatus": voucher.workflow_status}, 200)
@@ -739,6 +748,10 @@ def delete_petty_cash_voucher(voucher_id):
             return res("Petty Cash Voucher not found", [], 404)
         if voucher.locked:
             return res("Only draft Petty Cash Voucher can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("PettyCashDocketVoucher", voucher_id)
+        if not can_delete:
+            return res(msg, [], 400)
         PettyCashDocketVoucherDetail.query.filter_by(voucher_id=voucher.id).delete()
         db.session.delete(voucher)
         db.session.commit()

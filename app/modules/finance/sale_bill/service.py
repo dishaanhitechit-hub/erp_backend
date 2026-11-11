@@ -980,6 +980,15 @@ def approve_sale_bill(bill_id, approved_by, comments=None):
         bill.updated_by = approved_by
         bill.updated_at = datetime.utcnow()
 
+        if bill.workflow_status == "Approved":
+            db.session.flush()
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document("sale_bill", bill.id, approved_by)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Accounting posting failed for SB {bill.id}: {e}")
+
         db.session.commit()
 
         try:
@@ -1244,6 +1253,10 @@ def delete_sale_bill(bill_id):
             return res("Sale Bill not found", [], 404)
         if bill.locked:
             return res("Only draft Sale Bill can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("SaleBillMaster", bill_id)
+        if not can_delete:
+            return res(msg, [], 400)
         SaleBillGst.query.filter_by(sale_bill_id=bill.id).delete()
         SaleBillItem.query.filter_by(sale_bill_id=bill.id).delete()
         db.session.delete(bill)
