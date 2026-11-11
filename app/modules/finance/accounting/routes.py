@@ -1,5 +1,5 @@
-from flask import Blueprint, request, g
-from flask_jwt_extended import jwt_required
+from flask import Blueprint, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from .ledger_service import (
     get_general_ledger,
@@ -158,7 +158,7 @@ def financial_years():
 @accounting_bp.route("/financial-year", methods=["POST"])
 @jwt_required()
 def create_fy():
-    return create_financial_year(request.json, g.current_user["id"])
+    return create_financial_year(request.json, int(get_jwt_identity()))
 
 
 # ── Historical Posting ────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ def create_fy():
 @jwt_required()
 def historical_posting():
     try:
-        return run_historical_posting(g.current_user["id"], request.json or {})
+        return run_historical_posting(int(get_jwt_identity()), request.json or {})
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -196,13 +196,13 @@ def opening_balances():
 @accounting_bp.route("/opening-balance", methods=["POST"])
 @jwt_required()
 def create_opening_balance():
-    return save_opening_balance(request.json, g.current_user["id"])
+    return save_opening_balance(request.json, int(get_jwt_identity()))
 
 
 @accounting_bp.route("/opening-balance/<int:posting_id>", methods=["DELETE"])
 @jwt_required()
 def remove_opening_balance(posting_id):
-    return delete_opening_balance(posting_id, g.current_user["id"])
+    return delete_opening_balance(posting_id, int(get_jwt_identity()))
 
 
 # ── Export endpoints ──────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ def cancel_document():
     reason = body.get("reason")
     if not source_type or not source_id:
         return {"message": "source_type and source_id are required"}, 400
-    result, status = cancel_posted_document(source_type, int(source_id), g.user_id, reason)
+    result, status = cancel_posted_document(source_type, int(source_id), int(get_jwt_identity()), reason)
     return result, status
 
 
