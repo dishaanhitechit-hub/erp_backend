@@ -86,7 +86,7 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             "docNo":       r.debit_note_no,
             "docId":       r.id,
             "projectCode": r.project_code,
-            "particular":  "Debit Note " + r.debit_note_no + (f" | Bill: {r.bill_number}" if r.bill_number else ""),
+            "particular":  "Debit Note " + r.debit_note_no + (f" | Bill: {r.bill_number}" if getattr(r, "bill_number", None) else ""),
             "debit":       float(r.total_amount or 0),
             "credit":      0.0,
         })
@@ -104,7 +104,7 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             "docNo":       r.credit_note_no,
             "docId":       r.id,
             "projectCode": r.project_code,
-            "particular":  "Credit Note " + r.credit_note_no + (f" | Bill: {r.bill_number}" if r.bill_number else ""),
+            "particular":  "Credit Note " + r.credit_note_no + (f" | Bill: {r.bill_number}" if getattr(r, "bill_number", None) else ""),
             "debit":       0.0,
             "credit":      float(r.total_amount or 0),
         })
