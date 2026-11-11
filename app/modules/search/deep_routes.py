@@ -6,17 +6,19 @@ from flask import Blueprint, g, request
 
 from app.middleware.auth_middleware import login_required
 from app.modules.search.deep_service import (
-    quick_search, get_overview, get_documents, get_vendor_ledger,
+    quick_search, get_overview, get_documents, get_table, get_vendor_ledger,
 )
 
 deep_search_bp = Blueprint("deep_search", __name__)
 
 
-# GET /search/quick?type=vendor|item&q=&limit=
+# GET /search/quick?type=vendor|item|asset|project|bank|cc|employee&q=&limit=
 @deep_search_bp.route("/quick", methods=["GET"])
 @login_required
 def quick():
-    return quick_search(request.args.get("type"), request.args.get("q"), request.args.get("limit"))
+    return quick_search(
+        g.current_user["id"], request.args.get("type"), request.args.get("q"), request.args.get("limit"),
+    )
 
 
 # GET /search/360/vendor/12   |   /search/360/item/40
@@ -34,6 +36,13 @@ def documents(kind, subject_id):
         g.current_user["id"], kind.lower(), subject_id,
         request.args.get("type"), request.args.get("limit"),
     )
+
+
+# GET /search/360/employee/5/table?key=PAYROLL
+@deep_search_bp.route("/360/<string:kind>/<int:subject_id>/table", methods=["GET"])
+@login_required
+def table(kind, subject_id):
+    return get_table(g.current_user["id"], kind.lower(), subject_id, request.args.get("key"))
 
 
 # GET /search/360/vendor/12/ledger?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
