@@ -166,13 +166,23 @@ def create_fy():
 @accounting_bp.route("/historical-posting", methods=["POST"])
 @jwt_required()
 def historical_posting():
-    return run_historical_posting(g.current_user["id"], request.json or {})
+    try:
+        return run_historical_posting(g.current_user["id"], request.json or {})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"message": f"Historical posting failed: {str(e)}"}, 500
 
 
 @accounting_bp.route("/posting-status", methods=["GET"])
 @jwt_required()
 def posting_status():
-    return get_posting_status()
+    try:
+        return get_posting_status()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"message": f"Posting status failed: {str(e)}"}, 500
 
 
 # ── Opening Balances ─────────────────────────────────────────────────────

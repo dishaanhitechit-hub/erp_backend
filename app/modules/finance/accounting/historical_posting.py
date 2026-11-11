@@ -119,21 +119,28 @@ def run_historical_posting(user_id, options=None):
             continue
 
         # Only approved, active documents
-        q = Model.query.filter(status_field == "Approved")
-        if hasattr(Model, "status"):
-            q = q.filter(Model.status != "Deleted")
+        try:
+            q = Model.query.filter(status_field == "Approved")
+            if hasattr(Model, "status"):
+                q = q.filter(Model.status != "Deleted")
 
-        date_field = getattr(Model, date_col, None)
-        if date_field is not None:
-            q = q.order_by(date_field.asc(), Model.id.asc())
-        else:
-            q = q.order_by(Model.id.asc())
+            date_field = getattr(Model, date_col, None)
+            if date_field is not None:
+                q = q.order_by(date_field.asc(), Model.id.asc())
+            else:
+                q = q.order_by(Model.id.asc())
+
+            docs = q.all()
+        except Exception as e:
+            results["errors"][source_type] = [f"Query failed: {str(e)}"]
+            db.session.rollback()
+            continue
 
         posted_count = 0
         skipped_count = 0
         error_list = []
 
-        for doc in q.all():
+        for doc in docs:
             try:
                 if dry_run:
                     # Check if already posted
@@ -215,22 +222,27 @@ def get_posting_status():
         if not status_field:
             continue
 
-        # Approved documents
-        approved_q = Model.query.filter(status_field == "Approved")
-        if hasattr(Model, "status"):
-            approved_q = approved_q.filter(Model.status != "Deleted")
-        total_approved = approved_q.count()
+        try:
+            # Approved documents
+            approved_q = Model.query.filter(status_field == "Approved")
+            if hasattr(Model, "status"):
+                approved_q = approved_q.filter(Model.status != "Deleted")
+            total_approved = approved_q.count()
 
-        # Already posted
-        posted_count = AccountingLedger.query.filter_by(
-            source_type=source_type,
-            is_reversal=False,
-        ).count()
+            # Already posted
+            posted_count = AccountingLedger.query.filter_by(
+                source_type=source_type,
+                is_reversal=False,
+            ).count()
 
-        status[source_type] = {
-            "totalApproved": total_approved,
-            "posted": posted_count,
-            "pending": max(0, total_approved - posted_count),
-        }
+            status[source_type] = {
+                "totalApproved": total_approved,
+                "posted": posted_count,
+                "pending": max(0, total_approved - posted_count),
+            }
+        except Exception as e:
+            logger.error(f"Error getting status for {source_type}: {e}")
+            db.session.rollback()
+            continue
 
     return {"message": "OK", "data": status}, 200
