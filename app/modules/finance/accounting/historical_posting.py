@@ -6,11 +6,20 @@ dependency order, skipping already-posted and bulk_docket JEs.
 """
 
 import logging
+from sqlalchemy import inspect as sa_inspect
 from app.extensions import db
 from app.models.accounting import AccountingLedger
 from .posting_engine import post_document, PostingError
 
 logger = logging.getLogger(__name__)
+
+
+def _table_exists(table_name):
+    """Check if a table exists in the current database."""
+    try:
+        return sa_inspect(db.engine).has_table(table_name)
+    except Exception:
+        return False
 
 # Posting order: liabilities/receivables first, then settlements
 _POSTING_ORDER = [
@@ -75,6 +84,13 @@ def run_historical_posting(user_id, options=None):
     Post all approved historical documents to the accounting ledger.
     Processes in dependency order with per-document error handling.
     """
+    if not _table_exists("accounting_ledger"):
+        return {"message": "accounting_ledger table does not exist. Please run the database migration first."}, 400
+    if not _table_exists("accounting_ledger_lines"):
+        return {"message": "accounting_ledger_lines table does not exist. Please run the database migration first."}, 400
+
+    stock_table_ready = _table_exists("stock_ledger")
+
     options = options or {}
     dry_run = options.get("dry_run", False)
     batch_size = options.get("batch_size", 100)
@@ -87,6 +103,11 @@ def run_historical_posting(user_id, options=None):
     }
 
     for source_type, model_name, table_name, status_col, date_col in _POSTING_ORDER:
+        if source_type in ("grn", "gin") and not stock_table_ready:
+            results["skipped"][source_type] = 0
+            results["errors"][source_type] = ["stock_ledger table not yet created — skipping GRN/GIN posting"]
+            continue
+
         Model = _get_model_class(model_name)
         if not Model:
             results["errors"][source_type] = [f"Model {model_name} not found"]
@@ -176,9 +197,16 @@ def run_historical_posting(user_id, options=None):
 
 def get_posting_status():
     """Report how many documents are posted vs pending per source type."""
+    if not _table_exists("accounting_ledger"):
+        return {"message": "accounting_ledger table does not exist. Please run the database migration first."}, 400
+
+    stock_table_ready = _table_exists("stock_ledger")
     status = {}
 
     for source_type, model_name, table_name, status_col, date_col in _POSTING_ORDER:
+        if source_type in ("grn", "gin") and not stock_table_ready:
+            continue
+
         Model = _get_model_class(model_name)
         if not Model:
             continue
