@@ -30,6 +30,7 @@ def _resolve_ref_bill_doc_no(ref_bill_type, ref_bill_id):
     except Exception:
         return None
     return None
+from app.utils.date_utils import parse_date
 from app.modules.work_flow import (
     is_creator,
     is_current_approver,
@@ -179,7 +180,7 @@ def create_journal_entry(data, user_id):
         entry = JournalEntryMaster(
             voucher_no      = _generate_voucher_no(entry_mode),
             journal_uuid    = str(_uuid.uuid4()),
-            entry_date      = date.today(),
+            entry_date      = parse_date(data.get("entryDate"), "entryDate") or date.today(),
             project_code    = project_code,
             entry_mode      = entry_mode,
             remarks         = data.get("remarks"),
@@ -353,6 +354,9 @@ def edit_journal_entry(entry_id, data, user_id):
         total_credit = sum(Decimal(str(l.get("creditAmount") or 0)) for l in lines_data)
         if has_cr and total_debit != total_credit:
             return res("Total debit must equal total credit", [], 400)
+
+        if data.get("entryDate"):
+            entry.entry_date = parse_date(data["entryDate"], "entryDate") or entry.entry_date
 
         if data.get("remarks") is not None:
             entry.remarks = data["remarks"]
