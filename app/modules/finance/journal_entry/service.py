@@ -384,7 +384,6 @@ def edit_journal_entry(entry_id, data, user_id):
                 cc_id        = cc_id,
                 vendor_id    = vendor_id,
                 customer_ref = customer_ref,
-                description  = row.get("description") or None,
                 debit_amount  = debit,
                 credit_amount = credit,
             ))
