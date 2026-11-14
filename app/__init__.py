@@ -8,6 +8,10 @@ from flask_cors import CORS
 from .middleware.maintenance import register_maintenance_middleware
 
 def create_app():
+    # logging first, so everything below (and every module logger) is captured
+    from .logging_config import configure_logging, register_request_logging
+    configure_logging()
+
     app = Flask(__name__)
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
     app.config.from_object(Config)
@@ -28,6 +32,14 @@ def create_app():
     from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
     from .models import whatsapp_log  # noqa — registers WhatsappLog with Alembic
     from .models import delete_request  # noqa — registers DeleteRequest with Alembic
+
+    # request id + one log line per request (registered before the maintenance
+    # guard, so requests it blocks are logged too)
+    register_request_logging(app)
+
+    # JSON answer + rollback + log for errors no module handled
+    from .error_handlers import register_error_handlers
+    register_error_handlers(app)
 
     # maintenance middleware
     register_maintenance_middleware(app)
@@ -293,8 +305,11 @@ def create_app():
     # app.register_blueprint(presence_bp, url_prefix="/tracking")
     # app.register_blueprint(activity_bp, url_prefix="/tracking")
 
-    print("JWT_SECRET_KEY:", app.config.get("JWT_SECRET_KEY"))
-    print("JWT_ACCESS_TOKEN_EXPIRES:", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"))
+    # (the JWT secret used to be printed here — never log secrets)
+    import logging
+    logging.getLogger(__name__).info(
+        "App created; JWT_ACCESS_TOKEN_EXPIRES=%s", app.config.get("JWT_ACCESS_TOKEN_EXPIRES"),
+    )
 
     # Monthly email reports scheduler
     from .scheduler import init_scheduler
