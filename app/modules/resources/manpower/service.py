@@ -207,7 +207,14 @@ def create_manpower(request):
 def get_all_manpower():
     workers = (
         ManpowerWorker.query
+        .join(Vendor, Vendor.id == ManpowerWorker.vendor_id, isouter=True)
         .options(joinedload(ManpowerWorker.vendor))
+        .filter(
+            db.or_(
+                ManpowerWorker.vendor_id.is_(None),
+                Vendor.is_debtor.isnot(True),
+            )
+        )
         .order_by(ManpowerWorker.id.desc())
         .all()
     )
