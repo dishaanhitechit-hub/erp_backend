@@ -543,7 +543,7 @@ def get_dlr_history(dlr_id, project_code):
                 "action": h.action,
                 "actionBy": h.user.username if h.user else None,
                 "comments": h.comments,
-                "createdAt": h.created_at.strftime("%Y%m%d %H:%M:%S") if h.created_at else None,
+                "createdAt": h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else None,
             }
             for h in rows
         ]
@@ -566,7 +566,7 @@ def get_dlr_my_approval_status(dlr_id, user_id, project_code):
     if not d:
         return res("DLR not found", [], 404)
     status = get_my_approval_status(project_code, MODULE_CODE, d, user_id)
-    return res("My approval status", [status], 200)
+    return res("My approval status", status, 200)
 
 
 # ── LABOUR LIST BY SUPPLIER ──────────────────────────────────────
