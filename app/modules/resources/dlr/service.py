@@ -657,7 +657,8 @@ def get_dlr_summary(dlr_id):
         worker = ManpowerWorker.query.filter_by(category=cat).first()
         rate = float(worker.rate_per_manday) if (worker and worker.rate_per_manday) else 0.0
         manday = round(total_hrs / 8, 3)
-        amount = round(manday * rate, 2)
+        # rate is per hour — amount = total hours × rate
+        amount = round(total_hrs * rate, 2)
         mandays_summary.append({
             "slNo": idx,
             "category": cat,
@@ -734,7 +735,7 @@ def get_dlr_report(request):
             "totalWorkingHr": float(item.total_working_hr or 0),
             "mes": float(item.mes or 0),
             "supl": float(item.supl or 0),
-            "ratePerManday": rate,
+            "ratePerHr": rate,
         })
 
     return res("DLR report fetched", result, 200)

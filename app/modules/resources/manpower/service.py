@@ -62,7 +62,7 @@ def _serialize(w: ManpowerWorker):
         "address": w.address,
         "category": w.category,
         "categoryDisplay": LABOUR_CATEGORY_LIST.get(w.category, w.category),
-        "ratePerManday": float(w.rate_per_manday) if w.rate_per_manday else None,
+        "ratePerHr": float(w.rate_per_manday) if w.rate_per_manday else None,
         "dateOfJoining": w.date_of_joining.isoformat() if w.date_of_joining else None,
         "aadharNumber": w.aadhar_number,
         "pan": w.pan,
@@ -178,7 +178,7 @@ def create_manpower(request):
         nominee=data.get("nominee"),
         address=data.get("address"),
         category=category,
-        rate_per_manday=data.get("ratePerManday") or None,
+        rate_per_manday=data.get("ratePerHr") or None,
         date_of_joining=_parse_date(data.get("dateOfJoining")),
         aadhar_number=data.get("aadharNumber"),
         pan=data.get("pan"),
@@ -261,8 +261,8 @@ def update_manpower(worker_id, request):
         worker.address = data.get("address")
     if category:
         worker.category = category
-    if "ratePerManday" in data:
-        worker.rate_per_manday = data.get("ratePerManday") or None
+    if "ratePerHr" in data:
+        worker.rate_per_manday = data.get("ratePerHr") or None
     if "dateOfJoining" in data:
         worker.date_of_joining = _parse_date(data.get("dateOfJoining"))
     if "aadharNumber" in data:
