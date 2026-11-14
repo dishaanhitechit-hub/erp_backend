@@ -43,6 +43,7 @@ from app.models.brgMaster          import BrgMaster, BrgItem
 from app.models.brsMaster          import BrsMaster, BrsItem
 from app.models.brbMaster          import BrbMaster, BrbItem
 from app.models.purchaseBill       import PurchaseBillMaster
+from app.models.paymentRequest     import PaymentRequestMaster
 from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 from app.models.paymentVoucher     import PaymentVoucherMaster
 from app.models.saleBill           import SaleBillMaster
@@ -273,7 +274,21 @@ DEPENDENCY_MAP = {
                 "module_code":  "PURCHASE_BILL",
                 "label":        "Purchase Bill",
             },
+            {
+                "child_model":  PaymentRequestMaster,
+                "fk_column":    "brr_id",
+                "doc_no_field": "pr_no",
+                "module_code":  "PAYMENT_REQUEST",
+                "label":        "Payment Request",
+            },
         ],
+    },
+
+    "PAYMENT_REQUEST": {
+        "model_class":  PaymentRequestMaster,
+        "doc_no_field": "pr_no",
+        "project_field": "project_code",
+        "children": [],  # leaf
     },
 
     "BRG": {
@@ -560,6 +575,7 @@ MODULE_DISPLAY_NAMES = {
     "BRG":                  "BRR Billing (GRN)",
     "BRS":                  "BRR Billing (SRN)",
     "BRB":                  "BRR Billing",
+    "PAYMENT_REQUEST":      "Payment Request",
     "PURCHASE_BILL":        "Purchase Bill",
     "BILL_PAYMENT":         "Bill Payment Receipt",
     "PAYMENT_VOUCHER":      "Payment Voucher",
