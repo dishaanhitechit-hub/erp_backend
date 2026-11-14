@@ -976,21 +976,13 @@ def get_project_summary(params):
     from_date = _parse_date(params.get("from_date"))
     to_date = _parse_date(params.get("to_date"))
 
-    if not project_code:
-        return {"message": "project_code required", "data": []}, 400
-
-    # Total income (Cr to revenue CC codes)
-    # Total expense (Dr to expense CC codes)
-    # Bank/Cash inflows/outflows
-    # Net position
-
     q = db.session.query(
         AccountingLedgerLine.account_type,
         AccountingLedgerLine.dr_cr,
         func.sum(AccountingLedgerLine.amount).label("total"),
-    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
-        AccountingLedger.project_code == project_code,
-    )
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+    if project_code:
+        q = q.filter(AccountingLedger.project_code == project_code)
     if from_date:
         q = q.filter(AccountingLedger.posting_date >= from_date)
     if to_date:
