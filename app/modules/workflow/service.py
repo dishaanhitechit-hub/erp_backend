@@ -13,6 +13,7 @@ from app.models.dcMaster import DcMaster
 from app.models.concrete_registry import ConcreteRegistry
 from app.models.drawingRegister import DrawingRegister
 from app.models.brrMaster import BrrMaster
+from app.models.paymentRequest import PaymentRequestMaster
 from app.models.bvsMaster import BvsMaster
 from app.models.bssMaster import BssMaster
 from app.models.machineryLogBook import MachineryLogBook
@@ -73,6 +74,11 @@ MODULE_MAP = {
     "bill_receive_register": {
         "model":    BrrMaster,
         "no_field": "brr_no",
+    },
+
+    "payment_request": {
+        "model":    PaymentRequestMaster,
+        "no_field": "pr_no",
     },
 
     "billing_by_grn": {

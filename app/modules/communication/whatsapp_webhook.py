@@ -64,6 +64,11 @@ _REGISTRY = {
         "mod": "app.modules.billing.bill_receive_register.service",
         "approve": "approve_brr", "reback": "reback_brr", "reject": "reject_brr",
     },
+    "payment_request": {
+        "mod": "app.modules.billing.payment_request.service",
+        "approve": "approve_payment_request", "reback": "reback_payment_request",
+        "reject": "reject_payment_request",
+    },
     "brb": {
         "mod": "app.modules.billing.brr_billing.service",
         "approve": "approve_brb", "reback": "reback_brb", "reject": "reject_brb",

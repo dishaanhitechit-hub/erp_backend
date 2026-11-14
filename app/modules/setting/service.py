@@ -1207,6 +1207,7 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
     from app.models.brgMaster import BrgMaster
     from app.models.brsMaster import BrsMaster
     from app.models.brbMaster import BrbMaster
+    from app.models.paymentRequest import PaymentRequestMaster
     from app.models.contraEntry import ContraEntryMaster
     from app.models.purchaseBill import PurchaseBillMaster
     from app.models.saleBill import SaleBillMaster
@@ -1238,6 +1239,7 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
         "log_sheet":             [(MachineryLogBook,       None, None)],
         "batching":              [(BatchingPlantMaster,    None, None)],
         "bill_receive_register": [(BrrMaster,              None, None)],
+        "payment_request":       [(PaymentRequestMaster,   None, None)],
         "billing_by_grn":        [(BvsMaster, None, None), (BrgMaster, None, None), (BrbMaster, "GRN", None)],
         "billing_by_srn":        [(BssMaster, None, None), (BrsMaster, None, None), (BrbMaster, "SRN", None)],
         "contra":                [(ContraEntryMaster,      None, None)],

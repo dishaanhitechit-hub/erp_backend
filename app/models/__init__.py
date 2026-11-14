@@ -51,6 +51,7 @@ from .bvsMaster import *
 from .bssMaster import *
 from .brrMaster import BrrMaster
 from .brbMaster import BrbMaster, BrbItem
+from .paymentRequest import PaymentRequestMaster
 from .machineryLogBook import *
 from .dcMaster import *
 from .bankCash import *
