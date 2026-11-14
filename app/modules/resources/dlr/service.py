@@ -676,6 +676,61 @@ def get_dlr_summary(dlr_id):
     }], 200)
 
 
+# ── REPORT ───────────────────────────────────────────────────────
+
+def get_dlr_report(request):
+    data = request.args
+    supplier_id = data.get("supplier_id", type=int)
+    project_code = data.get("project_code")
+    from_date = _parse_date(data.get("from_date"))
+    to_date = _parse_date(data.get("to_date"))
+
+    query = (
+        db.session.query(DlrMaster, DlrItem)
+        .join(DlrItem, DlrItem.dlr_id == DlrMaster.id)
+        .filter(DlrMaster.workflow_status == "Approved")
+    )
+
+    if supplier_id:
+        query = query.filter(DlrMaster.supplier_id == supplier_id)
+    if project_code:
+        if "," in project_code:
+            codes = [c.strip() for c in project_code.split(",") if c.strip()]
+            query = query.filter(DlrMaster.project_code.in_(codes))
+        else:
+            query = query.filter(DlrMaster.project_code == project_code)
+    if from_date:
+        query = query.filter(DlrMaster.dlr_date >= from_date)
+    if to_date:
+        query = query.filter(DlrMaster.dlr_date <= to_date)
+
+    query = query.order_by(DlrMaster.dlr_date.asc(), DlrMaster.id.asc(), DlrItem.sl_no.asc())
+    rows = query.all()
+
+    result = []
+    for master, item in rows:
+        result.append({
+            "dlrNo": master.dlr_no,
+            "dlrDate": master.dlr_date.isoformat() if master.dlr_date else None,
+            "projectCode": master.project_code,
+            "supplierId": master.supplier_id,
+            "supplierName": master.supplier.supplier_name if master.supplier else None,
+            "supplierCode": master.supplier.supplier_code if master.supplier else None,
+            "manId": item.man_id,
+            "fullName": item.full_name,
+            "category": item.category,
+            "startTime": item.start_time,
+            "finishTime": item.finish_time,
+            "workingHour": float(item.working_hour or 0),
+            "bonusHour": float(item.bonus_hour or 0),
+            "totalWorkingHr": float(item.total_working_hr or 0),
+            "mes": float(item.mes or 0),
+            "supl": float(item.supl or 0),
+        })
+
+    return res("DLR report fetched", result, 200)
+
+
 def delete_dlr(dlr_id):
     try:
         dlr = DlrMaster.query.get(dlr_id)

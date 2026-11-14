@@ -15,6 +15,7 @@ from app.modules.resources.dlr.service import (
     get_dlr_summary,
     get_labour_by_supplier,
     get_pw_orders_by_supplier,
+    get_dlr_report,
     _project_code,
     _current_user,
 )
@@ -117,6 +118,12 @@ def api_dlr_labour_by_supplier(supplier_id):
 @login_required
 def api_dlr_pw_orders_by_supplier(supplier_id):
     return get_pw_orders_by_supplier(supplier_id, request.args.get("projectCode"))
+
+
+@dlr_bp.route("/report", methods=["GET"])
+@login_required
+def api_dlr_report():
+    return get_dlr_report(request)
 
 
 @dlr_bp.route("/<int:dlr_id>", methods=["DELETE"])
