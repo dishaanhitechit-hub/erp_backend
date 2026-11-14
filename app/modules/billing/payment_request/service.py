@@ -111,6 +111,16 @@ def _approved_brb(brr_id):
     )
 
 
+def _linked_brb(brr_id):
+    """The BRR's billing record (BRB) shown to the user: latest non-Rejected one."""
+    return (
+        BrbMaster.query
+        .filter(BrbMaster.brr_id == brr_id, BrbMaster.workflow_status != "Rejected")
+        .order_by(BrbMaster.id.desc())
+        .first()
+    )
+
+
 def _bill_amount(brr):
     """Approved BRB total when present (actual reconciled bill), else BRR total."""
     brb = _approved_brb(brr.id)
@@ -143,6 +153,7 @@ def _approved_total(brr_id, exclude_id=None):
 def _brr_summary(brr, exclude_id=None):
     bill      = _bill_amount(brr)
     requested = _requested_total(brr.id, exclude_id)
+    brb       = _linked_brb(brr.id)
     return {
         "brrId":              brr.id,
         "brrNo":              brr.brr_no,
@@ -155,6 +166,9 @@ def _brr_summary(brr, exclude_id=None):
                                else brr.pw_order.order_no if brr.pw_order else None),
         "partyBillNo":        brr.party_bill_no,
         "partyDate":          _fmt_date(brr.party_date),
+        "brbId":              brb.id if brb else None,
+        "brbNo":              brb.brb_no if brb else None,
+        "brbStatus":          brb.workflow_status if brb else None,
         "brrTotalAmount":     _f(brr.total_amount),
         "billAmount":         float(bill),
         "billSource":         "BRB" if _approved_brb(brr.id) else "BRR",
