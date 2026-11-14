@@ -707,8 +707,16 @@ def get_dlr_report(request):
     query = query.order_by(DlrMaster.dlr_date.asc(), DlrMaster.id.asc(), DlrItem.sl_no.asc())
     rows = query.all()
 
+    # cache worker rates to avoid N+1 queries
+    rate_cache = {}
     result = []
     for master, item in rows:
+        man_id = item.man_id
+        if man_id and man_id not in rate_cache:
+            worker = ManpowerWorker.query.filter_by(man_id=man_id).first()
+            rate_cache[man_id] = float(worker.rate_per_manday or 0) if worker else 0.0
+        rate = rate_cache.get(man_id, 0.0)
+
         result.append({
             "dlrNo": master.dlr_no,
             "dlrDate": master.dlr_date.isoformat() if master.dlr_date else None,
@@ -726,6 +734,7 @@ def get_dlr_report(request):
             "totalWorkingHr": float(item.total_working_hr or 0),
             "mes": float(item.mes or 0),
             "supl": float(item.supl or 0),
+            "ratePerManday": rate,
         })
 
     return res("DLR report fetched", result, 200)
