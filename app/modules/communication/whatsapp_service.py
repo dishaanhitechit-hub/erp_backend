@@ -1,6 +1,18 @@
+import logging
 import os
-import threading
 import requests
+
+from app.utils.resilience import breaker
+
+
+def _post_whatsapp(url, payload, headers):
+    """POST to the WhatsApp API through its circuit breaker (raises when open)."""
+    wa = breaker("whatsapp")
+    with wa.protect():
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if resp.status_code >= 500 or resp.status_code == 429:
+            wa.record_failure(f"HTTP {resp.status_code}")
+        return resp
 from datetime import datetime
 
 from app.extensions import db
@@ -93,7 +105,7 @@ def _do_send(phone: str, template_name: str, body_params: dict, pdf_url: str,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        resp = _post_whatsapp(url, payload, headers)
         data = resp.json()
 
         if resp.ok and data.get("messages"):
@@ -105,14 +117,19 @@ def _do_send(phone: str, template_name: str, body_params: dict, pdf_url: str,
     except Exception as exc:
         log.error_msg = str(exc)
 
+    # Runs on the background pool inside the app context (app/utils/background.py).
+    # It used to call create_app() here — a whole new Flask app for every
+    # message, each with its own database connection pool and its own
+    # scheduler that never stopped (so scheduled jobs ran again and again).
     try:
-        from app import create_app
-        app = create_app()
-        with app.app_context():
-            db.session.add(log)
-            db.session.commit()
+        db.session.add(log)
+        db.session.commit()
     except Exception:
-        pass
+        try:
+            db.session.rollback()
+        except Exception:  # no app context
+            pass
+        logging.getLogger(__name__).warning("Could not save WhatsApp log for %s", event or template_name, exc_info=True)
 
 
 def send_template(phone: str, template_name: str, body_params: dict,
@@ -124,13 +141,12 @@ def send_template(phone: str, template_name: str, body_params: dict,
         normalized = normalize_phone(phone)
         if not normalized:
             return
-        t = threading.Thread(
-            target=_do_send,
-            args=(normalized, template_name, body_params, pdf_url,
-                  doc_no, has_buttons, module_code, record_id, project_code, event),
-            daemon=True,
+        from app.utils.background import run_in_background
+        run_in_background(
+            _do_send,
+            normalized, template_name, body_params, pdf_url,
+            doc_no, has_buttons, module_code, record_id, project_code, event,
         )
-        t.start()
     except Exception:
         pass
 
@@ -170,7 +186,7 @@ def send_otp(phone: str, otp: str):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        requests.post(url, json=payload, headers=headers, timeout=10)
+        _post_whatsapp(url, payload, headers)
     except Exception:
         pass
 
@@ -195,6 +211,6 @@ def send_text_reply(phone: str, message: str):
             "text": {"body": message}
         }
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        requests.post(url, json=payload, headers=headers, timeout=10)
+        _post_whatsapp(url, payload, headers)
     except Exception:
         pass

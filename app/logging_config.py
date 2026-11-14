@@ -80,6 +80,7 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "pid": record.process,  # which Gunicorn worker
         }
         for key, value in vars(record).items():
             if key not in _STANDARD_ATTRS and not key.startswith("_") and value is not None:
@@ -145,6 +146,11 @@ def register_request_logging(app):
         level = logging.ERROR if status >= 500 else logging.WARNING if status >= 400 else logging.INFO
         if request.method == "OPTIONS":  # CORS pre-flight: noise
             level = logging.DEBUG
+        try:
+            from app.health import record_request
+            record_request(request.blueprint, status, _route())
+        except Exception:  # health counters must never break a response
+            pass
         request_logger.log(
             level,
             "%s %s %s",

@@ -1,4 +1,5 @@
 import logging
+import os
 from logging.config import fileConfig
 
 from flask import current_app
@@ -24,7 +25,17 @@ def get_engine():
         return current_app.extensions['migrate'].db.engine
 
 
+def _direct_url():
+    """
+    MIGRATION_DATABASE_URL: connect migrations straight to Postgres (not
+    through PgBouncer — schema changes need a normal session).
+    """
+    return os.getenv("MIGRATION_DATABASE_URL") or None
+
+
 def get_engine_url():
+    if _direct_url():
+        return _direct_url().replace('%', '%%')
     try:
         return get_engine().url.render_as_string(hide_password=False).replace(
             '%', '%%')
@@ -94,7 +105,12 @@ def run_migrations_online():
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
-    connectable = get_engine()
+    if _direct_url():
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
+        connectable = create_engine(_direct_url(), poolclass=NullPool)
+    else:
+        connectable = get_engine()
 
     with connectable.connect() as connection:
         context.configure(

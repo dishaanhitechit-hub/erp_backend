@@ -32,9 +32,13 @@ def _groq_parse(query: str) -> dict:
         "temperature": 0,
         "max_tokens": 512,
     }
-    resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=15)
-    resp.raise_for_status()
-    content = resp.json()["choices"][0]["message"]["content"].strip()
+    # breaker: when Groq is down, searches use the rule-based parser at once
+    # instead of each waiting 15 s for the timeout
+    from app.utils.resilience import breaker
+    with breaker("groq").protect():
+        resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=15)
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"].strip()
 
     # extract JSON from response
     match = re.search(r"\{[\s\S]+\}", content)

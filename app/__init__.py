@@ -32,6 +32,7 @@ def create_app():
     from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
     from .models import whatsapp_log  # noqa — registers WhatsappLog with Alembic
     from .models import delete_request  # noqa — registers DeleteRequest with Alembic
+    from .models import runtime_store  # noqa — registers RuntimeStore with Alembic
 
     # request id + one log line per request (registered before the maintenance
     # guard, so requests it blocks are logged too)
@@ -40,6 +41,10 @@ def create_app():
     # JSON answer + rollback + log for errors no module handled
     from .error_handlers import register_error_handlers
     register_error_handlers(app)
+
+    # /health/live, /health/ready, /health/modules
+    from .health import health_bp
+    app.register_blueprint(health_bp, url_prefix="/health")
 
     # maintenance middleware
     register_maintenance_middleware(app)

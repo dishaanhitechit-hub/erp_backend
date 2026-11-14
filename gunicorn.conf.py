@@ -3,15 +3,17 @@
 #
 # Every value can be changed with an environment variable, without a code change.
 #
-# PHASE 1 DEFAULTS KEEP TODAY'S CONCURRENCY (1 worker, 1 thread, 30 s timeout).
-# Do NOT raise GUNICORN_WORKERS / WEB_CONCURRENCY or GUNICORN_THREADS until
-# Phase 2 is done, because these still live inside each worker process:
-#   * the APScheduler jobs — the monthly email report has no lock and would be
-#     sent once per worker;
-#   * the OTP store (auth/otp_store.py) and password-reset tokens
-#     (auth/service.py) — a code made on one worker is unknown to another;
-#   * the search rate limiter.
-# After Phase 2: GUNICORN_WORKERS=8 is a good start on the i7 / 32 GB server.
+# The defaults keep today's concurrency (1 worker, 1 thread, 30 s timeout).
+#
+# More workers are safe once the `runtime_store` table exists — OTP codes,
+# password-reset tokens, the search rate limit and the scheduler "run once"
+# markers are shared through it (Phase 2). Steps:
+#   1. flask db upgrade            (creates runtime_store)
+#   2. GUNICORN_WORKERS=8          (good start for the i7 / 32 GB server)
+#   3. optional: SCHEDULER_MODE=off here + `python scheduler_main.py`
+#      as its own service, so the web workers only serve requests.
+# If step 1 is skipped, the app logs "runtime_store unavailable" and falls
+# back to per-worker memory — then keep GUNICORN_WORKERS=1.
 
 import os
 
@@ -38,8 +40,8 @@ graceful_timeout = _int("GUNICORN_GRACEFUL_TIMEOUT", 30)
 keepalive = _int("GUNICORN_KEEPALIVE", 5)
 
 # ── worker recycling (off by default) ───────────────────────────────
-# Restarting a worker after N requests protects against slow memory leaks,
-# but also wipes the in-memory OTP / reset tokens — leave at 0 until Phase 2.
+# Restarting a worker after N requests protects against slow memory leaks.
+# Safe after Phase 2 (nothing important lives in worker memory): e.g. 2000.
 max_requests = _int("GUNICORN_MAX_REQUESTS", 0)
 max_requests_jitter = _int("GUNICORN_MAX_REQUESTS_JITTER", 50 if max_requests else 0)
 

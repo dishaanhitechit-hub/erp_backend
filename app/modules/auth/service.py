@@ -8,9 +8,13 @@ from app.response import res
 from flask_jwt_extended import create_access_token, get_jwt
 from app.modules.auth import otp_store
 from app.modules.communication.whatsapp_service import send_otp
+from app.utils import runtime_store
+from app.utils.background import run_in_background
 
-# { reset_token: login_username }
-_reset_tokens: dict = {}
+# Password-reset tokens (after a correct OTP) are kept in the shared store so
+# every worker knows them. They used to live forever in one worker's memory;
+# they now expire after RESET_TOKEN_TTL seconds.
+RESET_TOKEN_TTL = 15 * 60
 
 
 def logout_user():
@@ -94,9 +98,7 @@ def forgot_password(login_username: str):
 
     otp = otp_store.generate_and_store(login_username)
 
-    import threading
-    t = threading.Thread(target=send_otp, args=(user.wp_mobile, otp), daemon=True)
-    t.start()
+    run_in_background(send_otp, user.wp_mobile, otp)
 
     return res("OTP sent to your registered WhatsApp number", [])
 
@@ -106,12 +108,12 @@ def verify_otp(login_username: str, otp: str):
         return res("Invalid or expired OTP", code=400)
 
     reset_token = secrets.token_urlsafe(32)
-    _reset_tokens[reset_token] = login_username
+    runtime_store.put(f"reset:{reset_token}", login_username, RESET_TOKEN_TTL)
     return res("OTP verified", [{"reset_token": reset_token}])
 
 
 def reset_password(reset_token: str, new_password: str):
-    login_username = _reset_tokens.pop(reset_token, None)
+    login_username = runtime_store.pop(f"reset:{reset_token}") if reset_token else None
     if not login_username:
         return res("Invalid or expired reset token", code=400)
 

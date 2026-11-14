@@ -11,6 +11,23 @@ class Config:
     SQLALCHEMY_DATABASE_URI = (
         f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
     )
+    # ── Database connection pool ─────────────────────────────────────────────
+    # DB_POOL_MODE=app (default)   SQLAlchemy keeps its own small pool per worker
+    #                              (5 + 10 overflow, as before) and checks a
+    #                              connection is alive before using it, so a
+    #                              Postgres restart does not break the next requests.
+    # DB_POOL_MODE=pgbouncer       DB_HOST / DB_PORT point at PgBouncer, which does
+    #                              the pooling; SQLAlchemy opens a cheap connection
+    #                              to PgBouncer per request and closes it (NullPool),
+    #                              so there is no pool on top of a pool.
+    # See deploy/pgbouncer/README.md.
+    DB_POOL_MODE = (os.getenv("DB_POOL_MODE") or "app").strip().lower()
+    if DB_POOL_MODE == "pgbouncer":
+        from sqlalchemy.pool import NullPool
+        SQLALCHEMY_ENGINE_OPTIONS = {"poolclass": NullPool}
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+
     PDF_STORAGE_PATH = os.getenv("PDF_STORAGE_PATH") or os.path.join(os.getcwd(), "storage", "pdf")
     PDF_BASE_URL = os.getenv("PDF_BASE_URL") or "/resource/order/pdf-file"
     PUBLIC_BASE_URL  = os.getenv("PUBLIC_BASE_URL") or None

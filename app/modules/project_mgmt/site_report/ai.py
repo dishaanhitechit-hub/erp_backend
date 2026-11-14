@@ -219,17 +219,22 @@ def _client():
 def _structured_call(model, system, content, schema, max_tokens, effort):
     """One Messages call whose reply is JSON matching `schema`."""
     import anthropic
+    from app.modules.ai.client import call_with_breaker
+    from app.utils.resilience import ServiceUnavailableError
 
-    client = _client()
+    # photo reading / report writing may take longer than a chat answer
+    client = _client().with_options(timeout=float(os.getenv("DPR_AI_TIMEOUT_SECONDS") or 90))
     try:
-        msg = client.messages.create(
+        msg = call_with_breaker(lambda: client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": content}],
             # output_config isn't a named argument in the SDK version pinned here, so send it raw.
             extra_body={"output_config": {"format": {"type": "json_schema", "schema": schema}, "effort": effort}},
-        )
+        ))
+    except ServiceUnavailableError as e:
+        raise AiFailed("AI service is temporarily unavailable — will retry") from e
     except anthropic.RateLimitError as e:
         raise AiFailed(f"AI is busy (rate limit) — will retry: {e}") from e
     except anthropic.APIStatusError as e:

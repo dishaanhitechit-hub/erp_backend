@@ -44,7 +44,8 @@ def _firebase():
             try:
                 import firebase_admin
                 from firebase_admin import credentials
-                _app = firebase_admin.initialize_app(credentials.Certificate(path))
+                # httpTimeout (seconds): without it a stuck request waits forever
+                _app = firebase_admin.initialize_app(credentials.Certificate(path), {"httpTimeout": 10})
             except Exception as e:  # package missing / bad key
                 _disabled = True
                 log.warning("FCM push disabled: %s", e)
@@ -90,9 +91,8 @@ def notify_users(user_ids, title: str, body: str = "", kind: str = "comm") -> No
         app = current_app._get_current_object()
     except RuntimeError:
         return
-    threading.Thread(
-        target=_send, args=(app, ids, title or "", body or "", kind), daemon=True
-    ).start()
+    from app.utils.background import run_in_background
+    run_in_background(_send, app, ids, title or "", body or "", kind)
 
 
 def _send(app, user_ids, title, body, kind):
@@ -114,7 +114,9 @@ def _send(app, user_ids, title, body, kind):
                 # A call is only worth ringing for a minute; other pushes keep an hour.
                 android=messaging.AndroidConfig(priority="high", ttl=60 if kind == "incoming_call" else 3600),
             )
-            resp = messaging.send_each_for_multicast(msg)
+            from app.utils.resilience import breaker
+            with breaker("firebase").protect():
+                resp = messaging.send_each_for_multicast(msg)
 
             # drop tokens Firebase says are dead (app uninstalled, logged out, …)
             dead = []

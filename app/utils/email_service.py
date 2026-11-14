@@ -31,8 +31,12 @@ def send_monthly_report(subject: str, html_body: str, recipients_raw: str) -> No
     msg.attach(MIMEText(html_body, "html"))
 
     ctx = ssl.create_default_context()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as server:
-        server.login(sender, app_password)
-        server.sendmail(sender, recipients, msg.as_string())
+    # timeout: without one, a stuck mail server could hold this job forever.
+    # breaker: when Gmail is unreachable the remaining reports fail at once.
+    from app.utils.resilience import breaker
+    with breaker("email").protect():
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30) as server:
+            server.login(sender, app_password)
+            server.sendmail(sender, recipients, msg.as_string())
 
     current_app.logger.info("Monthly report '%s' sent to %s", subject, recipients)

@@ -1,7 +1,4 @@
 import json
-import time
-from collections import defaultdict
-from threading import Lock
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -17,23 +14,14 @@ from .schema import ALL_MODULES
 search_bp = Blueprint("search", __name__)
 
 # ── rate limiter ───────────────────────────────────────────────────
-_rate_store = defaultdict(list)
-_rate_lock = Lock()
+# 20 AI searches per user per minute, counted across all workers.
 RATE_LIMIT = 20
 RATE_WINDOW = 60
 
 
 def _check_rate_limit(user_id):
-    now = time.time()
-    with _rate_lock:
-        timestamps = [t for t in _rate_store[user_id] if now - t < RATE_WINDOW]
-        if len(timestamps) >= RATE_LIMIT:
-            wait = int(RATE_WINDOW - (now - timestamps[0])) + 1
-            _rate_store[user_id] = timestamps
-            return False, wait
-        timestamps.append(now)
-        _rate_store[user_id] = timestamps
-        return True, 0
+    from app.utils import runtime_store
+    return runtime_store.hit_rate(f"rl:search-nl:{user_id}", RATE_LIMIT, RATE_WINDOW)
 
 
 # ── permission helpers ─────────────────────────────────────────────
