@@ -1,16 +1,24 @@
 """
-Payment Request — raised against an Approved BRR (Bill Receive Register).
+Payment Request — raised against an Approved BRR (Bill Receive Register)
+or an Approved Journal Entry.
 
 Rules
 ─────
-* Only an Approved BRR can have payment requests.
-* Partial requests are allowed: many requests per BRR, as long as the sum of
-  requested amounts of all non-Rejected requests never exceeds the bill amount.
-* Bill amount = total of the BRR's Approved BRB when one exists, else BRR total.
-* The balance is re-validated (with the BRR row locked) on create, edit,
-  submit and final approval, so parallel requests can never overrun the bill.
+* Source BRR: only an Approved BRR. Bill amount = total of the BRR's Approved
+  BRB when one exists, else BRR total.
+* Source JOURNAL: only an Approved journal entry (any entry mode). One request
+  covers ONE vendor of that journal — another vendor of the same journal gets
+  its own request (own PR No). Bill amount = that vendor's Cr lines total.
+* Partial requests are allowed per source (BRR, or journal + vendor) as long
+  as the sum of requested amounts of all non-Rejected requests never exceeds
+  the bill amount. The balance is re-validated (source row locked) on create,
+  edit, submit and final approval.
 * Creator / approver checks follow the shared approval path
-  (module code `payment_request`), same as BRR.
+  (module code `payment_request`) for both sources.
+* Journal-sourced requests are restricted: only users holding the
+  `payment_request_journal` page permission (granted by super admin in
+  Settings › Roles & User Assignment) can see them — VIEW to see / approve,
+  EDIT to raise / edit / submit / delete. Approvers need it too.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -24,7 +32,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models.brrMaster import BrrMaster
 from app.models.brbMaster import BrbMaster
+from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.models.paymentRequest import PaymentRequestMaster
+from app.models.project import Project
+from app.models.vendor import Vendor
 from app.models.user import User
 from app.response import res
 from app.utils.date_utils import parse_date
@@ -42,15 +53,23 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE   = "payment_request"   # approval path / page code
-_WA_CODE  = "payment_request"   # whatsapp module code
-_NO_BASE  = 930000              # PR serial range (BRR 900000, BRB 910000, BRS 920000)
+_MODULE   = "payment_request"          # approval path / page code
+_WA_CODE  = "payment_request"          # whatsapp module code
+_JOURNAL_PERM = "payment_request_journal"  # restricted page permission
+_NO_BASE  = 930000                     # PR serial range (BRR 900000, BRB 910000, BRS 920000)
 _TWO_DP   = Decimal("0.01")
 _PAYMENT_MODES = {"Bank", "Cash"}
 
+SRC_BRR     = "BRR"
+SRC_JOURNAL = "JOURNAL"
+
+
+class _Forbidden(Exception):
+    """Raised when the user lacks the journal payment-request permission."""
+
 
 # ══════════════════════════════════════════════════════════════════
-# HELPERS
+# HELPERS — generic
 # ══════════════════════════════════════════════════════════════════
 
 def _fmt_date(d):
@@ -74,8 +93,17 @@ def _dec(value, field):
         raise ValueError(f"{field} must be a valid number")
 
 
+def _q(v):
+    return Decimal(str(v or 0)).quantize(_TWO_DP)
+
+
 def _f(v):
     return float(v or 0)
+
+
+def _rollback_res(e, code):
+    db.session.rollback()
+    return res(str(e), [], code)
 
 
 def generate_pr_no():
@@ -92,14 +120,87 @@ def generate_pr_no():
     return str(last_serial + 1)
 
 
+def _sum_requested(filters, exclude_id=None, status=None):
+    q = db.session.query(func.coalesce(func.sum(PaymentRequestMaster.requested_amount), 0)).filter(*filters)
+    if status:
+        q = q.filter(PaymentRequestMaster.workflow_status == status)
+    else:
+        q = q.filter(PaymentRequestMaster.workflow_status != "Rejected")
+    if exclude_id:
+        q = q.filter(PaymentRequestMaster.id != exclude_id)
+    return _q(q.scalar())
+
+
+def _check_amounts(label, bill, previous, requested, deduction):
+    if requested <= 0:
+        raise ValueError("Requested amount must be greater than 0")
+    if deduction < 0:
+        raise ValueError("Deduction amount cannot be negative")
+    if deduction > requested:
+        raise ValueError("Deduction amount cannot exceed requested amount")
+    balance = bill - previous
+    if requested > balance:
+        raise ValueError(
+            f"Requested amount {requested} exceeds {label} balance {balance} "
+            f"(bill {bill}, already requested {previous})"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════
+# HELPERS — journal permission (restricted visibility)
+# ══════════════════════════════════════════════════════════════════
+
+def _is_super_admin(user_id):
+    try:
+        user = User.query.get(int(user_id)) if user_id else None
+    except (TypeError, ValueError):
+        return False
+    return bool(user and user.global_role and user.global_role.name == "super_admin")
+
+
+def has_journal_permission(project_code, user_id, action="VIEW"):
+    """True if the user holds payment_request_journal.<action> in this project.
+    EDIT implies VIEW. Super admin always allowed."""
+    if not user_id:
+        return False
+    if _is_super_admin(user_id):
+        return True
+    project = Project.query.filter_by(project_code=project_code).first() if project_code else None
+    if not project:
+        return False
+    from app.modules.setting.permission_service import get_user_permissions
+    try:
+        perms = get_user_permissions(project.id, int(user_id)) or {}
+    except Exception:
+        db.session.rollback()
+        return False
+    if perms.get(f"{_JOURNAL_PERM}.EDIT"):
+        return True
+    return action == "VIEW" and bool(perms.get(f"{_JOURNAL_PERM}.VIEW"))
+
+
+def _require_journal(project_code, user_id, action):
+    if not has_journal_permission(project_code, user_id, action):
+        raise _Forbidden("You do not have permission for journal payment requests")
+
+
+def _guard(pr, user_id, action="VIEW"):
+    """Journal-sourced requests need the journal permission; BRR ones don't."""
+    if pr.source_type == SRC_JOURNAL:
+        _require_journal(pr.project_code, user_id, action)
+
+
+def can_view_record(pr, user_id):
+    """Used by workflow my-approvals to hide journal requests from others."""
+    return pr.source_type != SRC_JOURNAL or has_journal_permission(pr.project_code, user_id, "VIEW")
+
+
+# ══════════════════════════════════════════════════════════════════
+# HELPERS — BRR source
+# ══════════════════════════════════════════════════════════════════
+
 def _lock_brr(brr_id):
-    """Fetch the BRR with a row lock so balance checks are serialized."""
-    return (
-        BrrMaster.query
-        .filter(BrrMaster.id == brr_id)
-        .with_for_update()
-        .first()
-    )
+    return BrrMaster.query.filter(BrrMaster.id == brr_id).with_for_update().first()
 
 
 def _approved_brb(brr_id):
@@ -121,84 +222,148 @@ def _linked_brb(brr_id):
     )
 
 
-def _bill_amount(brr):
+def _brr_bill_amount(brr):
     """Approved BRB total when present (actual reconciled bill), else BRR total."""
     brb = _approved_brb(brr.id)
-    if brb:
-        return Decimal(str(brb.total_amount or 0)).quantize(_TWO_DP)
-    return Decimal(str(brr.total_amount or 0)).quantize(_TWO_DP)
+    return _q(brb.total_amount if brb else brr.total_amount)
 
 
-def _requested_total(brr_id, exclude_id=None):
-    """Sum of requested amounts of all non-Rejected requests on a BRR."""
-    q = db.session.query(func.coalesce(func.sum(PaymentRequestMaster.requested_amount), 0)).filter(
-        PaymentRequestMaster.brr_id == brr_id,
-        PaymentRequestMaster.workflow_status != "Rejected",
-    )
-    if exclude_id:
-        q = q.filter(PaymentRequestMaster.id != exclude_id)
-    return Decimal(str(q.scalar() or 0)).quantize(_TWO_DP)
-
-
-def _approved_total(brr_id, exclude_id=None):
-    q = db.session.query(func.coalesce(func.sum(PaymentRequestMaster.requested_amount), 0)).filter(
-        PaymentRequestMaster.brr_id == brr_id,
-        PaymentRequestMaster.workflow_status == "Approved",
-    )
-    if exclude_id:
-        q = q.filter(PaymentRequestMaster.id != exclude_id)
-    return Decimal(str(q.scalar() or 0)).quantize(_TWO_DP)
+def _brr_filters(brr_id):
+    return [PaymentRequestMaster.source_type == SRC_BRR, PaymentRequestMaster.brr_id == brr_id]
 
 
 def _brr_summary(brr, exclude_id=None):
-    bill      = _bill_amount(brr)
-    requested = _requested_total(brr.id, exclude_id)
+    bill      = _brr_bill_amount(brr)
+    requested = _sum_requested(_brr_filters(brr.id), exclude_id)
     brb       = _linked_brb(brr.id)
     return {
-        "brrId":              brr.id,
-        "brrNo":              brr.brr_no,
-        "brrDate":            _fmt_date(brr.brr_date),
-        "brrStatus":          brr.workflow_status,
-        "vendorId":           brr.vendor_id,
-        "partyName":          brr.vendor.ledger_name if brr.vendor else None,
-        "orderCategory":      brr.order_category,
-        "orderNo":            (brr.order.order_no if brr.order_type == "GRN" and brr.order
-                               else brr.pw_order.order_no if brr.pw_order else None),
-        "partyBillNo":        brr.party_bill_no,
-        "partyDate":          _fmt_date(brr.party_date),
-        "brbId":              brb.id if brb else None,
-        "brbNo":              brb.brb_no if brb else None,
-        "brbStatus":          brb.workflow_status if brb else None,
-        "brrTotalAmount":     _f(brr.total_amount),
-        "billAmount":         float(bill),
-        "billSource":         "BRB" if _approved_brb(brr.id) else "BRR",
-        "requestedAmount":    float(requested),                       # other active requests
-        "approvedAmount":     float(_approved_total(brr.id, exclude_id)),
-        "balanceAmount":      float(bill - requested),
+        "sourceType":      SRC_BRR,
+        "brrId":           brr.id,
+        "brrNo":           brr.brr_no,
+        "brrDate":         _fmt_date(brr.brr_date),
+        "brrStatus":       brr.workflow_status,
+        "vendorId":        brr.vendor_id,
+        "partyName":       brr.vendor.ledger_name if brr.vendor else None,
+        "orderCategory":   brr.order_category,
+        "orderNo":         (brr.order.order_no if brr.order_type == "GRN" and brr.order
+                            else brr.pw_order.order_no if brr.pw_order else None),
+        "partyBillNo":     brr.party_bill_no,
+        "partyDate":       _fmt_date(brr.party_date),
+        "brbId":           brb.id if brb else None,
+        "brbNo":           brb.brb_no if brb else None,
+        "brbStatus":       brb.workflow_status if brb else None,
+        "brrTotalAmount":  _f(brr.total_amount),
+        "billAmount":      float(bill),
+        "billSource":      "BRB" if _approved_brb(brr.id) else "BRR",
+        "requestedAmount": float(requested),   # other active requests
+        "approvedAmount":  float(_sum_requested(_brr_filters(brr.id), exclude_id, status="Approved")),
+        "balanceAmount":   float(bill - requested),
     }
 
 
-def _validate_amounts(brr, requested, deduction, exclude_id=None):
-    """Raise ValueError if amounts are invalid or exceed the BRR balance.
-    Returns (bill_amount, previously_requested)."""
+def _validate_brr(brr, requested, deduction, exclude_id=None):
     if brr.workflow_status != "Approved":
         raise ValueError(f"BRR {brr.brr_no} is not Approved")
-    if requested <= 0:
-        raise ValueError("Requested amount must be greater than 0")
-    if deduction < 0:
-        raise ValueError("Deduction amount cannot be negative")
-    if deduction > requested:
-        raise ValueError("Deduction amount cannot exceed requested amount")
-
-    bill     = _bill_amount(brr)
-    previous = _requested_total(brr.id, exclude_id)
-    balance  = bill - previous
-    if requested > balance:
-        raise ValueError(
-            f"Requested amount {requested} exceeds BRR {brr.brr_no} balance {balance} "
-            f"(bill {bill}, already requested {previous})"
-        )
+    bill     = _brr_bill_amount(brr)
+    previous = _sum_requested(_brr_filters(brr.id), exclude_id)
+    _check_amounts(f"BRR {brr.brr_no}", bill, previous, requested, deduction)
     return bill, previous
+
+
+# ══════════════════════════════════════════════════════════════════
+# HELPERS — JOURNAL source (one vendor per request)
+# ══════════════════════════════════════════════════════════════════
+
+def _lock_journal(journal_id):
+    return JournalEntryMaster.query.filter(JournalEntryMaster.id == journal_id).with_for_update().first()
+
+
+def _journal_vendor_bill(journal_id, vendor_id):
+    """Total of the vendor's Cr lines in the journal (amount payable to vendor)."""
+    total = (
+        db.session.query(func.coalesce(func.sum(JournalEntryLine.credit_amount), 0))
+        .filter(
+            JournalEntryLine.journal_id == journal_id,
+            JournalEntryLine.dr_cr      == "Cr",
+            JournalEntryLine.vendor_id  == vendor_id,
+        )
+        .scalar()
+    )
+    return _q(total)
+
+
+def _journal_filters(journal_id, vendor_id):
+    return [
+        PaymentRequestMaster.source_type == SRC_JOURNAL,
+        PaymentRequestMaster.journal_id  == journal_id,
+        PaymentRequestMaster.vendor_id   == vendor_id,
+    ]
+
+
+def _journal_summary(je, vendor_id, exclude_id=None):
+    vendor    = Vendor.query.get(vendor_id) if vendor_id else None
+    bill      = _journal_vendor_bill(je.id, vendor_id)
+    filters   = _journal_filters(je.id, vendor_id)
+    requested = _sum_requested(filters, exclude_id)
+    return {
+        "sourceType":      SRC_JOURNAL,
+        "journalId":       je.id,
+        "voucherNo":       je.voucher_no,
+        "entryDate":       _fmt_date(je.entry_date),
+        "entryMode":       je.entry_mode,
+        "journalStatus":   je.workflow_status,
+        "journalRemarks":  je.remarks,
+        "vendorId":        vendor_id,
+        "partyName":       vendor.ledger_name if vendor else None,
+        "billAmount":      float(bill),
+        "billSource":      "JOURNAL",
+        "requestedAmount": float(requested),   # other active requests for this journal + vendor
+        "approvedAmount":  float(_sum_requested(filters, exclude_id, status="Approved")),
+        "balanceAmount":   float(bill - requested),
+    }
+
+
+def _validate_journal(je, vendor_id, requested, deduction, exclude_id=None):
+    if je.workflow_status != "Approved":
+        raise ValueError(f"Journal {je.voucher_no} is not Approved")
+    bill = _journal_vendor_bill(je.id, vendor_id)
+    if bill <= 0:
+        raise ValueError(f"Selected vendor has no Cr entry in journal {je.voucher_no}")
+    previous = _sum_requested(_journal_filters(je.id, vendor_id), exclude_id)
+    _check_amounts(f"Journal {je.voucher_no}", bill, previous, requested, deduction)
+    return bill, previous
+
+
+# ══════════════════════════════════════════════════════════════════
+# HELPERS — dispatch by source
+# ══════════════════════════════════════════════════════════════════
+
+def _revalidate(pr, requested=None, deduction=None):
+    """Lock the source row and re-check this request against its balance.
+    Returns (bill, previous)."""
+    requested = _q(pr.requested_amount) if requested is None else requested
+    deduction = _q(pr.deduction_amount) if deduction is None else deduction
+    if pr.source_type == SRC_JOURNAL:
+        je = _lock_journal(pr.journal_id)
+        if not je:
+            raise ValueError("Journal entry not found")
+        return _validate_journal(je, pr.vendor_id, requested, deduction, exclude_id=pr.id)
+    brr = _lock_brr(pr.brr_id)
+    if not brr:
+        raise ValueError("BRR not found")
+    return _validate_brr(brr, requested, deduction, exclude_id=pr.id)
+
+
+def _source_summary(pr):
+    if pr.source_type == SRC_JOURNAL:
+        return _journal_summary(pr.journal, pr.vendor_id, exclude_id=pr.id) if pr.journal else None
+    return _brr_summary(pr.brr, exclude_id=pr.id) if pr.brr else None
+
+
+def _source_filters(pr):
+    if pr.source_type == SRC_JOURNAL:
+        return _journal_filters(pr.journal_id, pr.vendor_id)
+    return _brr_filters(pr.brr_id)
 
 
 def _payload(pr, with_summary=True):
@@ -208,8 +373,13 @@ def _payload(pr, with_summary=True):
         "prNo":                pr.pr_no,
         "prDate":              _fmt_date(pr.pr_date),
         "projectCode":         pr.project_code,
+        "sourceType":          pr.source_type or SRC_BRR,
         "brrId":               pr.brr_id,
         "brrNo":               pr.brr_no,
+        "journalId":           pr.journal_id,
+        "journalVoucherNo":    pr.journal_voucher_no,
+        "journalDate":         _fmt_date(pr.journal_date),
+        "sourceNo":            pr.journal_voucher_no if pr.source_type == SRC_JOURNAL else pr.brr_no,
         "vendorId":            pr.vendor_id,
         "partyName":           pr.vendor.ledger_name if pr.vendor else None,
         "orderCategory":       pr.order_category,
@@ -233,8 +403,11 @@ def _payload(pr, with_summary=True):
         "approvedBy":          pr.approver.username if pr.approver else None,
         "finalApprovedAt":     _fmt_date(pr.final_approved_at),
     }
-    if with_summary and pr.brr:
-        data["brrSummary"] = _brr_summary(pr.brr, exclude_id=pr.id)
+    if with_summary:
+        summary = _source_summary(pr)
+        # keep the old key for BRR so existing UI keeps working
+        data["sourceSummary"] = summary
+        data["brrSummary"]    = summary if pr.source_type != SRC_JOURNAL else None
         data["siblingRequests"] = [
             {
                 "id":              s.id,
@@ -246,7 +419,7 @@ def _payload(pr, with_summary=True):
             }
             for s in (
                 PaymentRequestMaster.query
-                .filter(PaymentRequestMaster.brr_id == pr.brr_id, PaymentRequestMaster.id != pr.id)
+                .filter(*_source_filters(pr), PaymentRequestMaster.id != pr.id)
                 .order_by(PaymentRequestMaster.id.asc())
                 .all()
             )
@@ -269,13 +442,8 @@ def _apply_common_fields(pr, data):
         pr.deduction_remarks = data.get("deductionRemarks") or None
 
 
-def _rollback_res(e, code):
-    db.session.rollback()
-    return res(str(e), [], code)
-
-
 # ══════════════════════════════════════════════════════════════════
-# 1. ELIGIBLE BRRs (approved, balance > 0)
+# 1. ELIGIBLE SOURCES
 # ══════════════════════════════════════════════════════════════════
 
 def get_eligible_brrs(data):
@@ -315,6 +483,60 @@ def get_brr_payment_summary(brr_id, exclude_id=None):
         return _rollback_res(e, 500)
 
 
+def get_eligible_journals(data, user_id):
+    """Approved journals (any mode) — one row per journal + Cr vendor with balance > 0."""
+    try:
+        project_code = data.get("projectCode")
+        if not project_code:
+            return res("projectCode required", [], 400)
+        _require_journal(project_code, user_id, "EDIT")
+
+        query = (
+            db.session.query(JournalEntryMaster, JournalEntryLine.vendor_id)
+            .join(JournalEntryLine, JournalEntryLine.journal_id == JournalEntryMaster.id)
+            .filter(
+                JournalEntryMaster.project_code    == project_code,
+                JournalEntryMaster.workflow_status == "Approved",
+                JournalEntryLine.dr_cr             == "Cr",
+                JournalEntryLine.vendor_id.isnot(None),
+            )
+        )
+        if data.get("vendorId"):
+            query = query.filter(JournalEntryLine.vendor_id == int(data.get("vendorId")))
+
+        rows = query.distinct().order_by(JournalEntryMaster.id.desc()).all()
+
+        result = []
+        for je, vendor_id in rows:
+            summary = _journal_summary(je, vendor_id)
+            if summary["balanceAmount"] > 0:
+                result.append(summary)
+
+        return res("Eligible journals fetched", result, 200)
+
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
+    except ValueError as e:
+        return _rollback_res(e, 400)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
+def get_journal_payment_summary(journal_id, vendor_id, user_id, exclude_id=None):
+    try:
+        je = JournalEntryMaster.query.get(journal_id)
+        if not je:
+            return res("Journal entry not found", [], 404)
+        _require_journal(je.project_code, user_id, "VIEW")
+        if not vendor_id:
+            return res("vendorId required", [], 400)
+        return res("Journal payment summary", _journal_summary(je, int(vendor_id), exclude_id), 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
 # ══════════════════════════════════════════════════════════════════
 # 2. CREATE
 # ══════════════════════════════════════════════════════════════════
@@ -325,55 +547,80 @@ def create_payment_request(data, user_id, files=None):
         if not project_code:
             return res("projectCode required", [], 400)
 
+        source_type = (data.get("sourceType") or SRC_BRR).upper()
+        if source_type not in (SRC_BRR, SRC_JOURNAL):
+            return res("sourceType must be BRR or JOURNAL", [], 400)
+
+        if source_type == SRC_JOURNAL:
+            _require_journal(project_code, user_id, "EDIT")
+
         if not is_creator(project_code, _MODULE, user_id):
             return res("You are not Payment Request creator", [], 403)
 
-        brr_id = data.get("brrId")
-        if not brr_id:
-            return res("brrId required", [], 400)
-
-        brr = _lock_brr(brr_id)
-        if not brr:
-            return res("BRR not found", [], 404)
-        if brr.project_code != project_code:
-            return res("BRR does not belong to this project", [], 400)
-
         requested = _dec(data.get("requestedAmount"), "requestedAmount")
         deduction = _dec(data.get("deductionAmount"), "deductionAmount")
-        bill, previous = _validate_amounts(brr, requested, deduction)
-
-        pr_no = generate_pr_no()
 
         pr = PaymentRequestMaster(
-            pr_no                = pr_no,
-            pr_date              = datetime.utcnow().date(),
-            pr_uuid              = str(_uuid_lib.uuid4()),
-            project_code         = project_code,
-            brr_id               = brr.id,
-            brr_no               = brr.brr_no,
-            vendor_id            = brr.vendor_id,
-            order_category       = brr.order_category,
-            party_bill_no        = brr.party_bill_no,
-            party_date           = brr.party_date,
-            bill_amount          = bill,
-            previously_requested = previous,
-            requested_amount     = requested,
-            deduction_amount     = deduction,
-            net_payable          = requested - deduction,
-            workflow_status      = "Draft",
-            status               = "Active",
-            current_level        = 0,
-            locked               = False,
-            created_by           = user_id,
+            pr_date          = datetime.utcnow().date(),
+            pr_uuid          = str(_uuid_lib.uuid4()),
+            project_code     = project_code,
+            source_type      = source_type,
+            requested_amount = requested,
+            deduction_amount = deduction,
+            net_payable      = requested - deduction,
+            workflow_status  = "Draft",
+            status           = "Active",
+            current_level    = 0,
+            locked           = False,
+            created_by       = user_id,
         )
+
+        if source_type == SRC_BRR:
+            brr_id = data.get("brrId")
+            if not brr_id:
+                return res("brrId required", [], 400)
+            brr = _lock_brr(brr_id)
+            if not brr:
+                return res("BRR not found", [], 404)
+            if brr.project_code != project_code:
+                return res("BRR does not belong to this project", [], 400)
+            bill, previous = _validate_brr(brr, requested, deduction)
+            pr.brr_id         = brr.id
+            pr.brr_no         = brr.brr_no
+            pr.vendor_id      = brr.vendor_id
+            pr.order_category = brr.order_category
+            pr.party_bill_no  = brr.party_bill_no
+            pr.party_date     = brr.party_date
+        else:
+            journal_id = data.get("journalId")
+            vendor_id  = data.get("vendorId")
+            if not journal_id:
+                return res("journalId required", [], 400)
+            if not vendor_id:
+                return res("vendorId required", [], 400)
+            je = _lock_journal(journal_id)
+            if not je:
+                return res("Journal entry not found", [], 404)
+            if je.project_code != project_code:
+                return res("Journal entry does not belong to this project", [], 400)
+            bill, previous = _validate_journal(je, int(vendor_id), requested, deduction)
+            pr.journal_id         = je.id
+            pr.journal_voucher_no = je.voucher_no
+            pr.journal_date       = je.entry_date
+            pr.vendor_id          = int(vendor_id)
+
+        pr.bill_amount          = bill
+        pr.previously_requested = previous
         _apply_common_fields(pr, data)
+
+        pr.pr_no = generate_pr_no()
 
         doc_file = files.get("attachedDoc") if files else None
         if doc_file:
             pr.attached_doc = upload_file_to_bunny(
                 file       = doc_file,
                 mainFolder = "payment_request",
-                subFolder  = pr_no,
+                subFolder  = pr.pr_no,
                 fileName   = "attached_doc",
             )
 
@@ -386,6 +633,8 @@ def create_payment_request(data, user_id, files=None):
             201,
         )
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -395,28 +644,37 @@ def create_payment_request(data, user_id, files=None):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 3. LIST
+# 3. LIST  (journal rows only for permitted users)
 # ══════════════════════════════════════════════════════════════════
 
-def get_payment_request_list(data):
+def get_payment_request_list(data, user_id=None):
     try:
-        if not data.get("projectCode"):
+        project_code = data.get("projectCode")
+        if not project_code:
             return res("projectCode required", [], 400)
 
-        query = PaymentRequestMaster.query.filter(
-            PaymentRequestMaster.project_code == data.get("projectCode")
-        )
+        query = PaymentRequestMaster.query.filter(PaymentRequestMaster.project_code == project_code)
+
+        if not has_journal_permission(project_code, user_id, "VIEW"):
+            query = query.filter(PaymentRequestMaster.source_type != SRC_JOURNAL)
+
+        if data.get("sourceType"):
+            query = query.filter(PaymentRequestMaster.source_type == data.get("sourceType").upper())
         if data.get("brrId"):
             query = query.filter(PaymentRequestMaster.brr_id == data.get("brrId"))
+        if data.get("journalId"):
+            query = query.filter(PaymentRequestMaster.journal_id == data.get("journalId"))
         if data.get("vendorId"):
             query = query.filter(PaymentRequestMaster.vendor_id == data.get("vendorId"))
         if data.get("workflowStatus"):
             query = query.filter(PaymentRequestMaster.workflow_status == data.get("workflowStatus"))
         if data.get("search"):
             term = f"%{data.get('search')}%"
-            query = query.filter(
-                db.or_(PaymentRequestMaster.pr_no.ilike(term), PaymentRequestMaster.brr_no.ilike(term))
-            )
+            query = query.filter(db.or_(
+                PaymentRequestMaster.pr_no.ilike(term),
+                PaymentRequestMaster.brr_no.ilike(term),
+                PaymentRequestMaster.journal_voucher_no.ilike(term),
+            ))
 
         rows = query.order_by(PaymentRequestMaster.id.desc()).all()
         return res("Payment Request list fetched", [_payload(r, with_summary=False) for r in rows], 200)
@@ -431,35 +689,46 @@ def get_payment_request_list(data):
 # 4. DETAILS / BY UUID
 # ══════════════════════════════════════════════════════════════════
 
-def get_payment_request_details(pr_id):
+def get_payment_request_details(pr_id, user_id=None):
     try:
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "VIEW")
         if not pr.pr_uuid:
             pr.pr_uuid = str(_uuid_lib.uuid4())
             db.session.commit()
-        return res("Payment Request details fetched", _payload(pr), 200)
+        data = _payload(pr)
+        data["canEditJournal"] = has_journal_permission(pr.project_code, user_id, "EDIT") \
+            if pr.source_type == SRC_JOURNAL else None
+        return res("Payment Request details fetched", data, 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except Exception as e:
         return _rollback_res(e, 500)
 
 
-def get_payment_request_by_uuid(pr_uuid):
+def get_payment_request_by_uuid(pr_uuid, user_id=None):
+    """Print page. BRR requests are public by uuid (same as every module);
+    journal requests require a logged-in user with the journal permission."""
     try:
         pr = PaymentRequestMaster.query.filter_by(pr_uuid=pr_uuid).first()
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "VIEW")
         data = _payload(pr)
         if pr.vendor:
             data["partyAddress"] = getattr(pr.vendor, "registered_address", None)
             data["partyGstn"]    = getattr(pr.vendor, "gstin", None)
         return res("Payment Request fetched", data, 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except Exception as e:
         return _rollback_res(e, 500)
 
 
 # ══════════════════════════════════════════════════════════════════
-# 5. EDIT  (BRR is fixed once raised — raise a new request for another BRR)
+# 5. EDIT  (source is fixed once raised)
 # ══════════════════════════════════════════════════════════════════
 
 def edit_payment_request(pr_id, data, user_id, files=None):
@@ -467,24 +736,29 @@ def edit_payment_request(pr_id, data, user_id, files=None):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "EDIT")
         if pr.locked:
             return res("Payment Request cannot be edited", [], 400)
         if pr.workflow_status not in ["Draft", "Reback"]:
             return res("Only Draft or Reback Payment Request can be edited", [], 400)
         if not is_creator(pr.project_code, _MODULE, user_id):
             return res("You are not Payment Request creator", [], 403)
-        if data.get("brrId") and str(data.get("brrId")) != str(pr.brr_id):
-            return res("BRR cannot be changed. Raise a new Payment Request for another BRR.", [], 400)
 
-        brr = _lock_brr(pr.brr_id)
-        if not brr:
-            return res("BRR not found", [], 404)
+        changed_source = (
+            (data.get("sourceType") and data.get("sourceType").upper() != (pr.source_type or SRC_BRR))
+            or (data.get("brrId") and str(data.get("brrId")) != str(pr.brr_id))
+            or (data.get("journalId") and str(data.get("journalId")) != str(pr.journal_id))
+            or (pr.source_type == SRC_JOURNAL and data.get("vendorId")
+                and str(data.get("vendorId")) != str(pr.vendor_id))
+        )
+        if changed_source:
+            return res("Source (BRR / Journal / Vendor) cannot be changed. Raise a new Payment Request.", [], 400)
 
         requested = (_dec(data.get("requestedAmount"), "requestedAmount")
-                     if data.get("requestedAmount") not in (None, "") else Decimal(str(pr.requested_amount or 0)))
+                     if data.get("requestedAmount") not in (None, "") else _q(pr.requested_amount))
         deduction = (_dec(data.get("deductionAmount"), "deductionAmount")
-                     if "deductionAmount" in data else Decimal(str(pr.deduction_amount or 0)))
-        bill, previous = _validate_amounts(brr, requested, deduction, exclude_id=pr.id)
+                     if "deductionAmount" in data else _q(pr.deduction_amount))
+        bill, previous = _revalidate(pr, requested, deduction)
 
         pr.bill_amount          = bill
         pr.previously_requested = previous
@@ -516,6 +790,8 @@ def edit_payment_request(pr_id, data, user_id, files=None):
 
         return res("Payment Request updated", {"id": pr.id, "prNo": pr.pr_no, "attachedDoc": pr.attached_doc}, 200)
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -533,17 +809,13 @@ def submit_payment_request(pr_id, submitted_by=None):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, submitted_by, "EDIT")
         if pr.workflow_status not in ["Draft", "Reback"]:
             return res("Payment Request already submitted", [], 400)
         if not is_creator(pr.project_code, _MODULE, submitted_by):
             return res("You are not Payment Request creator", [], 403)
 
-        brr = _lock_brr(pr.brr_id)
-        if not brr:
-            return res("BRR not found", [], 404)
-        bill, previous = _validate_amounts(
-            brr, Decimal(str(pr.requested_amount or 0)), Decimal(str(pr.deduction_amount or 0)), exclude_id=pr.id
-        )
+        bill, previous = _revalidate(pr)
         pr.bill_amount          = bill
         pr.previously_requested = previous
 
@@ -600,6 +872,8 @@ def submit_payment_request(pr_id, submitted_by=None):
             200,
         )
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -617,6 +891,7 @@ def approve_payment_request(pr_id, approved_by=None, comments=None):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, approved_by, "VIEW")
         if not (pr.workflow_status or "").startswith("Pending"):
             return res("Payment Request not pending", [], 400)
         if not is_current_approver(pr.project_code, _MODULE, pr.current_level, approved_by):
@@ -643,12 +918,7 @@ def approve_payment_request(pr_id, approved_by=None, comments=None):
             pr.workflow_status = f"Pending_L{next_level.level_no}"
         else:
             # Final approval — balance must still hold
-            brr = _lock_brr(pr.brr_id)
-            if not brr:
-                return res("BRR not found", [], 404)
-            _validate_amounts(
-                brr, Decimal(str(pr.requested_amount or 0)), Decimal(str(pr.deduction_amount or 0)), exclude_id=pr.id
-            )
+            _revalidate(pr)
             create_history(
                 project_code = pr.project_code,
                 module_code  = _MODULE,
@@ -701,6 +971,8 @@ def approve_payment_request(pr_id, approved_by=None, comments=None):
             200,
         )
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -718,6 +990,7 @@ def reback_payment_request(pr_id, reback_by=None, comments=None):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, reback_by, "VIEW")
         if not (pr.workflow_status or "").startswith("Pending"):
             return res("Payment Request not pending", [], 400)
         if not comments:
@@ -760,6 +1033,8 @@ def reback_payment_request(pr_id, reback_by=None, comments=None):
         return res("Payment Request sent for correction",
                    {"id": pr.id, "workflowStatus": pr.workflow_status}, 200)
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -769,7 +1044,7 @@ def reback_payment_request(pr_id, reback_by=None, comments=None):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 9. REJECT  (frees the BRR balance)
+# 9. REJECT  (frees the source balance)
 # ══════════════════════════════════════════════════════════════════
 
 def reject_payment_request(pr_id, rejected_by=None, comments=None):
@@ -777,6 +1052,7 @@ def reject_payment_request(pr_id, rejected_by=None, comments=None):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, rejected_by, "VIEW")
         if not (pr.workflow_status or "").startswith("Pending"):
             return res("Payment Request not pending", [], 400)
         if not comments:
@@ -821,6 +1097,8 @@ def reject_payment_request(pr_id, rejected_by=None, comments=None):
         return res("Payment Request rejected",
                    {"id": pr.id, "workflowStatus": pr.workflow_status}, 200)
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except SQLAlchemyError as e:
@@ -833,11 +1111,12 @@ def reject_payment_request(pr_id, rejected_by=None, comments=None):
 # 10. HISTORY / MY APPROVAL STATUS
 # ══════════════════════════════════════════════════════════════════
 
-def get_payment_request_history(pr_id):
+def get_payment_request_history(pr_id, user_id=None):
     try:
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "VIEW")
 
         rows = get_history(_MODULE, pr.id)
         data = [
@@ -860,6 +1139,8 @@ def get_payment_request_history(pr_id):
             "history":        data,
         }, 200)
 
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except Exception as e:
@@ -871,7 +1152,10 @@ def get_payment_request_my_approval_status(pr_id, user_id):
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "VIEW")
         return res("Approval status", get_my_approval_status(pr.project_code, _MODULE, pr, user_id), 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except ValueError as e:
         return _rollback_res(e, 400)
     except Exception as e:
@@ -882,11 +1166,12 @@ def get_payment_request_my_approval_status(pr_id, user_id):
 # 11. DELETE (draft only)
 # ══════════════════════════════════════════════════════════════════
 
-def delete_payment_request(pr_id):
+def delete_payment_request(pr_id, user_id=None):
     try:
         pr = PaymentRequestMaster.query.get(pr_id)
         if not pr:
             return res("Payment Request not found", [], 404)
+        _guard(pr, user_id, "EDIT")
         if pr.locked or pr.workflow_status not in ["Draft", "Reback"]:
             return res("Only Draft / Reback Payment Request can be deleted", [], 400)
         if pr.attached_doc:
@@ -899,6 +1184,8 @@ def delete_payment_request(pr_id):
         from app.modules.delete_manager.service import auto_complete_check
         auto_complete_check("PAYMENT_REQUEST", pr_id)
         return res("Payment Request deleted successfully", [], 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except SQLAlchemyError as e:
         return _rollback_res(e, 500)
     except Exception as e:

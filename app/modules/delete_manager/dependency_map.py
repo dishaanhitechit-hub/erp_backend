@@ -289,6 +289,13 @@ DEPENDENCY_MAP = {
         "doc_no_field": "pr_no",
         "project_field": "project_code",
         "children": [],  # leaf
+        # journal-sourced requests: only payment_request_journal.EDIT holders may delete
+        "access_check": lambda record, user_id: (
+            record.source_type != "JOURNAL"
+            or __import__(
+                "app.modules.billing.payment_request.service", fromlist=["has_journal_permission"]
+            ).has_journal_permission(record.project_code, user_id, "EDIT")
+        ),
     },
 
     "BRG": {
@@ -420,7 +427,15 @@ DEPENDENCY_MAP = {
         "model_class":  JournalEntryMaster,
         "doc_no_field": "voucher_no",
         "project_field": "project_code",
-        "children": [],  # leaf
+        "children": [
+            {
+                "child_model":  PaymentRequestMaster,
+                "fk_column":    "journal_id",
+                "doc_no_field": "pr_no",
+                "module_code":  "PAYMENT_REQUEST",
+                "label":        "Payment Request",
+            },
+        ],
     },
 
     "CONTRA_ENTRY": {

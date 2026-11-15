@@ -239,6 +239,10 @@ def raise_delete_request(
     if not record:
         return {"status": "error", "message": "Record not found"}, 404
 
+    access_check = config.get("access_check")
+    if access_check and not access_check(record, requested_by):
+        return {"status": "error", "message": "You do not have permission to delete this record"}, 403
+
     record_no    = _get_record_no(record, config)
     project_code = _get_project_code(record, config)
     display_name = get_display_name(module_code)

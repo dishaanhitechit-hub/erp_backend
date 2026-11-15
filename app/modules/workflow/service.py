@@ -79,6 +79,10 @@ MODULE_MAP = {
     "payment_request": {
         "model":    PaymentRequestMaster,
         "no_field": "pr_no",
+        # journal-sourced requests only for payment_request_journal holders
+        "visible":  lambda record, user_id: __import__(
+            "app.modules.billing.payment_request.service", fromlist=["can_view_record"]
+        ).can_view_record(record, user_id),
     },
 
     "billing_by_grn": {
@@ -158,6 +162,11 @@ def find_pending_records(module_code, project_code, user_id):
         .order_by(Model.id.desc())
         .all()
     )
+
+    # optional per-record visibility (e.g. restricted journal payment requests)
+    visible = entry.get("visible")
+    if visible:
+        records = [r for r in records if visible(r, user_id)]
 
     return [
         {

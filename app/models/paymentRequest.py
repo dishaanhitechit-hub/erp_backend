@@ -1,7 +1,10 @@
 # app/models/paymentRequest.py
-# Payment Request — raised against an Approved BRR (Bill Receive Register).
-# Multiple (partial) requests are allowed per BRR; the sum of non-rejected
-# requested amounts can never exceed the BRR's bill amount.
+# Payment Request — raised against an Approved BRR (Bill Receive Register)
+# or an Approved Journal Entry (one vendor of that journal per request).
+# Multiple (partial) requests are allowed per source; the sum of non-rejected
+# requested amounts can never exceed the source's bill amount.
+# Journal-sourced requests are visible only to users holding the
+# `payment_request_journal` page permission.
 
 from app.extensions import db
 from datetime import datetime
@@ -11,6 +14,13 @@ import uuid as _uuid_lib
 class PaymentRequestMaster(db.Model):
 
     __tablename__ = "payment_request_master"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(source_type = 'BRR' AND brr_id IS NOT NULL AND journal_id IS NULL) OR "
+            "(source_type = 'JOURNAL' AND journal_id IS NOT NULL AND brr_id IS NULL AND vendor_id IS NOT NULL)",
+            name="ck_payment_request_source",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -26,12 +36,24 @@ class PaymentRequestMaster(db.Model):
         nullable=False
     )
 
+    # "BRR" → brr_id is set ; "JOURNAL" → journal_id + vendor_id are set
+    source_type = db.Column(db.String(20), nullable=False, default="BRR", server_default="BRR")
+
     brr_id = db.Column(
         db.Integer,
         db.ForeignKey("brr_master.id"),
-        nullable=False,
+        nullable=True,
         index=True
     )
+
+    journal_id = db.Column(
+        db.Integer,
+        db.ForeignKey("journal_entry_master.id"),
+        nullable=True,
+        index=True
+    )
+    journal_voucher_no = db.Column(db.String(50), nullable=True)   # snapshot
+    journal_date       = db.Column(db.Date,       nullable=True)   # snapshot
 
     # Snapshots from the BRR at the time of raising
     brr_no         = db.Column(db.String(50),  nullable=True)
@@ -78,6 +100,7 @@ class PaymentRequestMaster(db.Model):
     # Relationships
     project = db.relationship("Project",   backref="payment_request_list")
     brr     = db.relationship("BrrMaster", backref="payment_requests")
+    journal = db.relationship("JournalEntryMaster", backref="payment_requests")
     vendor  = db.relationship("Vendor",    backref="payment_request_list")
 
     creator   = db.relationship("User", foreign_keys=[created_by])
