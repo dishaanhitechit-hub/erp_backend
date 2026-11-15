@@ -1239,7 +1239,8 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
         "log_sheet":             [(MachineryLogBook,       None, None)],
         "batching":              [(BatchingPlantMaster,    None, None)],
         "bill_receive_register": [(BrrMaster,              None, None)],
-        "payment_request":       [(PaymentRequestMaster,   None, None)],
+        "payment_request":         [(PaymentRequestMaster, lambda M: M.source_type == "BRR",     None)],
+        "payment_request_journal": [(PaymentRequestMaster, lambda M: M.source_type == "JOURNAL", None)],
         "billing_by_grn":        [(BvsMaster, None, None), (BrgMaster, None, None), (BrbMaster, "GRN", None)],
         "billing_by_srn":        [(BssMaster, None, None), (BrsMaster, None, None), (BrbMaster, "SRN", None)],
         "contra":                [(ContraEntryMaster,      None, None)],
@@ -1272,7 +1273,10 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
             Model.workflow_status.like("Pending_L%"),
         )
 
-        if billing_type:
+        if callable(billing_type):
+            # custom row filter (e.g. payment request source type)
+            q = q.filter(billing_type(Model))
+        elif billing_type:
             q = q.filter(Model.billing_type == billing_type)
 
         if new_valid:

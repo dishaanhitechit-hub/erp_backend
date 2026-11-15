@@ -16,6 +16,7 @@ APPROVAL_PING_MODULES = [
     "drawing_register",
     "bill_receive_register",
     "payment_request",
+    "payment_request_journal",
     "log_sheet",
 ]
 

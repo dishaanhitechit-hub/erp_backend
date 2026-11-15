@@ -76,10 +76,19 @@ MODULE_MAP = {
         "no_field": "brr_no",
     },
 
+    # Payment Request — BRR-sourced requests use this approval path
     "payment_request": {
         "model":    PaymentRequestMaster,
         "no_field": "pr_no",
-        # journal-sourced requests only for payment_request_journal holders
+        "filter":   lambda M: M.source_type == "BRR",
+    },
+
+    # Payment Request — journal-sourced requests: own approval path, and only
+    # payment_request_journal permission holders may see them
+    "payment_request_journal": {
+        "model":    PaymentRequestMaster,
+        "no_field": "pr_no",
+        "filter":   lambda M: M.source_type == "JOURNAL",
         "visible":  lambda record, user_id: __import__(
             "app.modules.billing.payment_request.service", fromlist=["can_view_record"]
         ).can_view_record(record, user_id),
@@ -156,12 +165,13 @@ def find_pending_records(module_code, project_code, user_id):
     else:
         project_filter = (Model.project_code == project_code)
 
-    records = (
-        Model.query
-        .filter(project_filter, Model.workflow_status.in_(pending_statuses))
-        .order_by(Model.id.desc())
-        .all()
-    )
+    query = Model.query.filter(project_filter, Model.workflow_status.in_(pending_statuses))
+
+    # optional row filter (e.g. one table shared by two approval paths)
+    if entry.get("filter"):
+        query = query.filter(entry["filter"](Model))
+
+    records = query.order_by(Model.id.desc()).all()
 
     # optional per-record visibility (e.g. restricted journal payment requests)
     visible = entry.get("visible")

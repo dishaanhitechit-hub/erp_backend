@@ -13,8 +13,9 @@ Rules
   as the sum of requested amounts of all non-Rejected requests never exceeds
   the bill amount. The balance is re-validated (source row locked) on create,
   edit, submit and final approval.
-* Creator / approver checks follow the shared approval path
-  (module code `payment_request`) for both sources.
+* Creator / approver checks follow the approval path of the source:
+  BRR requests → module `payment_request`, journal requests → module
+  `payment_request_journal` (its own creators and approvers).
 * Journal-sourced requests are restricted: only users holding the
   `payment_request_journal` page permission (granted by super admin in
   Settings › Roles & User Assignment) can see them — VIEW to see / approve,
@@ -53,7 +54,8 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
-_MODULE   = "payment_request"          # approval path / page code
+_MODULE_BRR     = "payment_request"          # approval path / page code (BRR requests)
+_MODULE_JOURNAL = "payment_request_journal"  # approval path / page code (journal requests)
 _WA_CODE  = "payment_request"          # whatsapp module code
 _JOURNAL_PERM = "payment_request_journal"  # restricted page permission
 _NO_BASE  = 930000                     # PR serial range (BRR 900000, BRB 910000, BRS 920000)
@@ -62,6 +64,12 @@ _PAYMENT_MODES = {"Bank", "Cash"}
 
 SRC_BRR     = "BRR"
 SRC_JOURNAL = "JOURNAL"
+
+
+def _wf(pr_or_source):
+    """Approval-path module code for a request (or a source type string)."""
+    src = pr_or_source if isinstance(pr_or_source, str) else (pr_or_source.source_type or SRC_BRR)
+    return _MODULE_JOURNAL if src == SRC_JOURNAL else _MODULE_BRR
 
 
 class _Forbidden(Exception):
@@ -554,7 +562,7 @@ def create_payment_request(data, user_id, files=None):
         if source_type == SRC_JOURNAL:
             _require_journal(project_code, user_id, "EDIT")
 
-        if not is_creator(project_code, _MODULE, user_id):
+        if not is_creator(project_code, _wf(source_type), user_id):
             return res("You are not Payment Request creator", [], 403)
 
         requested = _dec(data.get("requestedAmount"), "requestedAmount")
@@ -741,7 +749,7 @@ def edit_payment_request(pr_id, data, user_id, files=None):
             return res("Payment Request cannot be edited", [], 400)
         if pr.workflow_status not in ["Draft", "Reback"]:
             return res("Only Draft or Reback Payment Request can be edited", [], 400)
-        if not is_creator(pr.project_code, _MODULE, user_id):
+        if not is_creator(pr.project_code, _wf(pr), user_id):
             return res("You are not Payment Request creator", [], 403)
 
         changed_source = (
@@ -812,7 +820,7 @@ def submit_payment_request(pr_id, submitted_by=None):
         _guard(pr, submitted_by, "EDIT")
         if pr.workflow_status not in ["Draft", "Reback"]:
             return res("Payment Request already submitted", [], 400)
-        if not is_creator(pr.project_code, _MODULE, submitted_by):
+        if not is_creator(pr.project_code, _wf(pr), submitted_by):
             return res("You are not Payment Request creator", [], 403)
 
         bill, previous = _revalidate(pr)
@@ -822,7 +830,7 @@ def submit_payment_request(pr_id, submitted_by=None):
         if pr.workflow_status == "Reback":
             pr.current_level = 0
 
-        first_level = get_first_approver(pr.project_code, _MODULE)
+        first_level = get_first_approver(pr.project_code, _wf(pr))
 
         if not first_level:
             pr.workflow_status   = "Approved"
@@ -838,7 +846,7 @@ def submit_payment_request(pr_id, submitted_by=None):
 
         create_history(
             project_code = pr.project_code,
-            module_code  = _MODULE,
+            module_code  = _wf(pr),
             record_id    = pr.id,
             level_no     = pr.current_level,
             action       = "SUBMIT",
@@ -894,20 +902,20 @@ def approve_payment_request(pr_id, approved_by=None, comments=None):
         _guard(pr, approved_by, "VIEW")
         if not (pr.workflow_status or "").startswith("Pending"):
             return res("Payment Request not pending", [], 400)
-        if not is_current_approver(pr.project_code, _MODULE, pr.current_level, approved_by):
+        if not is_current_approver(pr.project_code, _wf(pr), pr.current_level, approved_by):
             return res("You are not current approver", [], 403)
 
-        gap = get_gap_level(pr.project_code, _MODULE, pr.current_level)
+        gap = get_gap_level(pr.project_code, _wf(pr), pr.current_level)
         if gap:
             return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
-        next_level = get_next_approver(pr.project_code, _MODULE, pr.current_level)
+        next_level = get_next_approver(pr.project_code, _wf(pr), pr.current_level)
         prev_level = pr.current_level
 
         if next_level:
             create_history(
                 project_code = pr.project_code,
-                module_code  = _MODULE,
+                module_code  = _wf(pr),
                 record_id    = pr.id,
                 level_no     = pr.current_level,
                 action       = "APPROVE",
@@ -921,7 +929,7 @@ def approve_payment_request(pr_id, approved_by=None, comments=None):
             _revalidate(pr)
             create_history(
                 project_code = pr.project_code,
-                module_code  = _MODULE,
+                module_code  = _wf(pr),
                 record_id    = pr.id,
                 level_no     = pr.current_level,
                 action       = "FINAL_APPROVE",
@@ -995,7 +1003,7 @@ def reback_payment_request(pr_id, reback_by=None, comments=None):
             return res("Payment Request not pending", [], 400)
         if not comments:
             return res("Comments required", [], 400)
-        if not is_current_approver(pr.project_code, _MODULE, pr.current_level, reback_by):
+        if not is_current_approver(pr.project_code, _wf(pr), pr.current_level, reback_by):
             return res("You are not current approver", [], 403)
 
         pr.workflow_status    = "Reback"
@@ -1006,7 +1014,7 @@ def reback_payment_request(pr_id, reback_by=None, comments=None):
 
         create_history(
             project_code = pr.project_code,
-            module_code  = _MODULE,
+            module_code  = _wf(pr),
             record_id    = pr.id,
             level_no     = pr.current_level,
             action       = "REBACK",
@@ -1057,7 +1065,7 @@ def reject_payment_request(pr_id, rejected_by=None, comments=None):
             return res("Payment Request not pending", [], 400)
         if not comments:
             return res("Comments required", [], 400)
-        if not is_current_approver(pr.project_code, _MODULE, pr.current_level, rejected_by):
+        if not is_current_approver(pr.project_code, _wf(pr), pr.current_level, rejected_by):
             return res("You are not current approver", [], 403)
 
         pr.workflow_status = "Rejected"
@@ -1070,7 +1078,7 @@ def reject_payment_request(pr_id, rejected_by=None, comments=None):
 
         create_history(
             project_code = pr.project_code,
-            module_code  = _MODULE,
+            module_code  = _wf(pr),
             record_id    = pr.id,
             level_no     = pr.current_level,
             action       = "REJECT",
@@ -1118,7 +1126,7 @@ def get_payment_request_history(pr_id, user_id=None):
             return res("Payment Request not found", [], 404)
         _guard(pr, user_id, "VIEW")
 
-        rows = get_history(_MODULE, pr.id)
+        rows = get_history(_wf(pr), pr.id)
         data = [
             {
                 "id":        row.id,
@@ -1130,7 +1138,7 @@ def get_payment_request_history(pr_id, user_id=None):
             }
             for row in rows
         ]
-        steps = get_approval_steps(pr.project_code, _MODULE, pr, rows)
+        steps = get_approval_steps(pr.project_code, _wf(pr), pr, rows)
 
         return res("Payment Request history fetched", {
             "workflowStatus": pr.workflow_status,
@@ -1153,7 +1161,7 @@ def get_payment_request_my_approval_status(pr_id, user_id):
         if not pr:
             return res("Payment Request not found", [], 404)
         _guard(pr, user_id, "VIEW")
-        return res("Approval status", get_my_approval_status(pr.project_code, _MODULE, pr, user_id), 200)
+        return res("Approval status", get_my_approval_status(pr.project_code, _wf(pr), pr, user_id), 200)
     except _Forbidden as e:
         return _rollback_res(e, 403)
     except ValueError as e:
