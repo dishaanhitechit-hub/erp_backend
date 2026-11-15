@@ -302,6 +302,11 @@ def create_app():
     from .modules.hr.gang_tracker.routes import gang_tracker_bp
     app.register_blueprint(gang_tracker_bp, url_prefix="/hr/gang-tracker")
 
+    # MIS — Self Task
+    from .models import misTask  # noqa — registers MisTask, MisActivity with Alembic
+    from .modules.mis.task.routes import mis_task_bp
+    app.register_blueprint(mis_task_bp, url_prefix="/mis/tasks")
+
     from .modules.communication.chatting.routes import comm_bp
     app.register_blueprint(comm_bp, url_prefix="/comm")
 
