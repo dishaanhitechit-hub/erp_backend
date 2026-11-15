@@ -1,9 +1,17 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 from app.middleware.permission_middleware import page_permission
-from .service import get_all_employees, get_employee, create_employee, update_employee, get_departments, upload_employee_doc
+from .service import get_all_employees, get_employee, create_employee, update_employee, get_departments, upload_employee_doc, get_my_profile
+from flask_jwt_extended import get_jwt_identity
 
 employee_bp = Blueprint("employee", __name__)
+
+
+@employee_bp.route("/me", methods=["GET"])
+@jwt_required()
+def api_my_profile():
+    # own profile only — safe fields, no HR permission needed (My Profile page)
+    return get_my_profile(get_jwt_identity())
 
 
 @employee_bp.route("", methods=["GET"])

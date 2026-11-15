@@ -83,3 +83,41 @@ def api_update_discipline(case_id):
 @page_permission("employee_master", "VIEW")
 def api_discipline_stats():
     return get_discipline_stats()
+
+
+# ─────────────────────────────── Performance score (auto) ───────────────
+from flask_jwt_extended import get_jwt_identity  # noqa: E402
+from . import score_service as score  # noqa: E402
+
+
+@performance_bp.route("/score/config", methods=["GET"])
+@jwt_required()
+def api_score_config():
+    return score.config()
+
+
+@performance_bp.route("/score/me", methods=["GET"])
+@jwt_required()
+def api_score_me():
+    # ?period=month|week &date=YYYY-MM-DD  — any logged-in user, own score only
+    return score.my_score(request.args, get_jwt_identity())
+
+
+@performance_bp.route("/score", methods=["GET"])
+@jwt_required()
+def api_score_list():
+    # ?period &date &department &search &grade — HR / super admin
+    return score.list_scores(request.args, get_jwt_identity())
+
+
+@performance_bp.route("/score/subject/<string:subject_key>", methods=["GET"])
+@jwt_required()
+def api_score_subject(subject_key):
+    # subject_key = e<employeeId> | u<userId>; HR or the person themself
+    return score.subject_score(subject_key, request.args, get_jwt_identity())
+
+
+@performance_bp.route("/score/recompute", methods=["POST"])
+@jwt_required()
+def api_score_recompute():
+    return score.recompute(request.args, get_jwt_identity())

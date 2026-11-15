@@ -75,3 +75,29 @@ class DisciplineCase(db.Model):
             "description": self.description,
             "created_at": str(self.created_at) if self.created_at else None,
         }
+
+
+class EmployeePerformanceScore(db.Model):
+    """
+    Saved performance score for one person and one period (week / month).
+    Calculated from MIS self tasks + follow-up steps + HR appraisal + discipline
+    (see app/modules/hr/performance/score_service.py). The current period is
+    always worked out live; finished periods are kept here for trends.
+    """
+    __tablename__ = "employee_performance_scores"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subject_key = db.Column(db.String(30), nullable=False)        # "e<employee_id>" or "u<user_id>"
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    period_type = db.Column(db.String(10), nullable=False)          # week | month
+    period_start = db.Column(db.Date, nullable=False)
+    period_end = db.Column(db.Date, nullable=False)
+    score = db.Column(db.Numeric(5, 1))                              # NULL = no data
+    grade = db.Column(db.String(30))
+    components = db.Column(db.JSON)
+    computed_at = db.Column(db.DateTime, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("subject_key", "period_type", "period_start", name="uq_perf_score_subject_period"),
+    )

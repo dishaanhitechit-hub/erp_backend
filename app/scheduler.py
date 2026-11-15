@@ -147,6 +147,26 @@ def _add_dpr_jobs(scheduler, app, tz):
     )
 
 
+def _perf_score_refresh_once(app, tz):
+    """Nightly: save this and the previous week / month of employee performance scores."""
+    from app.modules.hr.performance import score_service
+
+    def run(app_):
+        _single_run(app_, "perf_score_refresh", score_service.nightly_refresh, lease_seconds=60 * 60)
+
+    day = datetime.now(ZoneInfo(tz)).strftime("%Y-%m-%d")
+    _run_once_per_period(app, "perf_score_refresh", day, run, keep_seconds=3 * 86400)
+
+
+def _add_perf_score_job(scheduler, app, tz):
+    hour = int(os.getenv("PERF_SCORE_HOUR") or 1)
+    scheduler.add_job(
+        func=_perf_score_refresh_once, args=[app, tz],
+        trigger=CronTrigger(hour=hour, minute=30, timezone=tz), id="perf_score_refresh",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+
+
 def _purge_runtime_store():
     from app.utils import runtime_store
     deleted = runtime_store.purge_expired()
@@ -185,6 +205,7 @@ def init_scheduler(app, force=False):
             coalesce=True,
         )
         _add_dpr_jobs(scheduler, app, tz)
+        _add_perf_score_job(scheduler, app, tz)
         scheduler.add_job(
             func=_single_run, args=[app, "runtime_store_purge", _purge_runtime_store, 15 * 60],
             trigger="interval", hours=1, id="runtime_store_purge", replace_existing=True,

@@ -172,3 +172,65 @@ def upload_employee_doc(emp_id, file, data):
 
     db.session.commit()
     return res("Uploaded", emp.to_detail_dict())
+
+
+def get_my_profile(user_id):
+    """
+    The logged-in user's own profile (My Profile page). No HR permission needed,
+    so ONLY non-sensitive fields: no salary, bank, Aadhaar / PAN / passport.
+    The Employee record is matched to the login by emp_code.
+    """
+    from sqlalchemy import func
+    from app.models.user import User
+    from app.models.project_role import ProjectUserRole
+
+    user = User.query.get(int(user_id))
+    if not user:
+        return res("User not found", {}, 404)
+    emp = None
+    if user.emp_code:
+        emp = Employee.query.filter(func.upper(Employee.emp_code) == user.emp_code.strip().upper()).first()
+
+    projects = []
+    for r in ProjectUserRole.query.filter_by(user_id=user.id).all():
+        if r.project:
+            projects.append({
+                "projectCode": r.project.project_code,
+                "projectName": r.project.project_name,
+                "designation": r.designation.name if r.designation else None,
+            })
+
+    manager = User.query.get(emp.reporting_manager_id) if emp and emp.reporting_manager_id else None
+    d = lambda v: v.isoformat() if v else None  # noqa: E731
+    return res("ok", {
+        "userId": user.id,
+        "name": emp.full_name if emp else user.username,
+        "loginUsername": user.login_username,
+        "empCode": user.emp_code,
+        "email": user.email,
+        "mobile": user.mobile,
+        "whatsapp": user.wp_mobile,
+        "role": user.global_role.name if user.global_role else None,
+        "profilePicture": user.profile_picture,
+        "projects": projects,
+        "employee": None if not emp else {
+            "id": emp.id,
+            "designation": emp.designation,
+            "department": emp.department,
+            "employmentType": emp.employment_type,
+            "status": emp.employee_status,
+            "gradeBand": emp.grade_band,
+            "dateOfJoining": d(emp.date_of_joining),
+            "probationEndDate": d(emp.probation_end_date),
+            "confirmationDate": d(emp.confirmation_date),
+            "workLocation": emp.work_location,
+            "workEmail": emp.work_email,
+            "deskSeat": emp.desk_seat_number,
+            "reportingManager": manager.username if manager else None,
+            "bloodGroup": emp.blood_group,
+            "emergencyContactName": emp.emergency_contact_name,
+            "emergencyContactRelation": emp.emergency_contact_relation,
+            "emergencyContactMobile": emp.emergency_contact_mobile,
+            "primarySkills": emp.primary_skills,
+        },
+    })
