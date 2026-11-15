@@ -18,7 +18,7 @@ from sqlalchemy import or_, func
 from app.extensions import db
 from app.response import res
 from app.models.misTask import (
-    MisTask, MisActivity, TASK_STATUSES, OPEN_STATUSES, TASK_PRIORITIES,
+    MisTask, MisActivity, MisTaskReopenRequest, TASK_STATUSES, OPEN_STATUSES, TASK_PRIORITIES,
 )
 from app.models.user import User
 from app.models.project import Project
@@ -28,8 +28,9 @@ log = logging.getLogger(__name__)
 
 PERM_KEY = "self_task_all"
 ENTITY = "task"
-_EDITABLE = ("title", "description", "priority", "startDate", "dueDate",
-             "estimatedHours", "actualHours", "tags")
+_EDITABLE = ("title", "description", "priority", "startDate", "startTime", "dueDate", "dueTime",
+             "estimatedHours", "tags")
+LOCKED_MSG = "This task is Done and locked. Raise a reopen request to work on it again."
 
 
 class _Err(Exception):
@@ -159,6 +160,16 @@ def _date(v, field):
         raise _Err(f"{field} must be YYYY-MM-DD")
 
 
+def _time(v, field):
+    """'HH:MM' (24 h) → time; '' / None → None."""
+    if v in (None, ""):
+        return None
+    try:
+        return datetime.strptime(str(v)[:5], "%H:%M").time()
+    except ValueError:
+        raise _Err(f"{field} must be HH:MM (24-hour)")
+
+
 def _num(v, field):
     if v in (None, ""):
         return None
@@ -196,14 +207,24 @@ def _apply_fields(task, data):
         task.priority = data["priority"]
     if "startDate" in data:
         task.start_date = _date(data["startDate"], "startDate")
+    if "startTime" in data:
+        task.start_time = _time(data["startTime"], "startTime")
     if "dueDate" in data:
         task.due_date = _date(data["dueDate"], "dueDate")
-    if task.start_date and task.due_date and task.due_date < task.start_date:
-        raise _Err("Due date cannot be before start date")
+    if "dueTime" in data:
+        task.due_time = _time(data["dueTime"], "dueTime")
+    if task.start_time and not task.start_date:
+        raise _Err("Pick a start date for the start time")
+    if task.due_time and not task.due_date:
+        raise _Err("Pick a due date for the due time")
+    if task.start_date and task.due_date:
+        if task.due_date < task.start_date:
+            raise _Err("Due date cannot be before start date")
+        if (task.due_date == task.start_date and task.start_time and task.due_time
+                and task.due_time <= task.start_time):
+            raise _Err("Due time must be after start time on the same day")
     if "estimatedHours" in data:
         task.estimated_hours = _num(data["estimatedHours"], "estimatedHours")
-    if "actualHours" in data:
-        task.actual_hours = _num(data["actualHours"], "actualHours")
     if "tags" in data:
         tags = data.get("tags") or []
         if not isinstance(tags, list):
@@ -216,21 +237,53 @@ def _log(task_id, user_id, action, old=None, new=None, comment=None):
                                action=action, old_value=old, new_value=new, comment=comment))
 
 
+# Allowed moves. The work clock runs only while In Progress.
+#   To Do → In Progress (= Start: clock on) · To Do → Cancelled
+#   In Progress ↔ On Hold (pause / resume) · In Progress / On Hold → Done (clock stops, task LOCKS) or Cancelled
+#   Done → nothing (only a higher level reopens it, see reopen requests) · Cancelled → To Do (restore)
+_MOVES = {
+    "To Do": {"In Progress", "Cancelled"},
+    "In Progress": {"On Hold", "Done", "Cancelled"},
+    "On Hold": {"In Progress", "Done", "Cancelled"},
+    "Done": set(),
+    "Cancelled": {"To Do"},
+}
+
+
+def _stop_clock(task, now):
+    if task.run_started_at:
+        task.worked_seconds = (task.worked_seconds or 0) + max(0, int((now - task.run_started_at).total_seconds()))
+        task.run_started_at = None
+
+
 def _set_status(task, new_status):
     if new_status not in TASK_STATUSES:
         raise _Err(f"status must be one of {', '.join(TASK_STATUSES)}")
     old = task.status
     if old == new_status:
         return None
+    if old == "Done":
+        raise _Err(LOCKED_MSG, 409)
+    if new_status not in _MOVES.get(old, set()):
+        if new_status in ("Done", "On Hold") and old == "To Do":
+            raise _Err("Press Start first — the work time is measured from Start to Done")
+        raise _Err(f"Cannot move from {old} to {new_status}")
+    now = datetime.utcnow()
+    if new_status == "In Progress":                      # start or resume → clock on
+        task.started_at = task.started_at or now
+        task.run_started_at = now
+    elif new_status in ("On Hold", "Done", "Cancelled"):
+        _stop_clock(task, now)
     if new_status == "Done":
-        task.completed_at = datetime.utcnow()
-    elif old == "Done":
-        # reopened after completion → counts against quality in the performance score
-        task.completed_at = None
-        if new_status in OPEN_STATUSES:
-            task.reopen_count = (task.reopen_count or 0) + 1
+        task.completed_at = now
+        task.actual_hours = round((task.worked_seconds or 0) / 3600, 2)
     task.status = new_status
     return old
+
+
+def _require_unlocked(task):
+    if task.is_locked:
+        raise _Err(LOCKED_MSG, 409)
 
 
 # ─────────────────────────────── WhatsApp ──────────────────────────────
@@ -276,6 +329,8 @@ def _scoped_query(user_id, scope_name, project_code=None):
     q = MisTask.query.filter(MisTask.is_deleted.is_(False))
     if scope_name == "mine":
         q = q.filter(MisTask.owner_user_id == user_id)
+    elif scope_name == "my_all":                         # my tasks + tasks I gave to others
+        q = q.filter(or_(MisTask.owner_user_id == user_id, MisTask.created_by == user_id))
     elif scope_name == "assigned_by_me":
         q = q.filter(MisTask.created_by == user_id, MisTask.owner_user_id != user_id)
     elif scope_name in ("team", "all"):
@@ -290,7 +345,7 @@ def _scoped_query(user_id, scope_name, project_code=None):
                 conds.append(MisTask.project_id.in_(scope["projects"]))
             q = q.filter(or_(*conds))
     else:
-        raise _Err("scope must be mine, assigned_by_me, team or all")
+        raise _Err("scope must be mine, my_all, assigned_by_me, team or all")
 
     if project_code:
         if project_code.lower() == "company":
@@ -342,7 +397,7 @@ def list_tasks(args, user_id):
                 MisTask.due_date.is_(None), MisTask.due_date.asc(), MisTask.id.desc())
             .offset((page - 1) * per_page).limit(per_page).all())
     return res("ok", {
-        "items": [t.to_dict(today) for t in rows],
+        "items": _with_reopen_flags([t.to_dict(today) for t in rows]),
         "total": total, "page": page, "perPage": per_page,
     })
 
@@ -357,7 +412,16 @@ def get_task(task_id, user_id):
             .order_by(MisActivity.created_at.desc(), MisActivity.id.desc()).all())
     out = t.to_dict()
     out["activity"] = [a.to_dict() for a in acts]
-    out["canEdit"] = _can(t, user_id, "EDIT")
+    out["canEdit"] = _can(t, user_id, "EDIT") and not t.is_locked
+    out["canStart"] = _can(t, user_id, "EDIT") and t.status == "To Do"
+    reqs = (MisTaskReopenRequest.query.filter_by(task_id=t.id)
+            .order_by(MisTaskReopenRequest.created_at.desc(), MisTaskReopenRequest.id.desc()).all())
+    pending = next((r for r in reqs if r.status == "Pending"), None)
+    out["reopenRequests"] = [r.to_dict() for r in reqs]
+    out["pendingReopen"] = pending.to_dict() if pending else None
+    out["canRequestReopen"] = t.is_locked and pending is None and user_id in (t.owner_user_id, t.created_by)
+    out["canReopen"] = t.is_locked and _is_higher_level(t, user_id)
+    out["canDecideReopen"] = bool(pending) and _can_decide(t, user_id, pending.requested_by)
     return res("ok", out)
 
 
@@ -391,7 +455,7 @@ def create_task(data, user_id):
         raise _Err("Title is required")
     _apply_fields(t, {k: data[k] for k in _EDITABLE if k in data})
     if data.get("status") and data["status"] != "To Do":
-        _set_status(t, data["status"])
+        raise _Err("A new task starts as To Do — press Start when work begins")
 
     db.session.add(t)
     db.session.flush()
@@ -412,6 +476,7 @@ def update_task(task_id, data, user_id):
     t = _get_task(task_id)
     if not _can(t, user_id, "EDIT"):
         raise _Err("You do not have permission to edit this task", 403)
+    _require_unlocked(t)
 
     changes = []
     before = {k: getattr(t, k) for k in ("title", "priority", "due_date")}
@@ -482,6 +547,7 @@ def add_comment(task_id, data, user_id):
     t = _get_task(task_id)
     if not _can(t, user_id, "VIEW"):
         raise _Err("You do not have access to this task", 403)
+    _require_unlocked(t)
     text = (data.get("comment") or "").strip()
     if not text:
         raise _Err("comment is required")
@@ -497,6 +563,7 @@ def delete_task(task_id, user_id):
     own = t.created_by == user_id
     if not own and not _covers(_scope(user_id, "EDIT"), t):
         raise _Err("Only the creator or a permitted manager can delete this task", 403)
+    _require_unlocked(t)
     t.is_deleted = True
     _log(t.id, user_id, "DELETED")
     db.session.commit()
@@ -511,8 +578,9 @@ def task_stats(args, user_id):
     sub = q.with_entities(MisTask.id, MisTask.status, MisTask.due_date, MisTask.completed_at).subquery()
 
     by_status = dict(db.session.query(sub.c.status, func.count()).group_by(sub.c.status).all())
-    overdue = db.session.query(func.count()).select_from(sub).filter(
-        sub.c.status.in_(OPEN_STATUSES), sub.c.due_date < today).scalar() or 0
+    # overdue to the minute when a due time is set (same rule as each task's isOverdue)
+    overdue = sum(1 for t in q.filter(MisTask.status.in_(OPEN_STATUSES), MisTask.due_date <= today).all()
+                  if t.is_overdue(today))
     due_today = db.session.query(func.count()).select_from(sub).filter(
         sub.c.status.in_(OPEN_STATUSES), sub.c.due_date == today).scalar() or 0
     week_start = today.toordinal() - today.weekday()
@@ -526,6 +594,8 @@ def task_stats(args, user_id):
         "overdue": overdue,
         "dueToday": due_today,
         "doneThisWeek": done_week,
+        "running": q.filter(MisTask.run_started_at.isnot(None)).count(),
+        "reopenToDecide": len(_decidable_requests(user_id)),
     })
 
 
@@ -574,3 +644,178 @@ def viewable_owners(args, user_id):
         q = q.filter(or_(User.id.in_(scope["users"] or {-1}), User.id == user_id))
     users = q.order_by(User.username.asc()).all()
     return res("ok", [{"id": u.id, "name": u.username, "empCode": u.emp_code} for u in users])
+
+
+# ─────────────────────────────── start / reopen ────────────────────────
+
+@_wrap
+def start_task(task_id, user_id):
+    """Start button: To Do → In Progress (clock on). Also resumes an On Hold task."""
+    user_id = _uid(user_id)
+    t = _get_task(task_id)
+    if not _can(t, user_id, "EDIT"):
+        raise _Err("You do not have permission to start this task", 403)
+    if t.status == "In Progress":
+        return res("Already running", t.to_dict())
+    old = _set_status(t, "In Progress")
+    _log(t.id, user_id, "STARTED" if old == "To Do" else "STATUS", old=old, new="In Progress")
+    db.session.commit()
+    return res("Started — the work time is being measured", t.to_dict())
+
+
+def _is_higher_level(task, user_id):
+    """Someone above the owner: super admin, a manager with self_task_all.EDIT over the task,
+    or the person who gave the task to someone else."""
+    if _is_super(user_id):
+        return True
+    if user_id == task.owner_user_id:
+        return False
+    if task.created_by == user_id:
+        return True
+    return _covers(_scope(user_id, "EDIT"), task)
+
+
+def _can_decide(task, user_id, requester_id):
+    return user_id != requester_id and _is_higher_level(task, user_id)
+
+
+def _decidable_requests(user_id):
+    pend = (MisTaskReopenRequest.query.join(MisTask, MisTask.id == MisTaskReopenRequest.task_id)
+            .filter(MisTaskReopenRequest.status == "Pending", MisTask.is_deleted.is_(False)).all())
+    return [r for r in pend if _can_decide(r.task, user_id, r.requested_by)]
+
+
+def _with_reopen_flags(rows):
+    ids = [r["id"] for r in rows if r.get("isLocked")]
+    if not ids:
+        return rows
+    pending = {tid for (tid,) in db.session.query(MisTaskReopenRequest.task_id).filter(
+        MisTaskReopenRequest.task_id.in_(ids), MisTaskReopenRequest.status == "Pending")}
+    for r in rows:
+        r["reopenPending"] = r["id"] in pending
+    return rows
+
+
+def _reopen(task, user_id):
+    """Unlock a Done task: back to In Progress, clock resumes, counted as rework (quality)."""
+    task.status = "In Progress"
+    task.completed_at = None
+    task.run_started_at = datetime.utcnow()
+    task.reopen_count = (task.reopen_count or 0) + 1
+
+
+def _notify_user(user_id, task, state, actor_id, event):
+    """WhatsApp to one person about a task (reopen flow). Never raises."""
+    try:
+        import os
+        from app.modules.communication.whatsapp_service import send_template
+        u = User.query.get(user_id)
+        phone = u and (u.wp_mobile or u.mobile)
+        if not phone:
+            return
+        actor = User.query.get(actor_id)
+        link = f"{(os.getenv('FRONTEND_BASE_URL') or '').rstrip('/')}/task-management/todo?task={task.task_uuid}"
+        send_template(
+            phone=phone,
+            template_name=os.getenv("WA_TEMPLATE_TASK_ASSIGNED", "erp_action_required"),
+            body_params={
+                "module_name": f"Task reopen – {task.title[:60]}",
+                "doc_no": task.task_code,
+                "project_code": task.project.project_code if task.project else "Company",
+                "actor_name": actor.username if actor else "ERP",
+                "current_level": state,
+                "pdf_url": link,
+                "action_url": link,
+            },
+            doc_no=task.task_code, module_code="mis_task", record_id=task.id,
+            project_code=task.project.project_code if task.project else None, event=event,
+        )
+    except Exception:
+        log.warning("Task reopen WhatsApp failed for %s", getattr(task, "id", None), exc_info=True)
+
+
+@_wrap
+def request_reopen(task_id, data, user_id):
+    user_id = _uid(user_id)
+    t = _get_task(task_id)
+    if not t.is_locked:
+        raise _Err("Only a Done task needs a reopen request")
+    if user_id not in (t.owner_user_id, t.created_by):
+        raise _Err("Only the task owner can ask to reopen it", 403)
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        raise _Err("Say why the task must be reopened")
+    if MisTaskReopenRequest.query.filter_by(task_id=t.id, status="Pending").first():
+        raise _Err("A reopen request is already waiting for a decision", 409)
+    r = MisTaskReopenRequest(task_id=t.id, requested_by=user_id, reason=reason[:2000])
+    db.session.add(r)
+    _log(t.id, user_id, "REOPEN_REQUESTED", comment=reason[:2000])
+    db.session.commit()
+    if t.created_by != user_id:                         # the person who gave the task hears about it
+        _notify_user(t.created_by, t, "Reopen requested", user_id, "REOPEN_REQUESTED")
+    return res("Reopen request sent", r.to_dict(), 201)
+
+
+@_wrap
+def list_reopen_requests(args, user_id):
+    """scope=decide (waiting for me) | mine (I asked)."""
+    user_id = _uid(user_id)
+    scope = (args.get("scope") or "decide").strip()
+    if scope == "decide":
+        rows = _decidable_requests(user_id)
+    elif scope == "mine":
+        rows = (MisTaskReopenRequest.query.filter_by(requested_by=user_id)
+                .order_by(MisTaskReopenRequest.created_at.desc()).limit(100).all())
+    else:
+        raise _Err("scope must be decide or mine")
+    return res("ok", [r.to_dict() for r in rows])
+
+
+@_wrap
+def decide_reopen(request_id, data, user_id):
+    user_id = _uid(user_id)
+    r = MisTaskReopenRequest.query.get(request_id)
+    if not r or not r.task or r.task.is_deleted:
+        raise _Err("Request not found", 404)
+    if r.status != "Pending":
+        raise _Err(f"Already {r.status.lower()}", 409)
+    t = r.task
+    if not _can_decide(t, user_id, r.requested_by):
+        raise _Err("Only a higher level (not the requester) can decide this", 403)
+    approve = data.get("approve")
+    if not isinstance(approve, bool):
+        raise _Err("approve must be true or false")
+    note = (data.get("note") or "").strip() or None
+    if not approve and not note:
+        raise _Err("Give a reason for rejecting")
+    r.status = "Approved" if approve else "Rejected"
+    r.decided_by, r.decided_at, r.decision_note = user_id, datetime.utcnow(), note
+    if approve:
+        _reopen(t, user_id)
+        _log(t.id, user_id, "REOPENED", old="Done", new="In Progress", comment=note)
+    else:
+        _log(t.id, user_id, "REOPEN_REJECTED", comment=note)
+    db.session.commit()
+    _notify_user(r.requested_by, t, "Reopen approved" if approve else "Reopen rejected", user_id,
+                 "REOPEN_APPROVED" if approve else "REOPEN_REJECTED")
+    return res("Task reopened" if approve else "Request rejected", r.to_dict())
+
+
+@_wrap
+def reopen_direct(task_id, data, user_id):
+    """A higher level reopens a Done task themself (no request needed)."""
+    user_id = _uid(user_id)
+    t = _get_task(task_id)
+    if not t.is_locked:
+        raise _Err("Task is not locked")
+    if not _is_higher_level(t, user_id):
+        raise _Err("Only a higher level can reopen a Done task — raise a request instead", 403)
+    note = (data.get("note") or "").strip() or None
+    for r in MisTaskReopenRequest.query.filter_by(task_id=t.id, status="Pending").all():
+        r.status, r.decided_by, r.decided_at, r.decision_note = "Approved", user_id, datetime.utcnow(), note
+    _reopen(t, user_id)
+    _log(t.id, user_id, "REOPENED", old="Done", new="In Progress", comment=note)
+    db.session.commit()
+    if t.owner_user_id != user_id:
+        _notify_user(t.owner_user_id, t, "Reopened", user_id, "REOPENED")
+    return res("Task reopened", t.to_dict())

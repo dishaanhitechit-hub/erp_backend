@@ -32,11 +32,16 @@ from app.models.performanceModel import PerformanceReview, DisciplineCase, Emplo
 from app.models.misTask import MisTask, MisActivity
 from app.models.misFollowup import MisFollowup, MisFollowupStep
 
-WEIGHTS = {"onTime": 30, "quality": 25, "throughput": 15, "backlog": 10, "pickup": 5, "appraisal": 15}
+# One grading method for everyone — see GRADECARD.md (keep both in step).
+WEIGHTS = {"onTime": 25, "quality": 25, "throughput": 15, "timeEfficiency": 10,
+           "backlog": 10, "pickup": 5, "appraisal": 10}
 LABELS = {
     "onTime": "On-time delivery", "quality": "Quality (error-less)", "throughput": "Work completed",
-    "backlog": "Overdue backlog", "pickup": "Pick-up speed", "appraisal": "Manager appraisal",
+    "timeEfficiency": "Time vs estimate", "backlog": "Overdue backlog", "pickup": "Pick-up speed",
+    "appraisal": "Manager appraisal",
 }
+# time vs estimate, per task: up to 10 % over the estimate = full marks, 2× the estimate (or more) = 0
+TIME_GRACE, TIME_ZERO = 1.10, 2.0
 DISCIPLINE_POINTS = {"Low": 2, "Medium": 4, "High": 7, "Critical": 10}
 DISCIPLINE_CAP = 10
 PICKUP_BEST_H, PICKUP_WORST_H = 4, 72
@@ -108,14 +113,15 @@ def _subjects():
 
 def _blank():
     return {"due": 0, "onTime": 0, "lateDone": 0, "done": 0, "errors": 0, "reopened": 0, "rejected": 0,
-            "backlogBase": 0, "overdueOpen": 0, "pickupHours": []}
+            "backlogBase": 0, "overdueOpen": 0, "pickupHours": [], "timeScores": [], "overEstimate": 0}
 
 
-def _count_item(m, due, comp, created, start, end, cutoff):
+def _count_item(m, due, comp, created, start, end, cutoff, on_time=None):
+    """on_time: precise answer when a due TIME exists (finished before the due minute); else by date."""
     # judged only once it is finished or its due date has passed — work due later (or today) is not "late" yet
     if due and start <= due <= end and (comp is not None or due < cutoff):
         m["due"] += 1
-        if comp and comp <= due:
+        if comp and (on_time if on_time is not None else comp <= due):
             m["onTime"] += 1
         elif comp:
             m["lateDone"] += 1          # finished, but after the due date
@@ -143,13 +149,21 @@ def _collect(start, end, project_id=None):
         *([MisTask.project_id == project_id] if project_id else []),
     ).all()
     for t in tasks:
-        _count_item(m[t.owner_user_id], t.due_date, t.completed_at.date() if t.completed_at else None,
-                    t.created_at.date() if t.created_at else None, start, end, cutoff)
+        r = m[t.owner_user_id]
+        comp = t.completed_at.date() if t.completed_at else None
+        precise = (t.completed_at <= t.due_at) if (t.due_time and t.completed_at and t.due_date) else None
+        _count_item(r, t.due_date, comp, t.created_at.date() if t.created_at else None, start, end, cutoff, precise)
+        # time vs estimate: measured Start → Done (clock paused while On Hold)
+        if comp and start <= comp <= end and t.estimated_hours and (t.worked_seconds or 0) > 0:
+            ratio = (t.worked_seconds / 3600) / float(t.estimated_hours)
+            r["timeScores"].append(_time_score(ratio))
+            if ratio > 1:
+                r["overEstimate"] += 1
 
     # reopen = a Done task moved back to an open status in this period (owner's error)
     reopens = (db.session.query(MisTask.owner_user_id)
                .join(MisActivity, and_(MisActivity.entity_type == "task", MisActivity.entity_id == MisTask.id))
-               .filter(MisActivity.action == "STATUS", MisActivity.old_value == "Done",
+               .filter(MisActivity.action.in_(("STATUS", "REOPENED")), MisActivity.old_value == "Done",
                        MisActivity.created_at >= s_dt, MisActivity.created_at < e_dt,
                        *([MisTask.project_id == project_id] if project_id else [])).all())
     for (uid,) in reopens:
@@ -211,6 +225,15 @@ def _pickup_score(hours):
     return 100.0 * (PICKUP_WORST_H - hours) / (PICKUP_WORST_H - PICKUP_BEST_H)
 
 
+def _time_score(ratio):
+    """Worked ÷ estimated → 0–100. ≤ 1.10 = 100, ≥ 2.0 = 0, straight line between."""
+    if ratio <= TIME_GRACE:
+        return 100.0
+    if ratio >= TIME_ZERO:
+        return 0.0
+    return 100.0 * (TIME_ZERO - ratio) / (TIME_ZERO - TIME_GRACE)
+
+
 def _score_one(raw, median_done, appraisal, disc):
     parts = {}
 
@@ -236,6 +259,10 @@ def _score_one(raw, median_done, appraisal, disc):
     put("throughput", tp, f"{raw['done']} completed (team median {median_done:g})" if active else "No work recorded")
     put("backlog", 100.0 * (1 - raw["overdueOpen"] / raw["backlogBase"]) if raw["backlogBase"] else None,
         f"{raw['overdueOpen']} overdue of {raw['backlogBase']}" if raw["backlogBase"] else "No due work")
+    ts = raw.get("timeScores") or []
+    put("timeEfficiency", sum(ts) / len(ts) if ts else None,
+        f"{raw.get('overEstimate', 0)} of {len(ts)} timed task(s) over the estimate" if ts
+        else "No timed task with an estimate")
     ph = raw["pickupHours"]
     avg = sum(ph) / len(ph) if ph else None
     put("pickup", _pickup_score(avg) if ph else None, f"avg {avg:.1f} h to start" if ph else "No hand-offs received")
@@ -252,7 +279,8 @@ def _score_one(raw, median_done, appraisal, disc):
         "grade": grade_for(score),
         "components": parts,
         "deduction": {"points": deduction, "openCases": disc["cases"] if disc else 0},
-        "counts": {k: raw[k] for k in ("due", "onTime", "done", "errors", "reopened", "rejected", "overdueOpen")},
+        "counts": {**{k: raw[k] for k in ("due", "onTime", "done", "errors", "reopened", "rejected", "overdueOpen")},
+                   "timed": len(raw.get("timeScores") or []), "overEstimate": raw.get("overEstimate", 0)},
         "lowData": score is not None and items < LOW_DATA_ITEMS and not appraisal,
     }
 
@@ -400,6 +428,12 @@ def _row_for(subject, period, anchor, subjects):
     if row:
         return row
     start, end = period_bounds(period, anchor)
+    # not in the saved copy (e.g. a login user whose first work landed after it was saved): work it out now
+    fresh = compute_period(period, start, end, subjects)
+    if end < date.today():
+        save_snapshot(period, start, end, fresh)
+    if subject["key"] in fresh:
+        return fresh[subject["key"]]
     return {**subject, **_score_one(_blank(), 0, None, None), "period": period, "periodStart": start.isoformat(),
             "periodEnd": end.isoformat(), "periodLabel": period_label(period, start)}
 
