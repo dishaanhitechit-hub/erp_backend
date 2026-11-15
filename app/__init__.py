@@ -314,6 +314,10 @@ def create_app():
     app.register_blueprint(mis_sprint_bp, url_prefix="/mis/sprints")
     app.register_blueprint(mis_followup_bp, url_prefix="/mis/followups")
 
+    # MIS — Schedule Compliance report
+    from .modules.mis.compliance import mis_compliance_bp
+    app.register_blueprint(mis_compliance_bp, url_prefix="/mis/compliance")
+
     from .modules.communication.chatting.routes import comm_bp
     app.register_blueprint(comm_bp, url_prefix="/comm")
 
