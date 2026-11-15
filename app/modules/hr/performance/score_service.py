@@ -107,7 +107,7 @@ def _subjects():
 # ─────────────────────────────── raw metrics ───────────────────────────
 
 def _blank():
-    return {"due": 0, "onTime": 0, "done": 0, "errors": 0, "reopened": 0, "rejected": 0,
+    return {"due": 0, "onTime": 0, "lateDone": 0, "done": 0, "errors": 0, "reopened": 0, "rejected": 0,
             "backlogBase": 0, "overdueOpen": 0, "pickupHours": []}
 
 
@@ -117,6 +117,8 @@ def _count_item(m, due, comp, created, start, end, cutoff):
         m["due"] += 1
         if comp and comp <= due:
             m["onTime"] += 1
+        elif comp:
+            m["lateDone"] += 1          # finished, but after the due date
     if comp and start <= comp <= end:
         m["done"] += 1
     # backlog: due by the cut-off and still relevant in this period
