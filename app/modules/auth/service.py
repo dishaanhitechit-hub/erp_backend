@@ -81,12 +81,16 @@ def login_user(loginUserName, password):
         
     )
 
-    data = [ {"token" : token ,"id": user.id,
-            "username": user.username,
-            "role": user.global_role.name if user.global_role else None
-        }
-    ]
+    from app.modules.consent.service import consent_status_for_login
+    consent_required = consent_status_for_login(user.id)
 
+    data = [{
+        "token": token,
+        "id": user.id,
+        "username": user.username,
+        "role": user.global_role.name if user.global_role else None,
+        "consent_required": consent_required,
+    }]
 
     return res("Succesfully Loggin", data)
 

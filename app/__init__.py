@@ -24,6 +24,7 @@ def create_app():
 
     # auth models — must be imported so Alembic detects the table
     from .models import tokenBlocklist  # noqa — registers TokenBlocklist with Alembic
+    from .models import employeeConsent  # noqa — registers EmployeeConsent with Alembic
 
     # maintenance model — must be imported so Alembic detects the table
     from .models import maintenance_txn  # noqa
@@ -56,6 +57,9 @@ def create_app():
     # register routes
     from .modules.auth.routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/auth")
+
+    from .modules.consent.routes import consent_bp
+    app.register_blueprint(consent_bp, url_prefix="/auth/consent")
 
     from .modules.setting.routes import setting_bp
     app.register_blueprint(setting_bp, url_prefix="/setting")
