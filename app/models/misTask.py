@@ -1,6 +1,7 @@
 # app/models/misTask.py
 # MIS — Self Task + shared activity log (also used later by follow-ups).
 import uuid as _uuid
+from datetime import datetime
 
 from app.extensions import db
 
@@ -10,7 +11,12 @@ TASK_PRIORITIES = ("Low", "Medium", "High", "Critical")
 
 
 def _d(v):
-    return v.isoformat() if v else None
+    """Dates as YYYY-MM-DD; datetimes (stored in UTC) as ISO with a Z so browsers show local time."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v.replace(microsecond=0).isoformat() + "Z"
+    return v.isoformat()
 
 
 class MisTask(db.Model):
@@ -42,8 +48,9 @@ class MisTask(db.Model):
     tags = db.Column(db.JSON)
     is_deleted = db.Column(db.Boolean, nullable=False, default=False, index=True)
 
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
+    # all timestamps are UTC (set in Python so the DB server's time zone does not matter)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now(), onupdate=datetime.utcnow)
 
     owner = db.relationship("User", foreign_keys=[owner_user_id])
     creator = db.relationship("User", foreign_keys=[created_by])
@@ -96,7 +103,7 @@ class MisActivity(db.Model):
     old_value = db.Column(db.Text)
     new_value = db.Column(db.Text)
     comment = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now())
 
     user = db.relationship("User")
 
