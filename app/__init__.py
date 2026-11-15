@@ -307,6 +307,13 @@ def create_app():
     from .modules.mis.task.routes import mis_task_bp
     app.register_blueprint(mis_task_bp, url_prefix="/mis/tasks")
 
+    # MIS — Follow-up board (sprints → agendas → relay steps)
+    from .models import misFollowup  # noqa — registers MisSprint, MisFollowup, MisFollowupStep
+    from .modules.mis.sprint.routes import mis_sprint_bp
+    from .modules.mis.followup.routes import mis_followup_bp
+    app.register_blueprint(mis_sprint_bp, url_prefix="/mis/sprints")
+    app.register_blueprint(mis_followup_bp, url_prefix="/mis/followups")
+
     from .modules.communication.chatting.routes import comm_bp
     app.register_blueprint(comm_bp, url_prefix="/comm")
 
