@@ -68,6 +68,19 @@ def decide(now, settings, last_success, last_attempt, last_attempt_ok, idle_sinc
     return Decision(False, reason=f"in window {window}, waiting for server to be idle")
 
 
+def next_window_start(now, windows):
+    """When the next backup window opens (now, if inside one)."""
+    if active_window(now, windows):
+        return now
+    best = None
+    for w in windows:
+        start = now.replace(hour=w.start.hour, minute=w.start.minute, second=0, microsecond=0)
+        if start <= now:
+            start += timedelta(days=1)
+        best = start if best is None or start < best else best
+    return best
+
+
 def _ago(delta):
     mins = int(delta.total_seconds() // 60)
     return f"{mins // 60}h{mins % 60:02d}m"

@@ -16,7 +16,7 @@ from app.utils.email_template import (
     stat_row, section_header, table, no_data_note, build_email
 )
 from app.utils.date_utils import month_label, period_label, last_month_range
-from app.utils.email_service import send_monthly_report
+from app.utils.email_service import monthly_recipients, send_monthly_report
 from flask import current_app
 
 
@@ -155,5 +155,5 @@ def build_and_send():
     send_monthly_report(
         subject,
         html,
-        current_app.config.get("MAIL_RECIPIENT_HR", ""),
+        monthly_recipients("hr"),
     )

@@ -20,7 +20,7 @@ import os
 import sys
 from datetime import datetime
 
-from . import __version__, config, idle, notify, recovery, runner, schedule
+from . import __version__, config, emails, idle, notify, recovery, runner, schedule
 from . import state as st
 from .remote import Remote
 from .util import BackupError, log, parse_set_id
@@ -96,7 +96,8 @@ def main(argv=None):
     pr.add_argument("--from-remote", action="store_true")
     pr.add_argument("--jobs", type=int, default=4)
     sub.add_parser("idle")
-    sub.add_parser("test-email")
+    pt = sub.add_parser("test-email")
+    pt.add_argument("--category", default="backup_failure")
     args = p.parse_args(argv)
 
     settings = config.load()
@@ -135,7 +136,8 @@ def main(argv=None):
             ok, details = idle.probe(settings)
             print(json.dumps({"idle": ok, **details}, indent=2))
         elif args.cmd == "test-email":
-            sent = notify.send(settings, "Test e-mail", "Backup alerts reach this address.\n")
+            subject, html, text = emails.test_message(settings, args.category)
+            sent = notify.send(settings, subject, text, html, category=args.category)
             print("sent" if sent else "NOT sent — see log above")
             return 0 if sent else 1
     except BackupError as e:

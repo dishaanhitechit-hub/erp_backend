@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PRAX Ops Console</title>
+  <link rel="stylesheet" href="static/console.css">
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="Menu">☰</button>
+  <div class="brand"><span class="brand-mark sm">P</span><span>PRAX Ops Console</span></div>
+  <div class="topbar-info">
+    <span class="pill" id="env-pill">—</span>
+    <span class="pill pill-live" id="live-pill" title="Database the ERP is using now">live DB: —</span>
+  </div>
+  <div class="topbar-user">
+    <span class="muted" id="user-name">{{ user }}</span>
+    <button class="btn btn-ghost btn-sm" id="logout-btn">Sign out</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <a href="#overview" data-tab="overview" class="nav-item">◉ <span>Overview</span></a>
+    <a href="#history" data-tab="history" class="nav-item">☰ <span>Backup history</span></a>
+    <a href="#restore" data-tab="restore" class="nav-item">⟲ <span>Restore</span></a>
+    <a href="#alerts" data-tab="alerts" class="nav-item">✉ <span>Alert recipients</span></a>
+    <a href="#activity" data-tab="activity" class="nav-item">⧗ <span>Activity</span></a>
+    <div class="sidebar-foot tiny muted">Console v{{ version }}<br><span id="backup-version"></span></div>
+  </nav>
+
+  <main class="content">
+    <div id="job-banner" class="job-banner hidden"></div>
+
+    <!-- OVERVIEW -->
+    <section id="tab-overview" class="tab hidden">
+      <div class="page-head">
+        <div><h1>Overview</h1><p class="muted">Backup health at a glance</p></div>
+        <div class="actions">
+          <button class="btn" data-action="refresh_remote">Refresh Drive list</button>
+          <button class="btn" data-action="verify">Run restore test</button>
+          <button class="btn btn-primary" data-action="backup_now">Back up now</button>
+        </div>
+      </div>
+      <div id="health-hero" class="hero"></div>
+      <div class="grid stats" id="stat-cards"></div>
+      <div class="grid two">
+        <div class="card"><h2>Storage</h2><div id="storage"></div></div>
+        <div class="card"><h2>Schedule</h2><div id="schedule"></div></div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="tab-history" class="tab hidden">
+      <div class="page-head">
+        <div><h1>Backup history</h1><p class="muted">Every attempt, with its log</p></div>
+        <div class="segmented" id="history-seg">
+          <button data-view="runs" class="active">Backups</button>
+          <button data-view="tests">Restore tests</button>
+          <button data-view="log">Full log</button>
+        </div>
+      </div>
+      <div id="history-runs">
+        <div class="toolbar">
+          <select id="run-filter"><option value="">All results</option><option>SUCCESS</option><option>PARTIAL</option><option>FAILED</option></select>
+          <span class="muted tiny" id="run-count"></span>
+        </div>
+        <div class="table-wrap"><table class="table" id="runs-table">
+          <thead><tr><th>When</th><th>Result</th><th>Trigger</th><th>Took</th><th>Database</th><th>Files</th><th>On Drive</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+      <div id="history-tests" class="hidden">
+        <div class="table-wrap"><table class="table" id="tests-table">
+          <thead><tr><th>When</th><th>Result</th><th>Backup tested</th><th>Copy used</th><th>Notes</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+      <div id="history-log" class="hidden">
+        <div class="toolbar">
+          <input type="date" id="log-date">
+          <select id="log-level"><option value="">All levels</option><option>ERROR</option><option>WARNING</option><option>INFO</option></select>
+          <input type="search" id="log-q" placeholder="Search log…">
+          <button class="btn btn-sm" id="log-go">Show</button>
+        </div>
+        <pre class="logbox" id="log-box"></pre>
+      </div>
+    </section>
+
+    <!-- RESTORE -->
+    <section id="tab-restore" class="tab hidden">
+      <div class="page-head">
+        <div><h1>Restore</h1><p class="muted">Restore into a NEW database first, check it, then switch the live ERP</p></div>
+      </div>
+      <div class="steps">
+        <div class="card step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h2>Choose a backup</h2>
+            <div class="segmented small" id="src-seg"><button data-src="local" class="active">On server disk</button><button data-src="drive">On Google Drive</button></div>
+            <div id="set-list" class="set-list"></div>
+            <p class="tiny muted" id="drive-note"></p>
+          </div>
+        </div>
+        <div class="card step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h2>What to restore</h2>
+            <div class="segmented small" id="what-seg"><button data-what="db" class="active">Whole database</button><button data-what="file">One picture / document</button></div>
+            <div id="what-db">
+              <label>New database name<input id="target-db" placeholder="erp_db_restored_1"></label>
+              <label class="check"><input type="checkbox" id="with-media" checked> Also restore pictures &amp; files (to a staging folder — nothing live is touched)</label>
+              <button class="btn btn-primary" id="restore-db-btn">Restore into new database…</button>
+            </div>
+            <div id="what-file" class="hidden">
+              <div class="row"><input type="search" id="file-q" placeholder="Part of the path, e.g. Dipak or 350161"><button class="btn" id="file-search">Search</button></div>
+              <div id="file-results" class="file-results"></div>
+              <label class="check"><input type="checkbox" id="file-putback"> Put it back in the live folder if it is missing there (never overwrites)</label>
+            </div>
+          </div>
+        </div>
+        <div class="card step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h2>Databases &amp; switching</h2>
+            <p class="muted tiny">The ERP uses the database marked LIVE. Switching stops the ERP for about a minute, then checks it is healthy — if not, it switches back by itself.</p>
+            <div id="db-list"></div>
+            <div id="switch-back-box"></div>
+            <h3>Restored pictures waiting</h3>
+            <div id="staging-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALERTS -->
+    <section id="tab-alerts" class="tab hidden">
+      <div class="page-head">
+        <div><h1>Alert recipients</h1><p class="muted">Who receives which email — used by server alerts, backups and monthly reports</p></div>
+        <div class="actions">
+          <button class="btn" id="add-contact">+ Add person</button>
+          <button class="btn btn-primary" id="save-recipients" disabled>Save changes</button>
+        </div>
+      </div>
+      <div id="recipients-note"></div>
+      <div class="table-wrap"><table class="table matrix" id="matrix"></table></div>
+    </section>
+
+    <!-- ACTIVITY -->
+    <section id="tab-activity" class="tab hidden">
+      <div class="page-head"><div><h1>Activity</h1><p class="muted">Console jobs and every action, newest first</p></div></div>
+      <div class="grid two">
+        <div class="card"><h2>Jobs</h2><div class="table-wrap"><table class="table" id="jobs-table"><thead><tr><th>When</th><th>Action</th><th>By</th><th>Result</th></tr></thead><tbody></tbody></table></div></div>
+        <div class="card"><h2>Audit log</h2><div class="table-wrap"><table class="table" id="audit-table"><thead><tr><th>When</th><th>Who</th><th>What</th><th>From</th></tr></thead><tbody></tbody></table></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- modal -->
+<div class="modal-backdrop hidden" id="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head"><h2 id="modal-title"></h2><button class="icon-btn" id="modal-close" aria-label="Close">✕</button></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+<div id="toasts" class="toasts"></div>
+<script src="static/console.js"></script>
+</body>
+</html>

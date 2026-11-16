@@ -1,0 +1,20 @@
+[Unit]
+Description=PRAX ERP Ops Console (backups, restore, alert recipients)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=dishaan-hitech-it
+Group=dishaan-hitech-it
+WorkingDirectory=/srv/backend
+Environment=CONSOLE_ENV_FILE=/srv/prax-config/console.env
+# one worker: jobs and login-failure counting live in one process
+ExecStart=/srv/backend/venv/bin/gunicorn -w 1 --threads 8 --timeout 120 -b 127.0.0.1:6791 "ops_console.app:create_app()"
+Restart=always
+RestartSec=5
+# restore jobs run in their own process and survive a console restart
+KillMode=process
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

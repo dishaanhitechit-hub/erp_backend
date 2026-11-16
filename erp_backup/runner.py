@@ -5,7 +5,7 @@ import shutil
 import traceback
 from datetime import datetime, timedelta
 
-from . import backupset, idle, notify, retention, schedule
+from . import backupset, emails, idle, notify, retention, schedule
 from . import state as st
 from .remote import Remote
 from .util import BackupError, Lock, human_bytes, log, parse_set_id
@@ -91,6 +91,7 @@ def push_offsite(settings, now, newest_id):
         log.info("retention: deleting %s from Google Drive", name)
         remote.delete_set(name)
     remote.cleanup_partials(now)
+    write_remote_cache(settings, sorted(keep, key=parse_set_id), now)
 
     if settings.heartbeat_remote:
         remote.write_heartbeat(settings.heartbeat_remote, {
@@ -98,6 +99,13 @@ def push_offsite(settings, now, newest_id):
             "last_success_at": now.isoformat(),
             "sets_on_drive": len(keep),
         })
+
+
+def write_remote_cache(settings, names, now):
+    """List of sets on Google Drive, for the console (listing Drive is slow)."""
+    from .util import write_json_atomic
+    write_json_atomic(os.path.join(settings.local_dir, "remote_sets.json"),
+                      {"at": now.isoformat(), "sets": names})
 
 
 def local_sets(settings):
@@ -129,22 +137,9 @@ def prune_local(settings):
 def _alert_for(settings, result):
     if result["status"] == "SUCCESS":
         return
-    if result["status"] == "PARTIAL":
-        subject = f"WARNING — backup {result['backup_id']} only on local disk"
-    else:
-        subject = "FAILED — backup did not complete"
-        if "CORRUPTION" in (result.get("error") or ""):
-            subject = "URGENT — possible DATABASE CORRUPTION, backup failed"
-    body = (f"Backup:   {result['backup_id'] or '(not created)'}\n"
-            f"Trigger:  {result['trigger']}\n"
-            f"Started:  {result['started_at']}\n"
-            f"Status:   {result['status']}\n\n"
-            f"Problem:\n{result.get('error')}\n\n")
-    if result["warnings"]:
-        body += "Warnings:\n" + "\n".join(f" - {w}" for w in result["warnings"]) + "\n\n"
-    body += ("The tool retries automatically. Old backups are NOT deleted while runs fail.\n"
-             "On the server:  sudo -u erpbackup /opt/erp_backend/.venv/bin/python -m erp_backup status\n")
-    notify.send(settings, subject, body)
+    subject, html, text = emails.run_alert(settings, result)
+    notify.send(settings, subject, text, html, category="backup_failure",
+                urgent=result["status"] == "FAILED")
 
 
 # ── every 5 minutes ─────────────────────────────────────────────────────────
@@ -195,11 +190,8 @@ def _overdue_alarm(settings, state, now):
     sent = st.dt(state, "overdue_alert_at")
     if sent and now - sent < timedelta(hours=6):
         return
-    when = f"{last:%d %b %H:%M}" if last else "never"
-    notify.send(settings, "ALERT — no successful backup in the last "
-                f"{settings.max_gap_hours:g} hours",
-                f"Last successful backup: {when}\nLast error: {state.get('last_error')}\n\n"
-                "Data entered since then is NOT protected. Check the server.\n")
+    subject, html, text = emails.overdue(settings, state, now)
+    notify.send(settings, subject, text, html, category="backup_failure", urgent=True)
     state["overdue_alert_at"] = now.isoformat()
 
 
@@ -207,7 +199,19 @@ def _daily_summary(settings, state, now):
     today = now.date().isoformat()
     if now.hour < settings.summary_hour or state.get("summary_date") == today:
         return
-    notify.send(settings, f"Daily backup report {now:%d %b %Y}", summary_text(settings, state, now))
+    remote_count = about = remote_error = None
+    if settings.remote:
+        remote = Remote(settings)
+        try:
+            remote_count = len([n for n in remote.list_sets() if parse_set_id(n)])
+        except BackupError as e:
+            remote_error = f"cannot list: {e}"[:200]
+        about = remote.about()
+    else:
+        remote_error = "not configured — local only"
+    subject, html, text = emails.daily(settings, state, now, len(local_sets(settings)),
+                                       remote_count, about, remote_error)
+    notify.send(settings, subject, text, html, category="backup_daily")
     state["summary_date"] = today
 
 

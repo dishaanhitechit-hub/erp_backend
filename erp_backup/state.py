@@ -7,7 +7,7 @@ from datetime import datetime
 
 from .util import write_json_atomic
 
-HISTORY_LEN = 60
+HISTORY_LEN = 1000
 
 
 def _path(settings):
@@ -45,5 +45,14 @@ def record_run(state, result):
     hist.append({k: result.get(k) for k in
                  ("backup_id", "trigger", "status", "started_at", "finished_at",
                   "db_bytes", "media_bytes", "media_files", "uploaded", "error", "warnings")})
+    hist[-1]["duration_s"] = _duration(result)
     del hist[:-HISTORY_LEN]
     return state
+
+
+def _duration(result):
+    try:
+        return int((datetime.fromisoformat(result["finished_at"])
+                    - datetime.fromisoformat(result["started_at"])).total_seconds())
+    except (KeyError, TypeError, ValueError):
+        return None

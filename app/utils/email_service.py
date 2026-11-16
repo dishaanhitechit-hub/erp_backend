@@ -9,6 +9,15 @@ def _get_recipients(raw: str) -> list[str]:
     return [r.strip() for r in raw.split(",") if r.strip()]
 
 
+def monthly_recipients(name: str) -> str:
+    """Recipients of one monthly report ('finance', 'hr', …): from the shared
+    alert-recipients file edited in the Ops Console, else MAIL_RECIPIENT_<NAME>
+    from .env as before."""
+    from prax_ops import recipients
+    fallback = current_app.config.get(f"MAIL_RECIPIENT_{name.upper()}", "")
+    return ",".join(recipients.get(f"monthly_{name}", fallback=fallback))
+
+
 def send_monthly_report(subject: str, html_body: str, recipients_raw: str) -> None:
     """Send an HTML email via Gmail SMTP using an App Password."""
     recipients = _get_recipients(recipients_raw)

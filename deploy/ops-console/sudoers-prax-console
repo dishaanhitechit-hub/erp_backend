@@ -1,0 +1,3 @@
+# /etc/sudoers.d/prax-console  (install with: sudo visudo -cf <file> first)
+# Lets the Ops Console stop/start ONLY the ERP backend, for "Switch live".
+dishaan-hitech-it ALL=(root) NOPASSWD: /usr/bin/systemctl stop backend.service, /usr/bin/systemctl start backend.service

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PRAX Ops Console</title>
+  <link rel="stylesheet" href="static/console.css">
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="brand-mark">P</div>
+    <h1>PRAX Ops Console</h1>
+    <p class="muted">Backups · Restore · Alerts</p>
+    <form id="login-form" autocomplete="on">
+      <label>Username<input id="username" name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <div id="login-error" class="form-error" role="alert"></div>
+      <button class="btn btn-primary btn-block" type="submit" id="login-btn">Sign in</button>
+    </form>
+    <p class="tiny muted">Separate from the ERP login. Every action is recorded. · v{{ version }}</p>
+  </main>
+  <script src="static/login.js"></script>
+</body>
+</html>

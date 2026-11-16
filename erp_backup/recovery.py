@@ -18,7 +18,7 @@ import tarfile
 from datetime import datetime
 from urllib.parse import unquote
 
-from . import backupset, notify
+from . import backupset, emails, notify
 from . import state as st
 from .remote import Remote
 from .runner import local_sets
@@ -267,13 +267,18 @@ def verify(settings, name=None, from_remote=False, keep_db=False, email=True):
     report["finished_at"] = datetime.now(settings.tz).replace(microsecond=0).isoformat()
     _store_report(settings, report)
     if email:
-        notify.send(settings, f"Restore test {report['status']} — {report['backup_id']}", format_report(report))
+        subject, html, text = emails.restore_test(report)
+        notify.send(settings, subject, text, html, category="backup_restore_test",
+                    urgent=report["status"] != "PASSED")
     return report
 
 
 def _store_report(settings, report):
     state = st.load(settings)
     state["last_verify"] = report
+    hist = state.setdefault("verify_history", [])
+    hist.append({k: report.get(k) for k in ("at", "finished_at", "backup_id", "source", "status", "notes", "problems")})
+    del hist[:-200]
     st.save(settings, state)
     if not report.get("backup_id"):
         return
