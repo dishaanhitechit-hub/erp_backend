@@ -7,15 +7,15 @@ instead of sharing profit_loss. This migration:
   3. Inserts each code into module_master so approval paths can reference them
      (idempotent — skips codes already present, e.g. if the SQL was run manually).
 
-Revision ID: a1b2c3d4e5f6
-Revises: 3b7a5e16bc0e
+Revision ID: cc9d1e2f3a4b
+Revises: 48944c9768ae
 Create Date: 2026-11-16 12:00:00.000000
 
 """
 from alembic import op
 
-revision = 'a1b2c3d4e5f6'
-down_revision = '3b7a5e16bc0e'
+revision = 'cc9d1e2f3a4b'
+down_revision = '48944c9768ae'
 branch_labels = None
 depends_on = None
 
