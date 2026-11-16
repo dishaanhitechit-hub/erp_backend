@@ -1,0 +1,15 @@
+[Unit]
+Description=ERP weekly restore test (restores the newest backup into a throw-away DB)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=erp
+Group=erp
+WorkingDirectory=/opt/erp_backend
+# --from-remote: test the copy on Google Drive, i.e. exactly what we'd use if the server burned
+ExecStart=/opt/erp_backend/.venv/bin/python -m erp_backup verify --from-remote
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

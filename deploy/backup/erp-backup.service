@@ -1,0 +1,17 @@
+[Unit]
+Description=ERP backup scheduler check (decides itself whether to back up now)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Same Linux user that runs the ERP (gunicorn) so it can read every uploaded file.
+User=erp
+Group=erp
+WorkingDirectory=/opt/erp_backend
+ExecStart=/opt/erp_backend/.venv/bin/python -m erp_backup tick
+# a full backup can take hours; never let systemd kill it half-way
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
