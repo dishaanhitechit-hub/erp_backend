@@ -9,6 +9,7 @@ restore — emergency: restore a set into a NEW database (never over the live
           one) and optionally unpack the media into a folder you choose.
 """
 
+import json
 import os
 import re
 import shutil
@@ -105,6 +106,43 @@ def _row_counts(settings, dbname):
         conn.close()
 
 
+def _strings_in(value):
+    """All strings inside a column value: JSON is walked, plain text is itself."""
+    try:
+        data = json.loads(value)
+    except (TypeError, ValueError):
+        return [value]
+    out, stack = [], [data]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, list):
+            stack.extend(item)
+        elif isinstance(item, dict):
+            stack.extend(item.values())
+    return out
+
+
+def extract_media_paths(value, base, pattern):
+    """'media/<path>' for every file URL in one column value. A string that is
+    just a URL is taken whole, so folder/file names with spaces survive
+    (e.g. user/Dipak Jana_7/photo.jpg); URLs inside longer text use the regex."""
+    found = set()
+    for s in _strings_in(value or ""):
+        s = s.strip()
+        bare = re.sub(r"^https?://", "", s)
+        if bare.startswith(base + "/") and "\n" not in s:
+            rels = [bare[len(base) + 1:]]
+        else:
+            rels = pattern.findall(s)
+        for rel in rels:
+            rel = unquote(rel).replace("\\/", "/").strip("/")
+            if rel:
+                found.add("media/" + rel)
+    return found
+
+
 def media_urls_in_db(settings, dbname):
     """Every uploaded-file path referenced anywhere in the database, as it
     appears in the media index ('media/<folder>/<file>')."""
@@ -129,8 +167,7 @@ def media_urls_in_db(settings, dbname):
                 c=sql.Identifier(column), s=sql.Identifier(schema), t=sql.Identifier(table)),
                 (f"%{base}/%",))
             for (value,) in cur.fetchall():
-                for rel in pattern.findall(value or ""):
-                    found.add("media/" + unquote(rel).replace("\\/", "/").strip("/"))
+                found.update(extract_media_paths(value, base, pattern))
         return found
     finally:
         conn.close()
