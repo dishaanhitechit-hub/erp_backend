@@ -8,11 +8,12 @@ instead of sharing profit_loss. This migration:
      (idempotent — skips codes already present, e.g. if the SQL was run manually).
 
 Revision ID: cc9d1e2f3a4b
-Revises: 48944c9768ae
+Revises: 3b7a5e16bc0e
 Create Date: 2026-11-16 12:00:00.000000
 
 """
 from alembic import op
+import sqlalchemy as sa
 
 revision = 'cc9d1e2f3a4b'
 down_revision = '3b7a5e16bc0e'
@@ -47,41 +48,45 @@ def upgrade():
 
     # 1. Ensure Finance Management main module exists
     row = conn.execute(
-        "SELECT id FROM main_modules WHERE module_name = 'Finance Management' LIMIT 1"
+        sa.text("SELECT id FROM main_modules WHERE module_name = 'Finance Management' LIMIT 1")
     ).fetchone()
     if row:
         main_id = row[0]
     else:
         main_id = conn.execute(
-            "INSERT INTO main_modules (module_name, icon) VALUES ('Finance Management', 'Wallet') RETURNING id"
+            sa.text("INSERT INTO main_modules (module_name, icon) VALUES ('Finance Management', 'Wallet') RETURNING id")
         ).fetchone()[0]
 
     # 2. Ensure Central Accounting sub-module exists under Finance Management
     row = conn.execute(
-        f"SELECT id FROM sub_modules WHERE main_module_id = {main_id} AND submodule_name = 'Central Accounting' LIMIT 1"
+        sa.text("SELECT id FROM sub_modules WHERE main_module_id = :mid AND submodule_name = 'Central Accounting' LIMIT 1"),
+        {"mid": main_id},
     ).fetchone()
     if row:
         sub_id = row[0]
     else:
         sub_id = conn.execute(
-            f"INSERT INTO sub_modules (main_module_id, submodule_name) VALUES ({main_id}, 'Central Accounting') RETURNING id"
+            sa.text("INSERT INTO sub_modules (main_module_id, submodule_name) VALUES (:mid, 'Central Accounting') RETURNING id"),
+            {"mid": main_id},
         ).fetchone()[0]
 
     # 3. Insert feature_pages (idempotent)
+    insert_page = sa.text(
+        """INSERT INTO feature_pages (submodule_id, page_name, page_code, route_path, is_menu_visible, sort_order)
+        SELECT :sid, :name, :code, :route, TRUE, :sort
+        WHERE NOT EXISTS (SELECT 1 FROM feature_pages WHERE page_code = :code)"""
+    )
     for i, (code, name, route) in enumerate(_PAGES, start=1):
-        conn.execute(
-            f"""INSERT INTO feature_pages (submodule_id, page_name, page_code, route_path, is_menu_visible, sort_order)
-            SELECT {sub_id}, '{name}', '{code}', '{route}', TRUE, {i}
-            WHERE NOT EXISTS (SELECT 1 FROM feature_pages WHERE page_code = '{code}')"""
-        )
+        conn.execute(insert_page, {"sid": sub_id, "name": name, "code": code, "route": route, "sort": i})
 
     # 4. Insert module_master (idempotent — skips rows from any manual SQL run)
+    insert_module = sa.text(
+        """INSERT INTO module_master (module_code, module_name, status)
+        SELECT :code, :name, 'Active'
+        WHERE NOT EXISTS (SELECT 1 FROM module_master WHERE module_code = :code)"""
+    )
     for code, name, _ in _PAGES:
-        conn.execute(
-            f"""INSERT INTO module_master (module_code, module_name, status)
-            SELECT '{code}', '{name}', 'Active'
-            WHERE NOT EXISTS (SELECT 1 FROM module_master WHERE module_code = '{code}')"""
-        )
+        conn.execute(insert_module, {"code": code, "name": name})
 
 
 def downgrade():
