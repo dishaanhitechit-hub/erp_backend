@@ -4,3 +4,37 @@ __pycache__/
 venv/
 /app/modules/billing/brr_billing_grn/
 /app/modules/billing/brr_billing_srn/
+
+# Documentation (README, plans, changelog) stays on developer machines only:
+# not in git, so never deployed to the server.
+*.md
+*.MD
+
+# ── Not needed on the production server (development / one-off tools) ──
+tests/
+pytest.ini
+requirements-dev.txt
+/test_*.py
+/vang.py
+/important.py
+/reset_db.py
+/seed_data_module.py
+/fix_pending_deletes.py
+/Procfile
+/nixpacks.toml
+/docs/
+/asset/Indent_unpacked/
+/asset/gen_indent_template.js
+/asset/order/*.html
+
+# ── Local tool / editor / environment files ──
+.idea/
+.claude/
+.pytest_cache/
+.venv/
+.env.*
+
+# ── Runtime data: new uploads are never committed. The 5 signature images
+#    already in git stay tracked on purpose (untracking them would make
+#    `git pull` delete them from the server). ──
+uploads/
