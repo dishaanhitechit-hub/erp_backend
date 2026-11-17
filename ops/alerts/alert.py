@@ -112,8 +112,11 @@ def check_services():
     return [s for s in SERVICES if run(f"systemctl is-active {s}.service")!="active"]
 
 def check_db():
+    # pg_isready needs no sudo or password. The old "sudo -u postgres psql"
+    # check always failed when run as the normal user (sudo wants a password),
+    # which sent a false "Database UNREACHABLE" CRITICAL.
     try:
-        r=subprocess.run(["sudo","-u","postgres","psql","-d","erp_db","-c","SELECT 1;"],
+        r=subprocess.run(["pg_isready","-h","127.0.0.1","-p","5432","-d","erp_db","-t","5"],
             capture_output=True,text=True,timeout=10)
         return r.returncode==0
     except: return False
