@@ -45,6 +45,13 @@ keepalive = _int("GUNICORN_KEEPALIVE", 5)
 max_requests = _int("GUNICORN_MAX_REQUESTS", 0)
 max_requests_jitter = _int("GUNICORN_MAX_REQUESTS_JITTER", 50 if max_requests else 0)
 
+# ── request header size ─────────────────────────────────────────────
+# The project token carries the user's permission list, so a user with
+# many permissions sends an Authorization header over Gunicorn's default
+# 8190 bytes (answered with 431). Keep this in step with Nginx's
+# large_client_header_buffers (4 32k, in /etc/nginx/conf.d/large-headers.conf).
+limit_request_field_size = _int("GUNICORN_LIMIT_REQUEST_FIELD_SIZE", 32768)
+
 # ── misc ────────────────────────────────────────────────────────────
 # Heartbeat files in RAM: avoids false worker timeouts on a slow disk.
 worker_tmp_dir = "/dev/shm" if os.path.isdir("/dev/shm") else None
