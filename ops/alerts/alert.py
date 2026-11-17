@@ -135,15 +135,10 @@ def get_uptime():
 
 def get_db_migrations():
     """Get recent alembic migrations from DB"""
-    try:
-        r=subprocess.run(
-            ["sudo","-u","postgres","psql","-d","erp_db","-t","-c",
-             "SELECT version_num FROM alembic_version;"],
-            capture_output=True,text=True,timeout=10)
-        if r.returncode==0:
-            return r.stdout.strip()
-    except: pass
-    return None
+    # As the ERP's own database user from /srv/backend/.env (the old
+    # "sudo -u postgres psql" always failed without a sudo password).
+    from prax_ops.alert_settings import alembic_version
+    return alembic_version(_os.environ.get("PRAX_BACKEND_DIR", "/srv/backend"))
 
 def get_recent_migration_log():
     """Get last 5 migration related lines from backend journal"""

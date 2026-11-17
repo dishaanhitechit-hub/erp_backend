@@ -42,12 +42,21 @@ error_msg = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Unknown error"
 now       = datetime.now().strftime("%d %b %Y %H:%M:%S")
 hostname  = socket.gethostname()
 
-# Get last 20 lines of backend journal for context
-journal_logs = run("journalctl -u backend.service -n 20 --no-pager --output=short-iso 2>/dev/null")
+# Which app failed: each deploy.yml does "cd /srv/<app>" before calling this
+# script, so use the current folder (or PRAX_APP_DIR). Falls back to the ERP.
+from prax_ops.alert_settings import alembic_version as _alembic_version
+_cwd = _os.getcwd()
+APP_DIR   = _os.environ.get("PRAX_APP_DIR") or (_cwd if _os.path.isdir(_os.path.join(_cwd, "migrations")) else "/srv/backend")
+APP_NAME  = _os.path.basename(APP_DIR.rstrip("/")) or "backend"
+SERVICE   = f"{APP_NAME}.service"
+APP_LABEL = "PRAX ERP" if APP_NAME == "backend" else APP_NAME
 
-# Get alembic version info
-db_version = run("sudo -u postgres psql -d erp_db -t -c 'SELECT version_num FROM alembic_version;' 2>/dev/null").strip()
-migration_files = run("ls /srv/backend/migrations/versions/ 2>/dev/null")
+# Get last 20 lines of the app's journal for context
+journal_logs = run(f"journalctl -u {SERVICE} -n 20 --no-pager --output=short-iso 2>/dev/null")
+
+# Get alembic version info (as the app's own database user, no sudo)
+db_version = _alembic_version(APP_DIR)
+migration_files = run(f"ls {APP_DIR}/migrations/versions/ 2>/dev/null")
 
 def log_rows(logs):
     rows = ""
@@ -74,7 +83,7 @@ html = f"""<!DOCTYPE html><html lang="en">
   <!-- STATUS -->
   <tr><td style="background:#FFF1F2;border-left:3px solid #FECACA;border-right:3px solid #FECACA;padding:20px;text-align:center">
     <div style="font-size:40px;line-height:1;margin-bottom:8px">🔴</div>
-    <div style="font-size:20px;font-weight:800;color:#7F1D1D;margin-bottom:6px">Database Migration Failed</div>
+    <div style="font-size:20px;font-weight:800;color:#7F1D1D;margin-bottom:6px">Database Migration Failed — {APP_LABEL}</div>
     <div style="font-size:11px;color:#78716C">{now} IST</div>
   </td></tr>
 
@@ -83,7 +92,11 @@ html = f"""<!DOCTYPE html><html lang="en">
     <div style="font-size:12px;font-weight:700;color:#44403C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">⚡ Error Details</div>
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-radius:8px;overflow:hidden;border:1px solid #FECACA;background:#FFF8F8">
       <tr>
-        <td style="padding:10px 12px;font-size:13px;color:#78716C;border-bottom:1px solid #FEE2E2;width:35%">Command</td>
+        <td style="padding:10px 12px;font-size:13px;color:#78716C;border-bottom:1px solid #FEE2E2;width:35%">App</td>
+        <td style="padding:10px 12px;font-size:13px;color:#44403C;font-weight:700;border-bottom:1px solid #FEE2E2;font-family:monospace">{APP_NAME} ({APP_DIR})</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 12px;font-size:13px;color:#78716C;border-bottom:1px solid #FEE2E2">Command</td>
         <td style="padding:10px 12px;font-size:13px;color:#991B1B;font-weight:700;border-bottom:1px solid #FEE2E2;font-family:monospace">flask db upgrade</td>
       </tr>
       <tr>
@@ -110,16 +123,16 @@ html = f"""<!DOCTYPE html><html lang="en">
     <div style="font-size:12px;font-weight:700;color:#44403C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">🔧 Immediate Actions</div>
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-radius:8px;overflow:hidden;border:1px solid #E8D5C0;background:#FFF8F2">
       <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">1. SSH into server: <span style="font-family:monospace;color:#1D4ED8">ssh dishaan-hitech-it@132.154.156.82</span></td></tr>
-      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">2. Check migration files: <span style="font-family:monospace;color:#1D4ED8">ls /srv/backend/migrations/versions/</span></td></tr>
-      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">3. Check DB version: <span style="font-family:monospace;color:#1D4ED8">sudo -u postgres psql -d erp_db -c "SELECT * FROM alembic_version;"</span></td></tr>
-      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">4. Check backend logs: <span style="font-family:monospace;color:#1D4ED8">sudo journalctl -u backend.service -n 50</span></td></tr>
+      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">2. Check migration files: <span style="font-family:monospace;color:#1D4ED8">ls {APP_DIR}/migrations/versions/</span></td></tr>
+      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">3. Check DB version: <span style="font-family:monospace;color:#1D4ED8">cd {APP_DIR} &amp;&amp; venv/bin/flask db current</span></td></tr>
+      <tr><td style="padding:8px 12px;font-size:12px;color:#44403C;border-bottom:1px solid #F5F5F4">4. Check app logs: <span style="font-family:monospace;color:#1D4ED8">sudo journalctl -u {SERVICE} -n 50</span></td></tr>
       <tr><td style="padding:8px 12px;font-size:12px;color:#44403C">5. Fix sync if needed: <span style="font-family:monospace;color:#1D4ED8">flask db stamp head</span></td></tr>
     </table>
   </td></tr>
 
   <!-- LOG SNAPSHOT -->
   <tr><td style="background:#FFFAF5;padding:16px;border-left:3px solid #E8D5C0;border-right:3px solid #E8D5C0;border-top:8px solid #F5EFE6">
-    <div style="font-size:12px;font-weight:700;color:#44403C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">📜 Backend Log Snapshot</div>
+    <div style="font-size:12px;font-weight:700;color:#44403C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">📜 {APP_NAME} Log Snapshot</div>
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-radius:8px;overflow:hidden;border:1px solid #FDE68A;background:#FFFDF5">
       <tbody>{log_rows(journal_logs)}</tbody>
     </table>
@@ -142,7 +155,7 @@ try:
     msg = MIMEMultipart("alternative")
     msg["From"]             = f"PRAX ERP Alerts <{FROM_EMAIL}>"
     msg["To"]               = ", ".join(ALL_EMAILS)
-    msg["Subject"]          = f"🔴 PRAX ERP — DB Migration FAILED | {now}"
+    msg["Subject"]          = f"🔴 {APP_LABEL} — DB Migration FAILED | {now}"
     msg["Importance"]       = "high"
     msg["X-Priority"]       = "1"
     msg["X-MSMail-Priority"]= "High"
