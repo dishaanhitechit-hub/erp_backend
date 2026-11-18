@@ -5,9 +5,11 @@ Same shape as the Journal bulk upload: the frontend parses the file into plain
 rows and posts them here. One row = one CC expense line; rows sharing the same
 ``docketRef`` become one docket (DV…, Draft).
 
-Every docket must reference an Approved petty-cash budget of the project, every
-CC line must be a CC of that budget, and the amount may not exceed what is left
-of that CC's budget (other dockets incl. earlier dockets of the same file count).
+Every docket must reference an Approved petty-cash budget of the project.
+A CC line may use any valid CC code — same as the single docket form, CCs that
+are not in the budget are allowed (saved without a budget line link). For CCs
+that ARE in the budget the amount may not exceed what is left of that CC's
+budget (other dockets incl. earlier dockets of the same file count).
 
 Endpoints (see routes.py):
   GET  /finance/petty-cash/docket-voucher/bulk/reference?projectCode
@@ -324,9 +326,8 @@ def _validate(rows, project):
                 if not cc_obj:
                     errs.append(f"CC code '{cc}' not found")
                 elif budget is not None:
+                    # not-in-budget CCs are allowed (no budget line → no balance check)
                     line = lk.budget_line.get((budget.id, cc.upper()))
-                    if not line:
-                        errs.append(f"CC '{cc}' is not in budget {budget.budget_no}")
 
             amt, e = _parse_amount(n["amount"])
             if e:
@@ -350,6 +351,7 @@ def _validate(rows, project):
                 "ccCode":         cc_obj.cc_code if cc_obj else cc,
                 "ccName":         cc_obj.cc_name if cc_obj else None,
                 "budgetDetailId": line.id if line else None,
+                "inBudget":       bool(line),
                 "description":    n["description"],
                 "amount":         n["amount"] if errs else float(amt),
                 "errors":         errs,
