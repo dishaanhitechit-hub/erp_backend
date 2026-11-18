@@ -8,6 +8,7 @@ from app.modules.finance.bank_statement.service import (
     revert_batch,
     list_transactions,
     transaction_history,
+    update_transaction_site,
     available_for_docket,
 )
 
@@ -64,6 +65,13 @@ def api_bank_statement_transactions():
 @login_required
 def api_bank_statement_txn_history(txn_id):
     return transaction_history(txn_id, _uid())
+
+
+# fix / fill SITE on one line: { site } ("" clears)
+@bank_statement_bp.route("/transactions/<int:txn_id>/site", methods=["PUT"])
+@login_required
+def api_bank_statement_txn_site(txn_id):
+    return update_transaction_site(txn_id, request.get_json() or {}, _uid())
 
 
 # petty cash docket picker ?projectCode&bankCashId&kind=bank|upi|all&docketId&fromDate&toDate&search

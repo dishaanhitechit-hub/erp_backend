@@ -616,6 +616,39 @@ def transaction_history(txn_id, user_id):
         return res(str(e), [], 500)
 
 
+def update_transaction_site(txn_id, data, user_id):
+    """Set / change / clear SITE on one imported line (e.g. missed in the file).
+    Site must be a project linked to the account; locked once a docket holds the line."""
+    try:
+        t = BankTransaction.query.filter_by(id=txn_id).with_for_update().first()
+        if not t:
+            return res("Transaction not found", [], 404)
+        if not _can_account(user_id, t.bank_account_id, "EDIT"):
+            return res("You do not have edit access to this bank account's statements", [], 403)
+        if t.linked_docket_id or t.reconciliation_status == "Reconciled":
+            return res("This line is already linked to a docket — unlink it from the docket before changing the site", [], 400)
+
+        site = _s(data.get("site")).upper() or None
+        if site:
+            project = (Project.query.join(BankCashProject, BankCashProject.project_id == Project.id)
+                       .filter(BankCashProject.bank_cash_id == t.bank_account_id,
+                               func.upper(Project.project_code) == site).first())
+            if not project:
+                return res(f"Site {site} is not linked to this bank account (Master > Bank/Cash)", [], 400)
+            site = project.project_code
+        old = t.site_code
+        if (old or None) == site:
+            return res("Site unchanged", _txn_payload(t, with_link=True), 200)
+        t.site_code = site
+        _audit(t, "SITE", user_id, note=f"Site {old or '(blank)'} -> {site or '(blank)'}")
+        db.session.commit()
+        return res("Site updated", _txn_payload(t, with_link=True), 200)
+    except Exception as e:
+        db.session.rollback()
+        log.exception("update site failed")
+        return res(str(e), [], 500)
+
+
 # ══════════════════════════════════════════════════════════════════
 # PETTY CASH DOCKET — picker + link lifecycle
 # ══════════════════════════════════════════════════════════════════
