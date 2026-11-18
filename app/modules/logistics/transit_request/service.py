@@ -396,7 +396,7 @@ def get_tr_list(data):
             order_no = row.order.order_no if row.order else None
             creator_name = None
             if row.creator:
-                creator_name = f"{row.creator.first_name or ''} {row.creator.last_name or ''}".strip()
+                creator_name = row.creator.username
 
             total_requested = sum(
                 float(i.requested_qty or 0) for i in row.items
@@ -486,7 +486,7 @@ def get_tr_detail(tr_id):
         def _user_name(user):
             if not user:
                 return None
-            return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+            return user.username
 
         # Fulfillment status — computed from linked DCs:
         #   no items with order_item_id → Open

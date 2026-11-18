@@ -473,7 +473,7 @@ def get_lb_detail(lb_id):
         def _user_name(user):
             if not user:
                 return None
-            return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+            return user.username
 
         vendor = lb.vendor
         vendor_data = None
