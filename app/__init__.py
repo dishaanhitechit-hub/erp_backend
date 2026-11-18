@@ -331,6 +331,10 @@ def create_app():
     from .modules.communication.chatting.routes import comm_bp
     app.register_blueprint(comm_bp, url_prefix="/comm")
 
+    # Edox Drive connection (new; does not change how files are uploaded)
+    from .modules.drive_bridge.routes import drive_bridge_bp
+    app.register_blueprint(drive_bridge_bp, url_prefix="/drive-bridge")
+
     # from .modules.communication.frontend_route import frontend_bp
     # app.register_blueprint(frontend_bp)
 

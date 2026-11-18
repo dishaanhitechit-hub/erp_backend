@@ -119,3 +119,26 @@ def api_approved_dockets():
 @login_required
 def api_ref_bills():
     return get_ref_bills(request.args.to_dict())
+
+
+# ── 16. BULK UPLOAD (Excel / CSV) ─────────────────────────────────
+from app.modules.finance.journal_entry.bulk_import import (  # noqa: E402
+    validate_bulk_journal,
+    import_bulk_journal,
+)
+
+
+@journal_entry_bp.route("/bulk/validate", methods=["POST"])
+@login_required
+def api_bulk_validate_journal():
+    data    = request.get_json() or {}
+    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
+    return validate_bulk_journal(data, user_id)
+
+
+@journal_entry_bp.route("/bulk/import", methods=["POST"])
+@login_required
+def api_bulk_import_journal():
+    data    = request.get_json() or {}
+    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
+    return import_bulk_journal(data, user_id)
