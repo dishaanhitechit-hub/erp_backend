@@ -54,6 +54,8 @@ from .brbMaster import BrbMaster, BrbItem
 from .paymentRequest import PaymentRequestMaster
 from .machineryLogBook import *
 from .dcMaster import *
+from .transitRequest import TransitRequest, TransitRequestItem
+from .logisticsBill import LogisticsBill, LogisticsBillChallan
 from .bankCash import *
 from .search_history import SearchHistory
 from .dlrMaster import DlrMaster, DlrItem

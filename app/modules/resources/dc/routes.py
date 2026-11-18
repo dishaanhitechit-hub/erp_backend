@@ -7,6 +7,7 @@ from app.modules.resources.dc.service import (
     get_order_items_for_dc,
     get_from_details,
     create_dc,
+    update_dc,
     get_dc_list,
     get_dc_detail,
     submit_dc,
@@ -15,6 +16,10 @@ from app.modules.resources.dc.service import (
     reback_dc,
     get_dc_history,
     get_dc_my_approval_status,
+    get_dc_print_detail,
+    update_dc_transit_status,
+    upload_dc_pod,
+    verify_dc_pod,
 )
 
 dc_bp = Blueprint("dc", __name__)
@@ -123,8 +128,48 @@ def api_dc_my_approval_status(dc_id):
     return get_dc_my_approval_status(dc_id, user["id"])
 
 
+@dc_bp.route("/edit/<int:dc_id>", methods=["PUT"])
+@jwt_required()
+def api_update_dc(dc_id):
+    user_id = int(get_jwt_identity())
+    data = request.form.to_dict()
+    files = request.files
+    return update_dc(dc_id, data, user_id, files)
+
+
+@dc_bp.route("/print/<string:dc_uuid>", methods=["GET"])
+@jwt_required()
+def api_dc_print(dc_uuid):
+    return get_dc_print_detail(dc_uuid)
+
+
 @dc_bp.route("/<int:dc_id>", methods=["DELETE"])
 @login_required
 def api_delete_dc(dc_id):
     from .service import delete_dc
     return delete_dc(dc_id)
+
+
+# ── Transit status (operational, no approval) ──────────────────────
+@dc_bp.route("/update-transit-status/<int:dc_id>", methods=["POST"])
+@login_required
+def api_update_dc_transit_status(dc_id):
+    user = g.current_user
+    body = request.get_json(silent=True) or {}
+    return update_dc_transit_status(dc_id, body.get("transitStatus"), user["id"])
+
+
+# ── POD upload / verify ───────────────────────────────────────────
+@dc_bp.route("/upload-pod/<int:dc_id>", methods=["POST"])
+@login_required
+def api_upload_dc_pod(dc_id):
+    user = g.current_user
+    pod_file = request.files.get("podFile")
+    return upload_dc_pod(dc_id, pod_file, user["id"])
+
+
+@dc_bp.route("/verify-pod/<int:dc_id>", methods=["POST"])
+@login_required
+def api_verify_dc_pod(dc_id):
+    user = g.current_user
+    return verify_dc_pod(dc_id, user["id"])

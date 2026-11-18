@@ -35,6 +35,8 @@ from app.models.grnMaster          import GrnMaster
 from app.models.srnMaster          import SrnMaster
 from app.models.ginMaster          import GinMaster
 from app.models.dcMaster           import DcMaster
+from app.models.transitRequest     import TransitRequest
+from app.models.logisticsBill      import LogisticsBill, LogisticsBillChallan
 from app.models.dlrMaster          import DlrMaster
 from app.models.bvsMaster          import BvsMaster
 from app.models.bssMaster          import BssMaster
@@ -213,7 +215,36 @@ DEPENDENCY_MAP = {
         "model_class":  DcMaster,
         "doc_no_field": "dc_no",
         "project_field": "to_project_code",
-        "children": [],  # leaf
+        # DC may be linked to a Logistics Bill — block delete until unlinked.
+        "children": [],
+        "special_checks": ["dc_in_logistics_bill"],
+    },
+
+    "TR": {
+        # Transit Request may already have linked DCs. Delete is blocked when
+        # any DC references this TR; the user must detach / cancel those DCs first.
+        "model_class":  TransitRequest,
+        "doc_no_field": "tr_no",
+        "project_field": "project_code",
+        "children": [
+            {
+                "child_model":  DcMaster,
+                "fk_column":    "transit_request_id",
+                "doc_no_field": "dc_no",
+                "module_code":  "DC",
+                "label":        "DC (Delivery Challan linked to this TR)",
+            },
+        ],
+    },
+
+    "LB": {
+        # Logistics Bill — delete is blocked when posted to Finance (voucher_id
+        # not null). See delete_lb in bill_register service for the check.
+        "model_class":  LogisticsBill,
+        "doc_no_field": "lb_no",
+        "project_field": "project_code",
+        "children": [],
+        "special_checks": ["lb_posted_to_finance"],
     },
 
     "DLR": {
@@ -583,6 +614,8 @@ MODULE_DISPLAY_NAMES = {
     "SRN":                  "SRN",
     "GIN":                  "GIN",
     "DC":                   "Delivery Challan",
+    "TR":                   "Transit Request",
+    "LB":                   "Logistics Bill",
     "DLR":                  "Daily Labour Report",
     "BVS":                  "Vendor Billing (GRN)",
     "BSS":                  "Vendor Billing (SRN)",

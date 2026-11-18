@@ -3,6 +3,7 @@
 
 from app.extensions import db
 from datetime import datetime
+import uuid as _uuid
 
 
 class DcMaster(db.Model):
@@ -12,16 +13,40 @@ class DcMaster(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     dc_no = db.Column(db.String(50), unique=True, nullable=False)
+    dc_uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=True,
+        index=True,
+        default=lambda: str(_uuid.uuid4())
+    )
     challan_date = db.Column(db.Date, nullable=False)
 
     # Purchase_Order | Site_Transfer_Order
     order_type = db.Column(db.String(50), nullable=False)
+
+    # Against_TR | Direct_Sale | Transfer | Return
+    dispatch_type = db.Column(db.String(30), nullable=True)
 
     order_id = db.Column(
         db.Integer,
         db.ForeignKey("order_master.id"),
         nullable=False
     )
+
+    # Consignee (receiving party) details — invoice-grade
+    consignee_name = db.Column(db.String(200), nullable=True)
+    consignee_gstin = db.Column(db.String(20), nullable=True)
+    consignee_address = db.Column(db.Text, nullable=True)
+
+    # Transporter — vendor reconciled with Logistics Bill
+    transporter_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendors.id"),
+        nullable=True
+    )
+    # LR / Lorry Receipt / Consignment No from transporter
+    lr_no = db.Column(db.String(100), nullable=True)
 
     # From side — vendor (Purchase_Order) or project (Site_Transfer_Order)
     from_vendor_id = db.Column(
@@ -53,12 +78,30 @@ class DcMaster(db.Model):
     vehicle_number = db.Column(db.String(100), nullable=True)
     driver_name = db.Column(db.String(150), nullable=True)
     driver_contact_number = db.Column(db.String(20), nullable=True)
+    driver_license = db.Column(db.String(50), nullable=True)
 
     eway_bill_number = db.Column(db.String(100), nullable=True)
     eway_bill_date = db.Column(db.Date, nullable=True)
     eway_bill_expiry_date = db.Column(db.Date, nullable=True)
 
     attached_doc = db.Column(db.Text, nullable=True)
+
+    # ── dispatch / POD tracking (operational, no approval) ────────
+    # Transit: Pending_Dispatch | Dispatched | In_Transit | Delivered | RTO
+    transit_status = db.Column(db.String(30), default="Pending_Dispatch", nullable=True)
+    dispatch_datetime = db.Column(db.DateTime, nullable=True)
+    delivery_datetime = db.Column(db.DateTime, nullable=True)
+    # POD = Proof of Delivery
+    pod_file = db.Column(db.Text, nullable=True)
+    pod_status = db.Column(db.String(20), default="Awaited", nullable=True)  # Awaited | Uploaded | Verified
+    pod_uploaded_at = db.Column(db.DateTime, nullable=True)
+
+    # optional link to an authorizing Transit Request
+    transit_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transit_requests.id"),
+        nullable=True
+    )
 
     workflow_status = db.Column(db.String(30), default="Draft")
     status = db.Column(db.String(30), default="Active")
@@ -79,8 +122,10 @@ class DcMaster(db.Model):
     correction_sent_at = db.Column(db.DateTime)
 
     # relationships
+    transit_request = db.relationship("TransitRequest", backref="delivery_challans")
     order = db.relationship("OrderMaster", backref="dc_list")
-    from_vendor = db.relationship("Vendor", backref="dc_list")
+    from_vendor = db.relationship("Vendor", foreign_keys=[from_vendor_id], backref="dc_list")
+    transporter = db.relationship("Vendor", foreign_keys=[transporter_id])
 
     from_project = db.relationship(
         "Project",

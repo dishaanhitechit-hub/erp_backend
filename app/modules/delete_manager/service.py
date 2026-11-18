@@ -150,6 +150,38 @@ def _check_srn_billing(srn_id: int) -> list[dict]:
     return blocking
 
 
+def _check_dc_in_logistics_bill(dc_id: int) -> list[dict]:
+    """Block DC delete when it has been included in a Logistics Bill."""
+    from app.models.logisticsBill import LogisticsBill, LogisticsBillChallan
+    blocking = []
+    lb_ids = {r.lb_id for r in LogisticsBillChallan.query.filter_by(dc_id=dc_id).all()}
+    for lb_id in lb_ids:
+        lb = LogisticsBill.query.get(lb_id)
+        if lb:
+            blocking.append({
+                "doc_no":      lb.lb_no,
+                "module_code": "LB",
+                "label":       "LB (Logistics Bill) — unlink this DC first",
+                "record_id":   lb.id,
+            })
+    return blocking
+
+
+def _check_lb_posted_to_finance(lb_id: int) -> list[dict]:
+    """Block LB delete when voucher_id is set (bill posted to AP)."""
+    from app.models.logisticsBill import LogisticsBill
+    blocking = []
+    lb = LogisticsBill.query.get(lb_id)
+    if lb and lb.voucher_id:
+        blocking.append({
+            "doc_no":      f"Voucher #{lb.voucher_id}" if lb.voucher_id > 0 else "Posted to AP",
+            "module_code": "JOURNAL_ENTRY",
+            "label":       "Posted to Finance — reverse the voucher first",
+            "record_id":   lb.voucher_id,
+        })
+    return blocking
+
+
 def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[dict]:
     """Run any special FK checks that can't be expressed as simple column checks."""
     blocking = []
@@ -160,6 +192,10 @@ def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[
             blocking.extend(_check_grn_billing(record_id))
         elif check_name == "srn_billing":
             blocking.extend(_check_srn_billing(record_id))
+        elif check_name == "dc_in_logistics_bill":
+            blocking.extend(_check_dc_in_logistics_bill(record_id))
+        elif check_name == "lb_posted_to_finance":
+            blocking.extend(_check_lb_posted_to_finance(record_id))
     return blocking
 
 

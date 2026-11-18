@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
 from decimal import Decimal
+import uuid as _uuid
 
 from app.models.orderMaster import OrderMaster, OrderItem
 from app.models.dcMaster import DcMaster, DcItem
@@ -44,6 +45,24 @@ def _fmt_date(d):
     if d is None:
         return None
     return d.strftime("%Y-%m-%d")
+
+
+def _fmt_datetime(d):
+    if d is None:
+        return None
+    return d.strftime("%Y-%m-%d %H:%M")
+
+
+def _ensure_dc_uuid(dc):
+    """Legacy DCs predate the dc_uuid column. Backfill on first read so the
+    print button lights up and /print/delivery-challan/[uuid] resolves."""
+    if not dc.dc_uuid:
+        dc.dc_uuid = str(_uuid.uuid4())
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    return dc.dc_uuid
 
 
 def generate_dc_no():
@@ -280,25 +299,36 @@ def create_dc(data, user_id, files=None):
 
         dc = DcMaster(
             dc_no=generate_dc_no(),
+            dc_uuid=str(_uuid.uuid4()),
             challan_date=data.get("challanDate"),
             order_type=order_type,
             order_id=order_id,
+            dispatch_type=data.get("dispatchType"),
+            transit_request_id=data.get("transitRequestId") or None,
             from_vendor_id=from_vendor_id,
             from_project_code=from_project_code,
             shipping_from_address=shipping_from,
             to_project_code=to_project_code,
             shipping_to_address=data.get("shippingToAddress"),
+            consignee_name=data.get("consigneeName"),
+            consignee_gstin=data.get("consigneeGstin"),
+            consignee_address=data.get("consigneeAddress"),
             contact_person=data.get("contactPerson"),
             purpose_for_delivery=data.get("purposeForDelivery"),
             delivery_mode=data.get("deliveryMode"),
+            transporter_id=(int(data["transporterId"]) if data.get("transporterId") else None),
+            lr_no=data.get("lrNo"),
             vehicle_number=data.get("vehicleNumber"),
             driver_name=data.get("driverName"),
             driver_contact_number=data.get("driverContactNumber"),
+            driver_license=data.get("driverLicense"),
             eway_bill_number=data.get("ewayBillNumber"),
             eway_bill_date=data.get("ewayBillDate"),
             eway_bill_expiry_date=data.get("ewayBillExpiryDate"),
             attached_doc=attached_doc,
             workflow_status="Draft",
+            transit_status="Pending_Dispatch",
+            pod_status="Awaited",
             current_level=0,
             locked=False,
             created_by=user_id
@@ -397,6 +427,10 @@ def get_dc_list(data):
                 "purposeForDelivery": row.purpose_for_delivery,
                 "noOfItems":      len(row.items),
                 "workflowStatus": row.workflow_status,
+                "transitStatus":  row.transit_status or "Pending_Dispatch",
+                "transporterName":(row.transporter.ledger_name if row.transporter else None),
+                "vehicleNo":      row.vehicle_number,
+                "lrNo":           row.lr_no,
                 "ewayBillNumber": row.eway_bill_number,
             })
 
@@ -447,30 +481,58 @@ def get_dc_detail(dc_id):
             for i in dc.items
         ]
 
+        def _user_name(user):
+            if not user:
+                return None
+            return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+
+        dc_uuid_val = _ensure_dc_uuid(dc)
         data = {
             "id":               dc.id,
             "dcNo":             dc.dc_no,
+            "dcUuid":           dc_uuid_val,
+            "uuid":             dc_uuid_val,
             "challanDate":      _fmt_date(dc.challan_date),
             "orderType":        dc.order_type,
             "orderId":          dc.order_id,
             "orderNo":          dc.order.order_no if dc.order else None,
+            "dispatchType":     dc.dispatch_type,
+            "transitRequestId": dc.transit_request_id,
+            "transitRequestNo": dc.transit_request.tr_no if dc.transit_request else None,
             **from_data,
             "shippingFromAddress": dc.shipping_from_address,
             "toProjectCode":    dc.to_project_code,
             "toProjectName":    dc.to_project.project_name if dc.to_project else None,
             "shippingToAddress": dc.shipping_to_address,
+            "consigneeName":    dc.consignee_name,
+            "consigneeGstin":   dc.consignee_gstin,
+            "consigneeAddress": dc.consignee_address,
             "contactPerson":    dc.contact_person,
             "purposeForDelivery": dc.purpose_for_delivery,
             "deliveryMode":     dc.delivery_mode,
+            "transporterId":    dc.transporter_id,
+            "transporterName":  (dc.transporter.ledger_name if dc.transporter else None),
+            "lrNo":             dc.lr_no,
             "vehicleNumber":    dc.vehicle_number,
             "driverName":       dc.driver_name,
             "driverContactNumber": dc.driver_contact_number,
+            "driverLicense":    dc.driver_license,
             "ewayBillNumber":   dc.eway_bill_number,
             "ewayBillDate":     _fmt_date(dc.eway_bill_date),
             "ewayBillExpiryDate": _fmt_date(dc.eway_bill_expiry_date),
             "attachedDoc":      dc.attached_doc,
             "workflowStatus":   dc.workflow_status,
+            "transitStatus":    dc.transit_status or "Pending_Dispatch",
+            "dispatchDatetime": _fmt_datetime(dc.dispatch_datetime) if hasattr(dc, "dispatch_datetime") else None,
+            "deliveryDatetime": _fmt_datetime(dc.delivery_datetime) if hasattr(dc, "delivery_datetime") else None,
+            "podFile":          dc.pod_file,
+            "podStatus":        dc.pod_status or "Awaited",
+            "podUploadedAt":    _fmt_datetime(dc.pod_uploaded_at) if hasattr(dc, "pod_uploaded_at") else None,
+            "currentLevel":     dc.current_level,
+            "locked":           dc.locked,
             "items":            items,
+            "createdBy":        _user_name(dc.creator) if hasattr(dc, "creator") else None,
+            "createdAt":        dc.created_at.strftime("%Y-%m-%d %H:%M") if dc.created_at else None,
         }
 
         return res("DC detail fetched", [data], 200)
@@ -931,6 +993,237 @@ def delete_dc(dc_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# UPDATE DC (Draft / Reback only)
+# ══════════════════════════════════════════════════════════════════
+
+def update_dc(dc_id, data, user_id, files=None):
+    try:
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("DC not found", [], 404)
+        if dc.locked:
+            return res("Cannot edit a locked DC", [], 400)
+        if dc.workflow_status not in ("Draft", "Reback"):
+            return res("Only Draft or Reback DCs can be edited", [], 400)
+
+        if files:
+            doc_file = files.get("attachedDoc")
+            if doc_file:
+                dc.attached_doc = upload_file_to_bunny(
+                    file=doc_file, mainFolder="dc",
+                    subFolder=dc.dc_no, fileName="doc"
+                )
+        if str(data.get("clearAttachedDoc", "")).lower() == "true":
+            dc.attached_doc = None
+
+        dc.challan_date           = data.get("challanDate") or dc.challan_date
+        if "dispatchType" in data:     dc.dispatch_type = data.get("dispatchType") or dc.dispatch_type
+        if "consigneeName" in data:    dc.consignee_name = data.get("consigneeName", dc.consignee_name)
+        if "consigneeGstin" in data:   dc.consignee_gstin = data.get("consigneeGstin", dc.consignee_gstin)
+        if "consigneeAddress" in data: dc.consignee_address = data.get("consigneeAddress", dc.consignee_address)
+        if "transporterId" in data:
+            t = data.get("transporterId")
+            dc.transporter_id = int(t) if t else None
+        if "lrNo" in data:             dc.lr_no = data.get("lrNo", dc.lr_no)
+        if "driverLicense" in data:    dc.driver_license = data.get("driverLicense", dc.driver_license)
+        dc.contact_person         = data.get("contactPerson", dc.contact_person)
+        dc.purpose_for_delivery   = data.get("purposeForDelivery", dc.purpose_for_delivery)
+        dc.delivery_mode          = data.get("deliveryMode", dc.delivery_mode)
+        dc.vehicle_number         = data.get("vehicleNumber", dc.vehicle_number)
+        dc.driver_name            = data.get("driverName", dc.driver_name)
+        dc.driver_contact_number  = data.get("driverContactNumber", dc.driver_contact_number)
+        dc.eway_bill_number       = data.get("ewayBillNumber", dc.eway_bill_number)
+        dc.eway_bill_date         = data.get("ewayBillDate") or dc.eway_bill_date
+        dc.eway_bill_expiry_date  = data.get("ewayBillExpiryDate") or dc.eway_bill_expiry_date
+        dc.shipping_from_address  = data.get("shippingFromAddress", dc.shipping_from_address)
+        dc.shipping_to_address    = data.get("shippingToAddress", dc.shipping_to_address)
+        dc.transit_request_id     = data.get("transitRequestId") or dc.transit_request_id
+        dc.updated_by             = user_id
+        dc.updated_at             = datetime.utcnow()
+
+        items = data.get("items", [])
+        if isinstance(items, str):
+            items = json.loads(items)
+
+        if items:
+            DcItem.query.filter_by(dc_id=dc.id).delete()
+            db.session.flush()
+
+            for row in items:
+                order_item_id = row.get("orderItemId")
+                issue_qty = Decimal(str(row.get("issueQty") or 0))
+                if issue_qty <= 0:
+                    continue
+
+                order_item = OrderItem.query.get(order_item_id)
+                if not order_item:
+                    db.session.rollback()
+                    return res(f"Order item {order_item_id} not found", [], 404)
+
+                # Balance check: exclude current DC from calc
+                already = (
+                    db.session.query(func.coalesce(func.sum(DcItem.issue_qty), 0))
+                    .join(DcMaster, DcMaster.id == DcItem.dc_id)
+                    .filter(
+                        DcItem.order_item_id == order_item_id,
+                        DcMaster.workflow_status != "Rejected",
+                        DcMaster.id != dc_id,
+                    )
+                    .scalar()
+                )
+                balance = Decimal(str(order_item.qty or 0)) - Decimal(str(already or 0))
+                if issue_qty > balance:
+                    db.session.rollback()
+                    return res(f"Only {balance} available for item {order_item.item_code}", [], 400)
+
+                db.session.add(DcItem(
+                    dc_id=dc.id,
+                    order_item_id=order_item_id,
+                    item_code=order_item.item_code,
+                    issue_qty=issue_qty,
+                    stock_location=row.get("stockLocation") or order_item.location,
+                ))
+
+        db.session.commit()
+        return res("Delivery Challan updated", [{"dcId": dc.id, "dcNo": dc.dc_no}], 200)
+
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# DC PRINT (by UUID)
+# ══════════════════════════════════════════════════════════════════
+
+def get_dc_print_detail(dc_uuid):
+    try:
+        dc = DcMaster.query.filter_by(dc_uuid=dc_uuid).first()
+        if not dc:
+            return res("Delivery Challan not found", [], 404)
+        return get_dc_detail(dc.id)
+    except Exception as e:
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# DC TRANSIT STATUS — operational, permission-gated (no approval)
+# ══════════════════════════════════════════════════════════════════
+
+VALID_TRANSIT_STATUSES = (
+    "Pending_Dispatch", "Dispatched", "In_Transit",
+    "Delivered", "RTO",
+)
+
+
+def update_dc_transit_status(dc_id, new_status, user_id):
+    try:
+        if new_status not in VALID_TRANSIT_STATUSES:
+            return res(
+                f"Invalid transit status. Allowed: {', '.join(VALID_TRANSIT_STATUSES)}",
+                [], 400,
+            )
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("Delivery Challan not found", [], 404)
+        if dc.workflow_status != "Approved":
+            return res(
+                "Transit status can only be updated on Approved Delivery Challans",
+                [], 400,
+            )
+
+        dc.transit_status = new_status
+        if new_status == "Dispatched" and not dc.dispatch_datetime:
+            dc.dispatch_datetime = datetime.utcnow()
+        if new_status == "Delivered":
+            dc.delivery_datetime = datetime.utcnow()
+        dc.updated_by = user_id
+        dc.updated_at = datetime.utcnow()
+
+        create_history(
+            module_code=MODULE_CODE,
+            record_id=dc.id,
+            action=f"Transit Status: {new_status}",
+            done_by=user_id,
+        )
+        db.session.commit()
+        return res(
+            f"Transit status updated to {new_status}",
+            {"transitStatus": new_status},
+            200,
+        )
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+# ══════════════════════════════════════════════════════════════════
+# DC POD (Proof of Delivery) UPLOAD + VERIFY
+# ══════════════════════════════════════════════════════════════════
+
+def upload_dc_pod(dc_id, pod_file, user_id):
+    try:
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("Delivery Challan not found", [], 404)
+        if dc.workflow_status != "Approved":
+            return res("POD can only be uploaded on Approved DCs", [], 400)
+        if not pod_file:
+            return res("POD file is required", [], 400)
+
+        pod_url = upload_file_to_bunny(
+            file=pod_file,
+            mainFolder="dc_pod",
+            subFolder=dc.dc_no,
+            fileName="pod",
+        )
+        dc.pod_file = pod_url
+        dc.pod_status = "Uploaded"
+        dc.pod_uploaded_at = datetime.utcnow()
+        if not dc.delivery_datetime:
+            dc.delivery_datetime = datetime.utcnow()
+        if dc.transit_status != "Delivered":
+            dc.transit_status = "Delivered"
+        dc.updated_by = user_id
+        dc.updated_at = datetime.utcnow()
+
+        create_history(
+            module_code=MODULE_CODE,
+            record_id=dc.id,
+            action="POD Uploaded",
+            done_by=user_id,
+        )
+        db.session.commit()
+        return res("POD uploaded", {"podFile": pod_url, "podStatus": "Uploaded"}, 200)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+def verify_dc_pod(dc_id, user_id):
+    try:
+        dc = DcMaster.query.get(dc_id)
+        if not dc:
+            return res("Delivery Challan not found", [], 404)
+        if not dc.pod_file:
+            return res("No POD uploaded yet", [], 400)
+        dc.pod_status = "Verified"
+        dc.updated_by = user_id
+        dc.updated_at = datetime.utcnow()
+        create_history(
+            module_code=MODULE_CODE,
+            record_id=dc.id,
+            action="POD Verified",
+            done_by=user_id,
+        )
+        db.session.commit()
+        return res("POD verified", {"podStatus": "Verified"}, 200)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)

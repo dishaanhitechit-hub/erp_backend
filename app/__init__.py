@@ -102,6 +102,12 @@ def create_app():
     from .modules.resources.dc.routes import dc_bp
     app.register_blueprint(dc_bp, url_prefix="/resource/dc")
 
+    from .modules.logistics.transit_request.routes import tr_bp
+    app.register_blueprint(tr_bp, url_prefix="/logistics/transit-request")
+
+    from .modules.logistics.bill_register.routes import lb_bp
+    app.register_blueprint(lb_bp, url_prefix="/logistics/bill-register")
+
     from .modules.resources.manpower.routes import manpower_bp
     app.register_blueprint(manpower_bp, url_prefix="/resource/manpower")
 
