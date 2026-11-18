@@ -1296,6 +1296,24 @@ def _resolve_stuck_documents(project_code, module_code, new_valid_levels):
                 doc.workflow_status = "Approved"
 
 
+def _ensure_module_master(module_code):
+    """approval_path.module_code is a FK to module_master. Pages added after the
+    original seed (e.g. self_task_all, bank_statement) may exist only in
+    feature_pages — register them on first use instead of failing with a FK error.
+    Returns an error message, or None when the code is usable."""
+    from app.models.approval_path import ModuleMaster
+    if ModuleMaster.query.filter_by(module_code=module_code).first():
+        return None
+    page = FeaturePage.query.filter_by(page_code=module_code).first()
+    if not page:
+        return f"Unknown module '{module_code}'"
+    if len(module_code) > 50:
+        return f"Module code '{module_code}' is longer than 50 characters"
+    db.session.add(ModuleMaster(module_code=module_code, module_name=(page.page_name or module_code)[:100], status="Active"))
+    db.session.flush()
+    return None
+
+
 def create_approval_path(data):
 
     try:
@@ -1353,6 +1371,11 @@ def create_approval_path(data):
             if not module_code:
 
                 continue
+
+            err = _ensure_module_master(module_code)
+            if err:
+                db.session.rollback()
+                return res(err, [], 400)
 
 
             # delete old mappings
