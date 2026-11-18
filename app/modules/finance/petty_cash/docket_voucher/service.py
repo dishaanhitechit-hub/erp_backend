@@ -1,5 +1,6 @@
 import json
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -310,7 +311,14 @@ def get_petty_cash_docket_voucher_list(data):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        query = PettyCashDocketVoucher.query.filter(
+        # Eager-load everything the list row reads — otherwise each docket fires
+        # 4 lazy queries (budget, bank_cash, details, creator) → N+1 on every list.
+        query = PettyCashDocketVoucher.query.options(
+            joinedload(PettyCashDocketVoucher.budget),
+            joinedload(PettyCashDocketVoucher.bank_cash).lazyload(BankCash.projects),
+            joinedload(PettyCashDocketVoucher.creator),
+            selectinload(PettyCashDocketVoucher.details),
+        ).filter(
             PettyCashDocketVoucher.project_code == project_code
         )
 
