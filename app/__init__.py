@@ -255,6 +255,8 @@ def create_app():
 
     from .modules.finance.petty_cash.docket_voucher.routes import petty_cash_docket_voucher_bp
     app.register_blueprint(petty_cash_docket_voucher_bp, url_prefix="/finance/petty-cash/docket-voucher")
+    from .modules.finance.bank_statement.routes import bank_statement_bp
+    app.register_blueprint(bank_statement_bp, url_prefix="/finance/bank-statement")
 
     from .models import pettyCashBudget        # noqa — registers PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
     from .models import pettyCashDocketVoucher  # noqa — registers PettyCashDocketVoucher, PettyCashDocketVoucherDetail

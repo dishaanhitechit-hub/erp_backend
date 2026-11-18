@@ -27,6 +27,15 @@ from app.modules.work_flow import (
     get_my_approval_status,
 )
 
+from app.modules.finance.bank_statement.service import (
+    LinkError,
+    reserve_for_docket,
+    release_for_docket,
+    reconcile_for_docket,
+    current_txn_id,
+    docket_link_payload,
+)
+
 _MODULE = "petty_cash"
 
 
@@ -138,6 +147,7 @@ def _build_payload(voucher):
         "rejectedBy":      voucher.rejector.username  if voucher.rejector  else None,
         "rejectedAt":      _fmt_date(voucher.rejected_at),
         "details":         [_build_detail_row(r) for r in voucher.details],
+        "bankTransaction": docket_link_payload(voucher),
     }
 
 
@@ -288,6 +298,11 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
                 amount            = Decimal(str(row.get("amount") or 0)),
             ))
 
+        # optional link to an imported bank statement line (row-locked)
+        if data.get("bankTxnId"):
+            db.session.flush()
+            reserve_for_docket(data["bankTxnId"], voucher, user_id)
+
         db.session.commit()
 
         return res("Docket voucher created", {
@@ -296,6 +311,9 @@ def create_petty_cash_docket_voucher(data, user_id, files=None):
             "voucherUuid": voucher.voucher_uuid,
         }, 201)
 
+    except LinkError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -477,6 +495,20 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
             ))
 
         voucher.total_amount = total
+        db.session.flush()
+
+        # bank statement link: "bankTxnId" present → set / change / clear ("");
+        # absent → keep the current link, but it must still match the docket.
+        cur_txn = current_txn_id(voucher)
+        if "bankTxnId" in data:
+            new_txn = _parse_int(data.get("bankTxnId"))
+        else:
+            new_txn = cur_txn
+        if cur_txn and cur_txn != new_txn:
+            release_for_docket(voucher, user_id, "Changed on docket edit")
+            db.session.flush()
+        if new_txn:
+            reserve_for_docket(new_txn, voucher, user_id)
 
         if voucher.workflow_status == "Reback":
             voucher.correction_sent_at = None
@@ -488,6 +520,9 @@ def edit_petty_cash_docket_voucher(voucher_id, data, user_id, files=None):
 
         return res("Docket voucher updated", {"id": voucher.id, "voucherNo": voucher.voucher_no, "attachmentUrl": voucher.attachment}, 200)
 
+    except LinkError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -518,6 +553,8 @@ def submit_petty_cash_docket_voucher(voucher_id, user_id):
             voucher.approved_by       = user_id
             voucher.submitted_at      = datetime.utcnow()
             voucher.final_approved_at = datetime.utcnow()
+            # no approvers → approved on submit → reconcile the linked bank line now
+            reconcile_for_docket(voucher, user_id)
         else:
             voucher.workflow_status = f"Pending_L{first_level.level_no}"
             voucher.current_level   = first_level.level_no
@@ -541,6 +578,9 @@ def submit_petty_cash_docket_voucher(voucher_id, user_id):
 
         return res("Docket voucher submitted", {"id": voucher.id, "workflowStatus": voucher.workflow_status}, 200)
 
+    except LinkError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -588,6 +628,8 @@ def approve_petty_cash_docket_voucher(voucher_id, approved_by, comments=None):
             voucher.locked            = True
             voucher.approved_by       = approved_by
             voucher.final_approved_at = datetime.utcnow()
+            # linked bank statement line → Reconciled (same DB transaction)
+            reconcile_for_docket(voucher, approved_by)
 
         voucher.updated_by = approved_by
         voucher.updated_at = datetime.utcnow()
@@ -605,6 +647,9 @@ def approve_petty_cash_docket_voucher(voucher_id, approved_by, comments=None):
 
         return res("Docket voucher approved", {"id": voucher.id, "workflowStatus": voucher.workflow_status}, 200)
 
+    except LinkError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -679,6 +724,9 @@ def reject_petty_cash_docket_voucher(voucher_id, rejected_by, comments=None):
         voucher.updated_by      = rejected_by
         voucher.updated_at      = datetime.utcnow()
 
+        # free the bank statement line so another docket can use it
+        release_for_docket(voucher, rejected_by, "Docket rejected")
+
         create_history(
             project_code=voucher.project_code, module_code=_MODULE,
             record_id=voucher.id, level_no=voucher.current_level,
@@ -689,6 +737,9 @@ def reject_petty_cash_docket_voucher(voucher_id, rejected_by, comments=None):
 
         return res("Docket voucher rejected", {"id": voucher.id, "workflowStatus": voucher.workflow_status}, 200)
 
+    except LinkError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
@@ -760,6 +811,7 @@ def delete_petty_cash_voucher(voucher_id):
         can_delete, msg = check_posted_before_delete("PettyCashDocketVoucher", voucher_id)
         if not can_delete:
             return res(msg, [], 400)
+        release_for_docket(voucher, None, "Docket deleted")
         PettyCashDocketVoucherDetail.query.filter_by(voucher_id=voucher.id).delete()
         db.session.delete(voucher)
         db.session.commit()
