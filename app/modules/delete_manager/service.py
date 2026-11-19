@@ -19,6 +19,7 @@ Flow:
      → marks CANCELLED
 """
 
+from app.utils.pagination import set_pagination
 import json
 from datetime import datetime
 
@@ -470,6 +471,7 @@ def list_delete_requests(
 
     q = q.order_by(DeleteRequest.requested_at.desc())
     paginated = q.paginate(page=page, per_page=per_page, error_out=False)
+    set_pagination(paginated.total, page, per_page)  # standard top-level "pagination"
 
     return {
         "total":   paginated.total,
@@ -563,6 +565,7 @@ def list_notifications(
 
     q = q.order_by(DeleteRequest.wa_sent_at.desc().nullslast(), DeleteRequest.requested_at.desc())
     paginated = q.paginate(page=page, per_page=per_page, error_out=False)
+    set_pagination(paginated.total, page, per_page)  # standard top-level "pagination"
 
     results = []
     for dr in paginated.items:

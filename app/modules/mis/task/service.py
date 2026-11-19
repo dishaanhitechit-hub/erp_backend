@@ -9,6 +9,7 @@ Access rules
   * super_admin → everything, company-wide.
 The permission is granted by super admin per project (Settings → Role & Designation).
 """
+from app.utils.pagination import set_pagination
 import logging
 from datetime import date, datetime
 
@@ -386,7 +387,7 @@ def list_tasks(args, user_id):
 
     try:
         page = max(int(args.get("page") or 1), 1)
-        per_page = min(max(int(args.get("perPage") or 50), 1), 200)
+        per_page = min(max(int(args.get("limit") or args.get("perPage") or 50), 1), 200)
     except ValueError:
         raise _Err("page/perPage must be numbers")
 
@@ -396,6 +397,7 @@ def list_tasks(args, user_id):
                 db.case((MisTask.status.in_(OPEN_STATUSES), 0), else_=1),
                 MisTask.due_date.is_(None), MisTask.due_date.asc(), MisTask.id.desc())
             .offset((page - 1) * per_page).limit(per_page).all())
+    set_pagination(total, page, per_page)  # standard top-level "pagination"
     return res("ok", {
         "items": _with_reopen_flags([t.to_dict(today) for t in rows]),
         "total": total, "page": page, "perPage": per_page,

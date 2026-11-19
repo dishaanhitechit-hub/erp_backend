@@ -43,6 +43,10 @@ def create_app():
     from .error_handlers import register_error_handlers
     register_error_handlers(app)
 
+    # uniform ?page=&limit= on every list API (app/utils/pagination.py)
+    from .utils.pagination import register_pagination
+    register_pagination(app)
+
     # /health/live, /health/ready, /health/modules
     from .health import health_bp
     app.register_blueprint(health_bp, url_prefix="/health")

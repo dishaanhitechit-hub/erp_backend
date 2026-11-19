@@ -15,6 +15,7 @@ Who
   * viewer:     anyone involved (supervisor, creator, any step assignee), task_tracker.VIEW holders
   * next person in a relay: any member of the same project (company-level: any active user)
 """
+from app.utils.pagination import set_pagination
 from datetime import date, datetime
 
 from sqlalchemy import or_, exists, and_
@@ -184,11 +185,12 @@ def list_followups(args, user_id):
                          MisFollowup.description.ilike(like)))
 
     page = parse_int(args.get("page") or 1, "page", minimum=1)
-    per_page = min(parse_int(args.get("perPage") or 100, "perPage", minimum=1), 300)
+    per_page = min(parse_int(args.get("limit") or args.get("perPage") or 100, "perPage", minimum=1), 300)
     total = q.count()
     rows = (q.order_by(db.case((MisFollowup.board_status == "Done", 1), else_=0),
                        MisFollowup.due_date.is_(None), MisFollowup.due_date.asc(), MisFollowup.id.desc())
             .offset((page - 1) * per_page).limit(per_page).all())
+    set_pagination(total, page, per_page)  # standard top-level "pagination"
     return res("ok", {"items": [f.to_dict() for f in rows], "total": total, "page": page, "perPage": per_page})
 
 

@@ -22,6 +22,7 @@ linked to the bank account. Linking from a docket uses the docket's own
 petty_cash creator rule.
 """
 
+from app.utils.pagination import set_pagination
 import hashlib
 import logging
 import re
@@ -589,9 +590,10 @@ def list_transactions(args, user_id):
                              BankTransaction.to_cr.ilike(t), BankTransaction.reference_number.ilike(t)))
         total = q.count()
         page = max(int(args.get("page") or 1), 1)
-        size = min(max(int(args.get("pageSize") or 50), 1), 500)
+        size = min(max(int(args.get("limit") or args.get("pageSize") or 50), 1), 500)
         rows = (q.order_by(BankTransaction.transaction_date.desc(), BankTransaction.id.desc())
                 .offset((page - 1) * size).limit(size).all())
+        set_pagination(total, page, size)  # standard top-level "pagination"
         return res("Transactions fetched", {"list": [_txn_payload(t, with_link=True) for t in rows],
                                             "total": total, "page": page, "pageSize": size}, 200)
     except Exception as e:

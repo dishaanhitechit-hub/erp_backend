@@ -2,6 +2,7 @@ import json
 import math
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
+from app.utils.pagination import paginate_query
 from datetime import datetime, date
 from decimal import Decimal
 import uuid as _uuid
@@ -295,9 +296,6 @@ def get_journal_voucher_list(params):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        page      = max(1, int(params.get("page", 1) or 1))
-        page_size = max(1, int(params.get("pageSize", 10) or 10))
-
         query = PettyCashJournalVoucher.query.filter_by(project_code=project_code)
 
         if params.get("workflowStatus"):
@@ -305,12 +303,8 @@ def get_journal_voucher_list(params):
         if params.get("fundSource"):
             query = query.filter(PettyCashJournalVoucher.fund_source == params["fundSource"])
 
-        total = query.count()
-        rows  = (
-            query.order_by(PettyCashJournalVoucher.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
+        rows, _ = paginate_query(
+            query.order_by(PettyCashJournalVoucher.id.desc()), default_limit=10
         )
 
         result = [
@@ -327,15 +321,8 @@ def get_journal_voucher_list(params):
             for r in rows
         ]
 
-        return res("Journal voucher list fetched", {
-            "list": result,
-            "pagination": {
-                "page":       page,
-                "pageSize":   page_size,
-                "total":      total,
-                "totalPages": math.ceil(total / page_size) if page_size else 1,
-            },
-        }, 200)
+        # standard shape: data = rows, top-level "pagination" added by the hook
+        return res("Journal voucher list fetched", result, 200)
 
     except Exception as e:
         return res(str(e), [], 500)

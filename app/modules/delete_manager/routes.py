@@ -70,7 +70,7 @@ def list_requests():
     project_code = request.args.get("project_code")
     status       = request.args.get("status")
     page         = int(request.args.get("page", 1))
-    per_page     = int(request.args.get("per_page", 20))
+    per_page     = min(int(request.args.get("limit") or request.args.get("per_page") or 20), 500)
 
     data = list_delete_requests(
         module_code  = module_code.upper() if module_code else None,
@@ -154,7 +154,7 @@ def notifications_list():
     status       = request.args.get("status")
     wa_sent_only = request.args.get("wa_sent_only", "1") != "0"
     page         = int(request.args.get("page", 1))
-    per_page     = int(request.args.get("per_page", 20))
+    per_page     = min(int(request.args.get("limit") or request.args.get("per_page") or 20), 500)
 
     data = list_notifications(
         module_code  = module_code.upper() if module_code else None,
@@ -205,7 +205,7 @@ def my_requests():
     status       = request.args.get("status")
     module_code  = request.args.get("module_code")
     page         = int(request.args.get("page", 1))
-    per_page     = int(request.args.get("per_page", 20))
+    per_page     = min(int(request.args.get("limit") or request.args.get("per_page") or 20), 500)
 
     data = list_delete_requests(
         module_code  = module_code.upper() if module_code else None,

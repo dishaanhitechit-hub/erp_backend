@@ -1,6 +1,7 @@
 import math
 from sqlalchemy import func
 from app.extensions import db
+from app.utils.pagination import get_page_params, set_pagination
 from datetime import datetime
 
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher
@@ -78,8 +79,8 @@ def get_petty_cash_account_ledger(params):
     try:
         project_code = params.get("projectCode")
         bank_cash_id = params.get("bankCashId")
-        page         = max(1, int(params.get("page", 1) or 1))
-        page_size    = max(1, int(params.get("pageSize", 10) or 10))
+        page, limit  = get_page_params(params, default_limit=10) or (1, 10)
+        page_size    = limit or 10**9  # limit=all → one page
         from_date    = params.get("fromDate")
         to_date      = params.get("toDate")
 
@@ -213,6 +214,7 @@ def get_petty_cash_account_ledger(params):
         total        = len(all_entries)
         start        = (page - 1) * page_size
         page_entries = all_entries[start: start + page_size]
+        set_pagination(total, page, limit)  # standard top-level "pagination"
 
         return res("Petty cash account ledger fetched", {
             "account":        account_info,

@@ -1,3 +1,4 @@
+from app.utils.pagination import set_pagination
 from decimal import Decimal
 from collections import defaultdict
 from sqlalchemy import func
@@ -176,6 +177,7 @@ def get_stock_list(project_code, item_category=None, page=1, limit=10, cc_codes=
     page         = max(1, min(page, total_pages))
     start        = (page - 1) * limit
     paged        = all_groups[start: start + limit]
+    set_pagination(total_groups, page, limit)  # standard top-level "pagination"
 
     return res("Stock list fetched", {
         "pagination": {
