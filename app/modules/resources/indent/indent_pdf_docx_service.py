@@ -979,14 +979,24 @@ def generate_indent_pdf(indent_id, base_url, force=False):
         )
         verify_url = f"{base_url.rstrip('/')}/resource/indent/verify/{token}"
 
+        def _resolve_item(ii):
+            if ii.is_asset and ii.asset:
+                return (
+                    ii.asset_code or "",
+                    ii.asset.asset_name or "",
+                    ii.asset.unit.unit_name if ii.asset.unit else "",
+                )
+            return (
+                ii.item_code or "",
+                (ii.item.item_name if ii.item else "") or "",
+                (ii.item.unit.unit_name if ii.item and ii.item.unit else "") or "",
+            )
+
         items = [
             {
                 "sl":        idx,
-                "item_code": ii.item_code or "",
-                "item_name": (ii.item.item_name if ii.item else "") or "",
+                **dict(zip(("item_code", "item_name", "unit"), _resolve_item(ii))),
                 "note":      ii.note or "",
-                "unit":      (ii.item.unit.unit_name
-                              if ii.item and ii.item.unit else "") or "",
                 "qty":       float(ii.qty or 0),
                 "location":  getattr(ii, "location", "") or "",
             }

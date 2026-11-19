@@ -1886,14 +1886,26 @@ def get_indent_by_uuid(indent_uuid):
         })
 
         for row in indent.indent_items:
-            itm   = row.item
-            code  = row.item_code
+            code  = row.asset_code if row.is_asset else row.item_code
             entry = grouped[code]
 
             entry["itemCode"]  = code
             entry["lineIds"].append(row.id)
 
-            if itm:
+            if row.is_asset and row.asset:
+                ast = row.asset
+                entry["itemName"]        = ast.asset_name
+                entry["itemDescription"] = ast.asset_description
+                entry["hsnSac"]          = ast.hsn_sac
+                entry["gstPercentage"]   = (
+                    float(ast.gst_percentage)
+                    if ast.gst_percentage is not None
+                    else 0.0
+                )
+                if ast.unit:
+                    entry["unit"] = ast.unit.short_name
+            elif not row.is_asset and row.item:
+                itm = row.item
                 entry["itemName"]        = itm.item_name
                 entry["itemDescription"] = itm.item_description
                 entry["hsnSac"]          = itm.hsn_sac

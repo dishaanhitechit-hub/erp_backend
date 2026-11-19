@@ -93,13 +93,26 @@ def generate_indent_pdf(indent_id):
                               os.path.join(os.getcwd(), "asset", "order", "1000018063.jpeg"))
         logo_b64  = _img_b64(logo_path)
 
+        def _item_name(ii):
+            if ii.is_asset:
+                return ii.asset.asset_name if ii.asset else ""
+            return ii.item.item_name if ii.item else ""
+
+        def _item_unit(ii):
+            if ii.is_asset:
+                return ii.asset.unit.unit_name if ii.asset and ii.asset.unit else ""
+            return ii.item.unit.unit_name if ii.item and ii.item.unit else ""
+
+        def _item_code(ii):
+            return ii.asset_code if ii.is_asset else ii.item_code
+
         items = [
             {
                 "sl":        i,
-                "item_code": ii.item_code,
-                "item_name": ii.item.item_name if ii.item else "",
+                "item_code": _item_code(ii) or "",
+                "item_name": _item_name(ii) or "",
                 "note":      ii.note or "",
-                "unit":      ii.item.unit.unit_name if ii.item and ii.item.unit else "",
+                "unit":      _item_unit(ii),
                 "qty":       float(ii.qty or 0),
                 "location":  ii.location or "",
             }
