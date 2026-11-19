@@ -66,6 +66,98 @@ SOURCE_TYPE_LABELS = {
 # GENERAL LEDGER — account-wise with running balance
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _build_particulars_map(posting_ids, current_account_type, current_account_id):
+    """
+    For a set of posting_ids, find the counterparty accounts —
+    the OTHER lines in each posting that are not the current account.
+    Returns {posting_id: "counterparty name(s)"}.
+
+    This gives the Tally-style "Particulars" column showing what account
+    the money went to/from (e.g. "ICICI BANK_XXX912", "TDS on Sale").
+    """
+    if not posting_ids:
+        return {}
+
+    posting_id_list = list(posting_ids)
+
+    # Batch query: all lines for these postings, excluding the current account's lines
+    counter_q = db.session.query(
+        AccountingLedgerLine.posting_id,
+        AccountingLedgerLine.account_type,
+        AccountingLedgerLine.cc_id,
+        AccountingLedgerLine.vendor_id,
+        AccountingLedgerLine.bank_cash_id,
+    ).filter(AccountingLedgerLine.posting_id.in_(posting_id_list))
+
+    # Exclude lines belonging to the current account
+    if current_account_type == "CC":
+        counter_q = counter_q.filter(
+            ~((AccountingLedgerLine.account_type == "CC") &
+              (AccountingLedgerLine.cc_id == current_account_id))
+        )
+    elif current_account_type == "Vendor":
+        counter_q = counter_q.filter(
+            ~((AccountingLedgerLine.account_type == "Vendor") &
+              (AccountingLedgerLine.vendor_id == current_account_id))
+        )
+    elif current_account_type == "BankCash":
+        counter_q = counter_q.filter(
+            ~((AccountingLedgerLine.account_type == "BankCash") &
+              (AccountingLedgerLine.bank_cash_id == current_account_id))
+        )
+
+    counter_lines = counter_q.all()
+
+    # Collect unique account references we need to resolve
+    cc_ids = set()
+    vendor_ids = set()
+    bc_ids = set()
+    for _, acct_type, cc_id, vendor_id, bc_id in counter_lines:
+        if acct_type == "CC" and cc_id:
+            cc_ids.add(cc_id)
+        elif acct_type == "Vendor" and vendor_id:
+            vendor_ids.add(vendor_id)
+        elif acct_type == "BankCash" and bc_id:
+            bc_ids.add(bc_id)
+
+    # Bulk-load account names
+    cc_names = {}
+    if cc_ids:
+        for cc in CCCode.query.filter(CCCode.id.in_(list(cc_ids))).all():
+            cc_names[cc.id] = cc.cc_name
+
+    vendor_names = {}
+    if vendor_ids:
+        for v in Vendor.query.filter(Vendor.id.in_(list(vendor_ids))).all():
+            vendor_names[v.id] = v.ledger_name
+
+    bc_names = {}
+    if bc_ids:
+        for bc in BankCash.query.filter(BankCash.id.in_(list(bc_ids))).all():
+            bc_names[bc.id] = bc.bank_name or bc.bank_holder_name or bc.bank_code
+
+    # Build posting_id → set of unique counterparty names
+    posting_counterparties = {}
+    for pid, acct_type, cc_id, vendor_id, bc_id in counter_lines:
+        name = None
+        if acct_type == "CC" and cc_id:
+            name = cc_names.get(cc_id)
+        elif acct_type == "Vendor" and vendor_id:
+            name = vendor_names.get(vendor_id)
+        elif acct_type == "BankCash" and bc_id:
+            name = bc_names.get(bc_id)
+        if name:
+            posting_counterparties.setdefault(pid, [])
+            if name not in posting_counterparties[pid]:
+                posting_counterparties[pid].append(name)
+
+    # Join multiple counterparties with newline/comma
+    result = {}
+    for pid, names in posting_counterparties.items():
+        result[pid] = ", ".join(names) if len(names) <= 3 else f"{names[0]} & {len(names)-1} others"
+    return result
+
+
 def get_general_ledger(params):
     """
     Returns transactions for a specific account with opening balance and
@@ -140,12 +232,16 @@ def get_general_ledger(params):
     txn_q = txn_q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
 
     running = Decimal(str(opening_balance))
-    entries = []
+    raw_entries = []
+    posting_ids = set()
     for line, post_date, voucher_no, src_type, src_id, proj, remark in txn_q.all():
         dr = float(line.amount) if line.dr_cr == "Dr" else 0.0
         cr = float(line.amount) if line.dr_cr == "Cr" else 0.0
         running += Decimal(str(dr)) - Decimal(str(cr))
-        entries.append({
+        posting_ids.add(line.posting_id)
+        raw_entries.append({
+            "posting_id": line.posting_id,
+            "line_id": line.id,
             "date": _fmt_date(post_date),
             "voucherNo": voucher_no,
             "sourceType": src_type,
@@ -157,6 +253,18 @@ def get_general_ledger(params):
             "credit": cr,
             "balance": float(running),
         })
+
+    # Bulk-load counterparty names from the other lines in each posting
+    particulars_map = _build_particulars_map(
+        posting_ids, account_type, account_id
+    )
+
+    entries = []
+    for e in raw_entries:
+        e["particulars"] = particulars_map.get(e["posting_id"], "")
+        del e["posting_id"]
+        del e["line_id"]
+        entries.append(e)
 
     # Account name
     account_name = _get_account_name(account_type, account_id)
