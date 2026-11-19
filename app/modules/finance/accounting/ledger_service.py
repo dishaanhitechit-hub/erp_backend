@@ -546,22 +546,18 @@ def get_profit_loss(params):
     balances = {row[0]: (row[1], row[2]) for row in q.all()}
 
     # 5. Build tree: group_id → {sub_group_id → [accounts]}
-    # income_tree and expense_tree keyed by group_id
+    # Include ALL pl-linked CCs, even those with zero balances
     income_by_group = {}   # group_id → {sg_id → [rows]}
     expense_by_group = {}  # group_id → {sg_id → [rows]}
     total_income = Decimal("0")
     total_expense = Decimal("0")
 
-    for cc_id, (dr_raw, cr_raw) in balances.items():
-        cc = cc_map.get(cc_id)
-        if not cc:
-            continue
-
+    for cc in pl_ccs:
+        dr_raw, cr_raw = balances.get(cc.id, (0, 0))
         dr_total = _d(dr_raw)
         cr_total = _d(cr_raw)
         net = cr_total - dr_total
 
-        # Determine group and sub-group
         if cc.pl_linked and cc.pl_group_id:
             grp_id = cc.pl_group_id
             sg_id = cc.pl_sub_group_id
@@ -580,12 +576,20 @@ def get_profit_loss(params):
             "net": float(abs(net)),
         }
 
-        if net >= 0:
+        if net > 0:
             bucket = income_by_group
             total_income += net
-        else:
+        elif net < 0:
             bucket = expense_by_group
             total_expense += abs(net)
+        else:
+            # Zero balance — place under expense tree by default (most CCs are expense)
+            # Revenue CCs (pl_group "Revenue") go to income tree
+            grp = pl_groups_map.get(grp_id)
+            if grp and "revenue" in (grp.group_name or "").lower():
+                bucket = income_by_group
+            else:
+                bucket = expense_by_group
 
         bucket.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
 
@@ -707,34 +711,40 @@ def get_balance_sheet_report(params):
     total_assets = Decimal("0")
     total_liabilities = Decimal("0")
 
-    for cc_id, dr_raw, cr_raw in cc_q.all():
-        cc = cc_map.get(cc_id)
-        if not cc:
-            continue
+    cc_balances = {row[0]: (_d(row[1]), _d(row[2])) for row in cc_q.all()}
 
-        net = _d(dr_raw) - _d(cr_raw)
-        if net == 0:
-            continue
+    # Include ALL BS CCs, even those with zero balances
+    for cc in bs_ccs:
+        dr_total, cr_total = cc_balances.get(cc.id, (Decimal("0"), Decimal("0")))
+        net = dr_total - cr_total
 
         row = {
             "type": "account",
             "ccId": cc.id,
             "ccCode": cc.cc_code,
             "ccName": cc.cc_name,
-            "debit": float(_d(dr_raw)),
-            "credit": float(_d(cr_raw)),
-            "net": float(abs(net)),
+            "debit": float(dr_total),
+            "credit": float(cr_total),
+            "net": float(abs(net)) if net != 0 else 0,
         }
 
         grp_id = cc.group_id
         sg_id = cc.sub_group_id
+        grp = bs_groups_map.get(grp_id)
 
         if net > 0:
             asset_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
             total_assets += net
-        else:
+        elif net < 0:
             liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
             total_liabilities += abs(net)
+        else:
+            # Zero balance — place on the natural side based on group name
+            grp_name = (grp.group_name or "").lower() if grp else ""
+            if "asset" in grp_name:
+                asset_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
+            else:
+                liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
 
     def _build_bs_group_tree(group_bucket):
         result = []

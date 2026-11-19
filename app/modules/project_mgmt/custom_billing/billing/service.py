@@ -1140,6 +1140,12 @@ def submit_billing(bill_id, submitted_by):
             bill.approved_by       = submitted_by
             bill.submitted_at      = datetime.utcnow()
             bill.final_approved_at = datetime.utcnow()
+
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document(bill.mode, bill.id, submitted_by)
+            except Exception:
+                pass
         else:
             bill.workflow_status = f"Pending_L{first_level.level_no}"
             bill.current_level   = first_level.level_no
@@ -1233,6 +1239,12 @@ def approve_billing(bill_id, approved_by, comments=None):
             bill.locked            = True
             bill.approved_by       = approved_by
             bill.final_approved_at = datetime.utcnow()
+
+            try:
+                from app.modules.finance.accounting import post_document
+                post_document(bill.mode, bill.id, approved_by)
+            except Exception:
+                pass
 
         bill.updated_by = approved_by
         bill.updated_at = datetime.utcnow()

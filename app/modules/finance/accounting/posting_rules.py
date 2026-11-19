@@ -687,6 +687,151 @@ def _post_petty_cash_docket(source_id):
 
 
 # ---------------------------------------------------------------------------
+# 13. Sale Claim Bill — recognise unbilled WIP on approval
+# ---------------------------------------------------------------------------
+
+def _post_sale_claim_bill(source_id):
+    from app.models.billingMaster import BillingMaster
+    from app.models.ogSaleOrder import OgSaleOrderMaster
+
+    bill = BillingMaster.query.get(source_id)
+    if not bill:
+        from .posting_engine import PostingError
+        raise PostingError(f"BillingMaster (claim) {source_id} not found")
+
+    lines = []
+    total = _d(bill.this_bill_claim)
+
+    if total > 0:
+        lines.append(_cc_line(
+            "UWIP", "Dr", total,
+            project_code=bill.project_code,
+            narration=f"Claim bill WIP: {bill.erp_no}",
+        ))
+
+        debtor_vendor_id = None
+        if bill.og_sale_order_id:
+            so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
+            if so:
+                debtor_vendor_id = so.debtor_id
+        if debtor_vendor_id:
+            lines.append(_vendor_line(
+                debtor_vendor_id, "Cr", total,
+                project_code=bill.project_code,
+                narration=f"Claim bill provisional: {bill.erp_no}",
+            ))
+
+    header = {
+        "posting_date": bill.billing_date,
+        "voucher_no": bill.erp_no,
+        "project_code": bill.project_code,
+        "remarks": bill.note,
+    }
+    return header, lines
+
+
+# ---------------------------------------------------------------------------
+# 14. Sale Certified Bill — reduce UWIP for certified portion
+# ---------------------------------------------------------------------------
+
+def _post_sale_certified_bill(source_id):
+    from app.models.billingMaster import BillingMaster
+    from app.models.ogSaleOrder import OgSaleOrderMaster
+
+    bill = BillingMaster.query.get(source_id)
+    if not bill:
+        from .posting_engine import PostingError
+        raise PostingError(f"BillingMaster (cert) {source_id} not found")
+
+    lines = []
+    total = _d(bill.this_bill_claim)
+
+    if total > 0:
+        lines.append(_cc_line(
+            "UWIP", "Cr", total,
+            project_code=bill.project_code,
+            narration=f"Certified bill reduces WIP: {bill.erp_no}",
+        ))
+
+        debtor_vendor_id = None
+        if bill.og_sale_order_id:
+            so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
+            if so:
+                debtor_vendor_id = so.debtor_id
+        if debtor_vendor_id:
+            lines.append(_vendor_line(
+                debtor_vendor_id, "Dr", total,
+                project_code=bill.project_code,
+                narration=f"Certified receivable: {bill.erp_no}",
+            ))
+
+    header = {
+        "posting_date": bill.billing_date,
+        "voucher_no": bill.erp_no,
+        "project_code": bill.project_code,
+        "remarks": bill.note,
+    }
+    return header, lines
+
+
+# ---------------------------------------------------------------------------
+# 15. Uncertified Statement — reclassify UWIP → hold CCs
+# ---------------------------------------------------------------------------
+
+_UA_FIELD_TO_CC = {
+    "certified_hold_amendment_pending":  "SAMD",
+    "non_boq_items_rate":                "SNBQ",
+    "hold_work":                         "SUSW",
+    "hold_for_full_work_not_completed":  "SFWN",
+}
+
+def _post_uncertified_statement(source_id):
+    from app.models.uncertainAllocation import (
+        UncertainAllocationMaster, UncertainAllocationLine,
+    )
+
+    ua = UncertainAllocationMaster.query.get(source_id)
+    if not ua:
+        from .posting_engine import PostingError
+        raise PostingError(f"UncertifiedStatement {source_id} not found")
+
+    lines = []
+    cc_totals = {cc: Decimal("0") for cc in _UA_FIELD_TO_CC.values()}
+
+    for line in ua.lines:
+        rate = _d(line.unit_rate)
+        for field, cc_code in _UA_FIELD_TO_CC.items():
+            qty = _d(getattr(line, field, 0))
+            if qty > 0 and rate > 0:
+                cc_totals[cc_code] += qty * rate
+
+    total_reclassified = Decimal("0")
+    for cc_code, amount in cc_totals.items():
+        if amount > 0:
+            lines.append(_cc_line(
+                cc_code, "Dr", amount,
+                project_code=ua.project_code,
+                narration=f"US reclassify from UWIP: {ua.ua_no}",
+            ))
+            total_reclassified += amount
+
+    if total_reclassified > 0:
+        lines.append(_cc_line(
+            "UWIP", "Cr", total_reclassified,
+            project_code=ua.project_code,
+            narration=f"US reclassify to hold CCs: {ua.ua_no}",
+        ))
+
+    header = {
+        "posting_date": ua.ua_date,
+        "voucher_no": ua.ua_no,
+        "project_code": ua.project_code,
+        "remarks": ua.remarks,
+    }
+    return header, lines
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -713,6 +858,9 @@ _POSTING_RULES = {
     "petty_cash_docket": _post_petty_cash_docket,
     "grn": _post_grn,
     "gin": _post_gin,
+    "sale_claim_bill": _post_sale_claim_bill,
+    "sale_certified_bill": _post_sale_certified_bill,
+    "uncertified_statement": _post_uncertified_statement,
 }
 
 
