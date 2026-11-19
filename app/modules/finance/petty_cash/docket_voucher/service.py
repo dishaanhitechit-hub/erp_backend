@@ -329,50 +329,62 @@ def get_petty_cash_docket_voucher_list(data):
         if not project_code:
             return res("projectCode required", [], 400)
 
-        # Eager-load everything the list row reads — otherwise each docket fires
-        # 4 lazy queries (budget, bank_cash, details, creator) → N+1 on every list.
-        query = PettyCashDocketVoucher.query.options(
-            joinedload(PettyCashDocketVoucher.budget),
-            joinedload(PettyCashDocketVoucher.bank_cash).lazyload(BankCash.projects),
-            joinedload(PettyCashDocketVoucher.creator),
-            selectinload(PettyCashDocketVoucher.details),
-        ).filter(
-            PettyCashDocketVoucher.project_code == project_code
+        # Plain column queries, no ORM objects: building ~700 dockets plus their
+        # budget / bank / creator / line objects was most of this API's time.
+        from app.models.user import User
+
+        V, D = PettyCashDocketVoucher, PettyCashDocketVoucherDetail
+        conds = [V.project_code == project_code]
+        if data.get("workflowStatus"):
+            conds.append(V.workflow_status == data["workflowStatus"])
+        if data.get("search"):
+            conds.append(V.voucher_no.ilike(f"%{data['search']}%"))
+        if data.get("fromDate"):
+            conds.append(V.voucher_date >= data["fromDate"])
+        if data.get("toDate"):
+            conds.append(V.voucher_date <= data["toDate"])
+
+        rows = (
+            db.session.query(
+                V.id, V.voucher_no, V.voucher_date, V.expenses_by, V.mode_of_payment,
+                V.bank_cash_id, V.payment_ref_id, V.total_amount, V.workflow_status,
+                V.created_at, PettyCashBudget.budget_no, BankCash.bank_code,
+                BankCash.type.label("account_type"), User.username,
+            )
+            .outerjoin(PettyCashBudget, PettyCashBudget.id == V.budget_id)
+            .outerjoin(BankCash, BankCash.id == V.bank_cash_id)
+            .outerjoin(User, User.id == V.created_by)
+            .filter(*conds)
+            .order_by(V.id.desc())
+            .all()
         )
 
-        if data.get("workflowStatus"):
-            query = query.filter(PettyCashDocketVoucher.workflow_status == data["workflowStatus"])
-
-        if data.get("search"):
-            term = f"%{data['search']}%"
-            query = query.filter(PettyCashDocketVoucher.voucher_no.ilike(term))
-
-        if data.get("fromDate"):
-            query = query.filter(PettyCashDocketVoucher.voucher_date >= data["fromDate"])
-
-        if data.get("toDate"):
-            query = query.filter(PettyCashDocketVoucher.voucher_date <= data["toDate"])
-
-        rows = query.order_by(PettyCashDocketVoucher.id.desc()).all()
+        # CC names per docket, in line order, without repeats
+        cc_names = {}
+        for vid, cc in (
+            db.session.query(D.voucher_id, D.cc_name)
+            .join(V, V.id == D.voucher_id)
+            .filter(*conds, D.cc_name.isnot(None), D.cc_name != "")
+            .order_by(D.voucher_id, D.sl_no)
+        ):
+            cc_names.setdefault(vid, {})[cc] = None
 
         result = [
             {
                 "id":             r.id,
                 "voucherNo":      r.voucher_no,
                 "voucherDate":    _fmt_date(r.voucher_date),
-                "budgetNo":       r.budget.budget_no if r.budget else None,
+                "budgetNo":       r.budget_no,
                 "expensesBy":     r.expenses_by,
                 "modeOfPayment":  r.mode_of_payment,
                 "bankCashId":     r.bank_cash_id,
-                "bankCode":       r.bank_cash.bank_code if r.bank_cash else None,
-                "accountType":    r.bank_cash.type if r.bank_cash else None,
+                "bankCode":       r.bank_code,
+                "accountType":    r.account_type,
                 "paymentRefId":   r.payment_ref_id,
                 "totalAmount":    float(r.total_amount or 0),
-                "ccNames":        ", ".join(
-                    dict.fromkeys(d.cc_name for d in r.details if d.cc_name)
-                ),
+                "ccNames":        ", ".join(cc_names.get(r.id, ())),
                 "workflowStatus": r.workflow_status,
-                "createdBy":      r.creator.username if r.creator else None,
+                "createdBy":      r.username,
                 "createdAt":      _fmt_date(r.created_at),
             }
             for r in rows
