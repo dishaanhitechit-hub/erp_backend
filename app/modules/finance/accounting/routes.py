@@ -6,6 +6,7 @@ from .ledger_service import (
     get_trial_balance,
     get_profit_loss,
     get_balance_sheet_report,
+    get_reconciliation,
     get_vendor_ledger_central,
     get_customer_ledger,
     get_bank_ledger,
@@ -57,6 +58,14 @@ def profit_loss():
 @jwt_required()
 def balance_sheet():
     return get_balance_sheet_report(request.args)
+
+
+# ── Reconciliation ───────────────────────────────────────────────────
+
+@accounting_bp.route("/reconciliation", methods=["GET"])
+@jwt_required()
+def reconciliation():
+    return get_reconciliation(request.args)
 
 
 # ── Vendor Ledger ─────────────────────────────────────────────────────────

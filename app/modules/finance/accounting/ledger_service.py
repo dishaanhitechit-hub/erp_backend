@@ -302,43 +302,116 @@ def get_trial_balance(params):
 # PROFIT & LOSS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _build_subgroup_tree(accounts_by_subgroup, all_subgroups_map):
+    """
+    Build a nested tree from SubGroupMaster hierarchy.
+    accounts_by_subgroup: {sub_group_id: [account_rows]}
+    all_subgroups_map: {id: SubGroupMaster}
+    Returns list of top-level nodes (level-0 sub-groups or ungrouped accounts).
+    Each node: {type, subGroupId, subGroupName, children, accounts, total}
+    """
+    # Collect all sub-group IDs that have accounts (directly or via descendants)
+    sg_ids_with_data = set()
+    for sg_id in accounts_by_subgroup:
+        if sg_id and sg_id in all_subgroups_map:
+            node = all_subgroups_map[sg_id]
+            while node:
+                sg_ids_with_data.add(node.id)
+                node = all_subgroups_map.get(node.parent_id) if node.parent_id else None
+
+    # Build children map
+    children_map = {}  # parent_id -> [SubGroupMaster]
+    roots = []  # level-0 sub-groups
+    for sg_id in sg_ids_with_data:
+        sg = all_subgroups_map[sg_id]
+        if sg.parent_id:
+            children_map.setdefault(sg.parent_id, []).append(sg)
+        else:
+            roots.append(sg)
+
+    roots.sort(key=lambda s: (s.fixed_code or "", s.sub_group_name))
+    for k in children_map:
+        children_map[k].sort(key=lambda s: (s.fixed_code or "", s.sub_group_name))
+
+    def _build_node(sg):
+        direct_accounts = sorted(accounts_by_subgroup.get(sg.id, []), key=lambda a: a.get("ccCode", ""))
+        child_sgs = children_map.get(sg.id, [])
+        child_nodes = [_build_node(c) for c in child_sgs]
+        total = sum(a["net"] for a in direct_accounts) + sum(c["total"] for c in child_nodes)
+        node = {
+            "type": "subGroup",
+            "subGroupId": sg.id,
+            "subGroupCode": sg.fixed_code,
+            "subGroupName": sg.sub_group_name,
+            "level": sg.level,
+            "children": child_nodes,
+            "accounts": direct_accounts,
+            "total": total,
+        }
+        return node
+
+    return [_build_node(r) for r in roots]
+
+
 def get_profit_loss(params):
     """
     P&L from actual posted income and expense transactions.
     Uses GroupMaster.head_under == 'Profit & Loss'.
+    Returns a hierarchical tree: Group → SubGroup (nested) → CC accounts.
     """
     from_date = _parse_date(params.get("from_date"))
     to_date = _parse_date(params.get("to_date"))
     project_code = params.get("project_code")
 
-    # Get all CC codes under P&L groups
-    pl_groups = GroupMaster.query.filter_by(head_under="Profit & Loss").all()
+    # 1. Load all P&L groups
+    pl_groups = GroupMaster.query.filter_by(head_under="Profit & Loss", status="Active").all()
     pl_group_ids = [g.id for g in pl_groups]
+    pl_groups_map = {g.id: g for g in pl_groups}
+
+    empty_resp = {"message": "OK", "data": {
+        "income": [], "expense": [], "totalIncome": 0, "totalExpense": 0, "netProfit": 0,
+        "fromDate": _fmt_date(from_date), "toDate": _fmt_date(to_date), "projectCode": project_code,
+    }}, 200
 
     if not pl_group_ids:
-        return {"message": "OK", "data": {"income": [], "expense": [], "netProfit": 0}}, 200
+        return empty_resp
 
-    pl_cc_ids = [
-        cc.id for cc in CCCode.query.filter(
-            CCCode.group_id.in_(pl_group_ids),
-            CCCode.status == "Active",
-        ).all()
-    ]
+    # 2. Eager-load all relevant CC codes in ONE query
+    pl_ccs = CCCode.query.filter(
+        or_(
+            and_(CCCode.group_id.in_(pl_group_ids), CCCode.status == "Active"),
+            and_(CCCode.pl_linked == True, CCCode.status == "Active"),
+        )
+    ).all()
 
-    # Also include cc codes that are PL-linked
-    pl_linked_ids = [
-        cc.id for cc in CCCode.query.filter(
-            CCCode.pl_linked == True,
-            CCCode.status == "Active",
-        ).all()
-    ]
+    if not pl_ccs:
+        return empty_resp
 
-    all_pl_ids = list(set(pl_cc_ids + pl_linked_ids))
+    cc_map = {cc.id: cc for cc in pl_ccs}
+    all_pl_ids = list(cc_map.keys())
 
-    if not all_pl_ids:
-        return {"message": "OK", "data": {"income": [], "expense": [], "netProfit": 0}}, 200
+    # 3. Eager-load all SubGroupMasters that these CCs reference
+    sg_ids = set()
+    for cc in pl_ccs:
+        if cc.pl_linked and cc.pl_sub_group_id:
+            sg_ids.add(cc.pl_sub_group_id)
+        elif cc.sub_group_id:
+            sg_ids.add(cc.sub_group_id)
+    # Also load parent chain
+    all_sgs = SubGroupMaster.query.filter(SubGroupMaster.group_id.in_(pl_group_ids)).all() if pl_group_ids else []
+    # Also load sub-groups for pl_linked groups that might be outside pl_group_ids
+    pl_linked_group_ids = set()
+    for cc in pl_ccs:
+        if cc.pl_linked and cc.pl_group_id and cc.pl_group_id not in pl_group_ids:
+            pl_linked_group_ids.add(cc.pl_group_id)
+            grp = GroupMaster.query.get(cc.pl_group_id)
+            if grp:
+                pl_groups_map[grp.id] = grp
+    if pl_linked_group_ids:
+        all_sgs += SubGroupMaster.query.filter(SubGroupMaster.group_id.in_(list(pl_linked_group_ids))).all()
+    all_subgroups_map = {sg.id: sg for sg in all_sgs}
 
-    # Query ledger lines for PL accounts
+    # 4. Single aggregated query for balances
     q = db.session.query(
         AccountingLedgerLine.cc_id,
         func.coalesce(func.sum(case(
@@ -362,51 +435,81 @@ def get_profit_loss(params):
         q = q.filter(AccountingLedger.project_code == project_code)
 
     q = q.group_by(AccountingLedgerLine.cc_id)
+    balances = {row[0]: (row[1], row[2]) for row in q.all()}
 
-    # Build group → sub_group → account hierarchy
-    income_groups = {}
-    expense_groups = {}
+    # 5. Build tree: group_id → {sub_group_id → [accounts]}
+    # income_tree and expense_tree keyed by group_id
+    income_by_group = {}   # group_id → {sg_id → [rows]}
+    expense_by_group = {}  # group_id → {sg_id → [rows]}
     total_income = Decimal("0")
     total_expense = Decimal("0")
 
-    for cc_id, dr_total, cr_total in q.all():
-        cc = CCCode.query.get(cc_id)
+    for cc_id, (dr_raw, cr_raw) in balances.items():
+        cc = cc_map.get(cc_id)
         if not cc:
             continue
 
-        dr_total = _d(dr_total)
-        cr_total = _d(cr_total)
-        net = cr_total - dr_total  # positive = income, negative = expense
+        dr_total = _d(dr_raw)
+        cr_total = _d(cr_raw)
+        net = cr_total - dr_total
 
-        # Use PL group if pl_linked, else use primary group
+        # Determine group and sub-group
         if cc.pl_linked and cc.pl_group_id:
-            grp = GroupMaster.query.get(cc.pl_group_id)
-            sub_grp = SubGroupMaster.query.get(cc.pl_sub_group_id) if cc.pl_sub_group_id else None
+            grp_id = cc.pl_group_id
+            sg_id = cc.pl_sub_group_id
         else:
-            grp = cc.group
-            sub_grp = cc.sub_group
-
-        grp_name = grp.group_name if grp else "Ungrouped"
-        sub_grp_name = sub_grp.sub_group_name if sub_grp and hasattr(sub_grp, 'sub_group_name') else None
+            grp_id = cc.group_id
+            sg_id = cc.sub_group_id
 
         row = {
+            "type": "account",
             "ccId": cc.id,
             "ccCode": cc.cc_code,
             "ccName": cc.cc_name,
-            "groupName": grp_name,
-            "subGroupName": sub_grp_name,
+            "plLinked": bool(cc.pl_linked),
             "debit": float(dr_total),
             "credit": float(cr_total),
-            "net": float(net),
+            "net": float(abs(net)),
         }
 
         if net >= 0:
-            income_groups.setdefault(grp_name, []).append(row)
+            bucket = income_by_group
             total_income += net
         else:
-            row["net"] = float(abs(net))
-            expense_groups.setdefault(grp_name, []).append(row)
+            bucket = expense_by_group
             total_expense += abs(net)
+
+        bucket.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
+
+    # 6. Assemble hierarchical response
+    def _build_group_tree(group_bucket):
+        result = []
+        for grp_id, sg_accounts in sorted(group_bucket.items(), key=lambda x: (pl_groups_map.get(x[0], GroupMaster()).group_name or "")):
+            grp = pl_groups_map.get(grp_id)
+            grp_name = grp.group_name if grp else "Ungrouped"
+
+            # Accounts without sub-group
+            ungrouped = sorted(sg_accounts.pop(None, []), key=lambda a: a.get("ccCode", ""))
+
+            # Build sub-group tree for this group's sub-groups
+            sg_tree = _build_subgroup_tree(sg_accounts, all_subgroups_map) if sg_accounts else []
+
+            group_total = (
+                sum(a["net"] for a in ungrouped)
+                + sum(n["total"] for n in sg_tree)
+            )
+
+            result.append({
+                "groupId": grp_id,
+                "groupName": grp_name,
+                "subGroups": sg_tree,
+                "accounts": ungrouped,
+                "total": group_total,
+            })
+        return result
+
+    income_tree = _build_group_tree(income_by_group)
+    expense_tree = _build_group_tree(expense_by_group)
 
     net_profit = float(total_income - total_expense)
 
@@ -416,8 +519,8 @@ def get_profit_loss(params):
             "fromDate": _fmt_date(from_date),
             "toDate": _fmt_date(to_date),
             "projectCode": project_code,
-            "income": [{"group": k, "accounts": v, "total": sum(a["net"] for a in v)} for k, v in income_groups.items()],
-            "expense": [{"group": k, "accounts": v, "total": sum(a["net"] for a in v)} for k, v in expense_groups.items()],
+            "income": income_tree,
+            "expense": expense_tree,
             "totalIncome": float(total_income),
             "totalExpense": float(total_expense),
             "netProfit": net_profit,
@@ -433,15 +536,32 @@ def get_balance_sheet_report(params):
     """
     Balance Sheet from the central accounting ledger.
     Uses GroupMaster.head_under == 'Balance Sheet'.
+    Returns hierarchical tree: Group → SubGroup (nested) → CC accounts,
+    plus special sections for Vendors, Banks and P&L retained earnings.
     """
     as_of_date = _parse_date(params.get("as_of_date") or params.get("to_date"))
+    from_date = _parse_date(params.get("from_date"))
     project_code = params.get("project_code")
 
-    # All CC codes under BS groups
-    bs_groups = GroupMaster.query.filter_by(head_under="Balance Sheet").all()
+    # 1. Load all BS groups and their sub-groups
+    bs_groups = GroupMaster.query.filter_by(head_under="Balance Sheet", status="Active").all()
     bs_group_ids = [g.id for g in bs_groups]
+    bs_groups_map = {g.id: g for g in bs_groups}
 
-    # CC balances
+    # Eager-load all CC codes under BS groups
+    bs_ccs = CCCode.query.filter(
+        CCCode.group_id.in_(bs_group_ids),
+        CCCode.status == "Active",
+    ).all() if bs_group_ids else []
+    cc_map = {cc.id: cc for cc in bs_ccs}
+
+    # Eager-load all sub-groups for BS groups
+    all_sgs = SubGroupMaster.query.filter(
+        SubGroupMaster.group_id.in_(bs_group_ids)
+    ).all() if bs_group_ids else []
+    all_subgroups_map = {sg.id: sg for sg in all_sgs}
+
+    # 2. Single aggregated query for CC balances
     cc_q = db.session.query(
         AccountingLedgerLine.cc_id,
         func.coalesce(func.sum(case(
@@ -457,99 +577,112 @@ def get_balance_sheet_report(params):
     )
     if as_of_date:
         cc_q = cc_q.filter(AccountingLedger.posting_date <= as_of_date)
+    if from_date:
+        cc_q = cc_q.filter(AccountingLedger.posting_date >= from_date)
     if project_code:
         cc_q = cc_q.filter(AccountingLedger.project_code == project_code)
     cc_q = cc_q.group_by(AccountingLedgerLine.cc_id)
 
-    # Vendor balances (creditors/debtors)
-    vendor_q = db.session.query(
-        AccountingLedgerLine.vendor_id,
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("dr"),
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("cr"),
-    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
-        AccountingLedgerLine.account_type == "Vendor",
-    )
-    if as_of_date:
-        vendor_q = vendor_q.filter(AccountingLedger.posting_date <= as_of_date)
-    if project_code:
-        vendor_q = vendor_q.filter(AccountingLedger.project_code == project_code)
-    vendor_q = vendor_q.group_by(AccountingLedgerLine.vendor_id)
+    # Date/project filter helper for vendor and bank queries
+    def _apply_date_project_filters(q):
+        if as_of_date:
+            q = q.filter(AccountingLedger.posting_date <= as_of_date)
+        if from_date:
+            q = q.filter(AccountingLedger.posting_date >= from_date)
+        if project_code:
+            q = q.filter(AccountingLedger.project_code == project_code)
+        return q
 
-    # Bank/Cash balances
-    bank_q = db.session.query(
-        AccountingLedgerLine.bank_cash_id,
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("dr"),
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("cr"),
-    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
-        AccountingLedgerLine.account_type == "BankCash",
-    )
-    if as_of_date:
-        bank_q = bank_q.filter(AccountingLedger.posting_date <= as_of_date)
-    if project_code:
-        bank_q = bank_q.filter(AccountingLedger.project_code == project_code)
-    bank_q = bank_q.group_by(AccountingLedgerLine.bank_cash_id)
-
-    # Build asset / liability sections
-    assets = []
-    liabilities = []
+    # 5. Build CC code tree by group → sub-group
+    asset_by_group = {}   # group_id → {sg_id → [rows]}
+    liability_by_group = {}
     total_assets = Decimal("0")
     total_liabilities = Decimal("0")
 
-    # CC codes — classify by group
-    for cc_id, dr, cr in cc_q.all():
-        cc = CCCode.query.get(cc_id) if cc_id else None
+    for cc_id, dr_raw, cr_raw in cc_q.all():
+        cc = cc_map.get(cc_id)
         if not cc:
             continue
-        if cc.group_id not in bs_group_ids:
+
+        net = _d(dr_raw) - _d(cr_raw)
+        if net == 0:
             continue
 
-        net = _d(dr) - _d(cr)
-        grp = cc.group
-        sub_grp = cc.sub_group
-
         row = {
-            "type": "CC",
-            "id": cc.id,
-            "code": cc.cc_code,
-            "name": cc.cc_name,
-            "groupName": grp.group_name if grp else "",
-            "subGroupName": sub_grp.sub_group_name if sub_grp and hasattr(sub_grp, 'sub_group_name') else None,
-            "balance": float(abs(net)),
+            "type": "account",
+            "ccId": cc.id,
+            "ccCode": cc.cc_code,
+            "ccName": cc.cc_name,
+            "debit": float(_d(dr_raw)),
+            "credit": float(_d(cr_raw)),
+            "net": float(abs(net)),
         }
 
+        grp_id = cc.group_id
+        sg_id = cc.sub_group_id
+
         if net > 0:
-            assets.append(row)
+            asset_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
             total_assets += net
-        elif net < 0:
-            row["balance"] = float(abs(net))
-            liabilities.append(row)
+        else:
+            liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
             total_liabilities += abs(net)
 
-    # Vendors — creditors (Cr balance) vs debtors (Dr balance)
+    def _build_bs_group_tree(group_bucket):
+        result = []
+        for grp_id, sg_accounts in sorted(group_bucket.items(), key=lambda x: (bs_groups_map.get(x[0], GroupMaster()).group_name or "")):
+            grp = bs_groups_map.get(grp_id)
+            ungrouped = sorted(sg_accounts.pop(None, []), key=lambda a: a.get("ccCode", ""))
+            sg_tree = _build_subgroup_tree(sg_accounts, all_subgroups_map) if sg_accounts else []
+            group_total = sum(a["net"] for a in ungrouped) + sum(n["total"] for n in sg_tree)
+            result.append({
+                "groupId": grp_id,
+                "groupName": grp.group_name if grp else "Ungrouped",
+                "subGroups": sg_tree,
+                "accounts": ungrouped,
+                "total": group_total,
+            })
+        return result
+
+    asset_groups = _build_bs_group_tree(asset_by_group)
+    liability_groups = _build_bs_group_tree(liability_by_group)
+
+    # 6. Vendors — creditors vs debtors
     sundry_creditors = Decimal("0")
     sundry_debtors = Decimal("0")
     creditor_details = []
     debtor_details = []
 
+    vendor_q = _apply_date_project_filters(
+        db.session.query(
+            AccountingLedgerLine.vendor_id,
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("dr"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("cr"),
+        ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
+            AccountingLedgerLine.account_type == "Vendor",
+        )
+    ).group_by(AccountingLedgerLine.vendor_id)
+
+    vendor_cache = {}
     for vid, dr, cr in vendor_q.all():
-        v = Vendor.query.get(vid) if vid else None
+        if not vid:
+            continue
+        if vid not in vendor_cache:
+            vendor_cache[vid] = Vendor.query.get(vid)
+        v = vendor_cache[vid]
         if not v:
             continue
         net = _d(dr) - _d(cr)
+        if net == 0:
+            continue
         row = {
-            "type": "Vendor",
+            "type": "vendor",
             "id": v.id,
             "code": v.ledger_code,
             "name": v.ledger_name,
@@ -559,13 +692,17 @@ def get_balance_sheet_report(params):
         if net < 0:
             sundry_creditors += abs(net)
             creditor_details.append(row)
-        elif net > 0:
+        else:
             sundry_debtors += net
             debtor_details.append(row)
 
+    vendor_assets = []
+    vendor_liabilities = []
+
     if sundry_debtors > 0:
-        assets.append({
-            "type": "Summary",
+        debtor_details.sort(key=lambda r: r["balance"], reverse=True)
+        vendor_assets.append({
+            "type": "vendorSummary",
             "code": "SUNDRY_DEBTORS",
             "name": "Sundry Debtors",
             "balance": float(sundry_debtors),
@@ -574,8 +711,9 @@ def get_balance_sheet_report(params):
         total_assets += sundry_debtors
 
     if sundry_creditors > 0:
-        liabilities.append({
-            "type": "Summary",
+        creditor_details.sort(key=lambda r: r["balance"], reverse=True)
+        vendor_liabilities.append({
+            "type": "vendorSummary",
             "code": "SUNDRY_CREDITORS",
             "name": "Sundry Creditors",
             "balance": float(sundry_creditors),
@@ -583,14 +721,38 @@ def get_balance_sheet_report(params):
         })
         total_liabilities += sundry_creditors
 
-    # Bank/Cash
+    # 7. Bank/Cash
+    bank_assets = []
+    bank_liabilities = []
+    bank_total = Decimal("0")
+
+    bank_q = _apply_date_project_filters(
+        db.session.query(
+            AccountingLedgerLine.bank_cash_id,
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("dr"),
+            func.coalesce(func.sum(case(
+                (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
+                else_=literal_column("0"),
+            )), 0).label("cr"),
+        ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
+            AccountingLedgerLine.account_type == "BankCash",
+        )
+    ).group_by(AccountingLedgerLine.bank_cash_id)
+
     for bc_id, dr, cr in bank_q.all():
-        bc = BankCash.query.get(bc_id) if bc_id else None
+        if not bc_id:
+            continue
+        bc = BankCash.query.get(bc_id)
         if not bc:
             continue
         net = _d(dr) - _d(cr)
+        if net == 0:
+            continue
         row = {
-            "type": "BankCash",
+            "type": "bankCash",
             "id": bc.id,
             "code": bc.bank_code,
             "name": bc.bank_name or bc.bank_holder_name or "",
@@ -598,46 +760,181 @@ def get_balance_sheet_report(params):
             "balance": float(abs(net)),
         }
         if net > 0:
-            assets.append(row)
+            bank_assets.append(row)
             total_assets += net
-        elif net < 0:
-            liabilities.append(row)
+            bank_total += net
+        else:
+            bank_liabilities.append(row)
             total_liabilities += abs(net)
 
-    # P&L result (retained earnings)
+    # 8. P&L retained earnings
     pl_data, _ = get_profit_loss({
         "to_date": _fmt_date(as_of_date),
+        "from_date": _fmt_date(from_date),
         "project_code": project_code,
     })
     net_profit = Decimal(str(pl_data["data"]["netProfit"]))
 
-    if net_profit > 0:
-        liabilities.append({
-            "type": "Summary",
-            "code": "NET_PROFIT",
-            "name": "Net Profit (Current Period)",
-            "balance": float(net_profit),
-        })
-        total_liabilities += net_profit
-    elif net_profit < 0:
-        assets.append({
-            "type": "Summary",
-            "code": "NET_LOSS",
-            "name": "Net Loss (Current Period)",
+    pl_section = None
+    if net_profit != 0:
+        pl_section = {
+            "type": "plResult",
+            "code": "NET_PROFIT" if net_profit > 0 else "NET_LOSS",
+            "name": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
             "balance": float(abs(net_profit)),
-        })
-        total_assets += abs(net_profit)
+        }
+        if net_profit > 0:
+            total_liabilities += net_profit
+        else:
+            total_assets += abs(net_profit)
 
     return {
         "message": "OK",
         "data": {
             "asOfDate": _fmt_date(as_of_date),
+            "fromDate": _fmt_date(from_date),
             "projectCode": project_code,
-            "assets": assets,
-            "liabilities": liabilities,
+            "assetGroups": asset_groups,
+            "liabilityGroups": liability_groups,
+            "vendorAssets": vendor_assets,
+            "vendorLiabilities": vendor_liabilities,
+            "bankAssets": bank_assets,
+            "bankLiabilities": bank_liabilities,
+            "bankTotal": float(bank_total),
+            "plResult": pl_section,
             "totalAssets": float(total_assets),
             "totalLiabilities": float(total_liabilities),
             "difference": float(total_assets - total_liabilities),
+        },
+    }, 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RECONCILIATION — drill-down into any account's transactions
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_reconciliation(params):
+    """
+    Returns all ledger transactions for a given account (CC, Vendor, BankCash)
+    within a date range, grouped by source_type. Each transaction includes
+    source details (voucher no, date, Dr/Cr, amount, narration, project code)
+    and a link path to the source document.
+    """
+    account_type = params.get("account_type")
+    account_id = params.get("account_id")
+    from_date = _parse_date(params.get("from_date"))
+    to_date = _parse_date(params.get("to_date"))
+    project_code = params.get("project_code")
+
+    if not account_type or not account_id:
+        return {"message": "account_type and account_id required", "data": []}, 400
+
+    account_id = int(account_id)
+
+    # Build query
+    q = db.session.query(
+        AccountingLedgerLine,
+        AccountingLedger.posting_date,
+        AccountingLedger.voucher_no,
+        AccountingLedger.source_type,
+        AccountingLedger.source_id,
+        AccountingLedger.project_code,
+        AccountingLedger.remarks,
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+
+    if account_type == "CC":
+        q = q.filter(AccountingLedgerLine.account_type == "CC", AccountingLedgerLine.cc_id == account_id)
+    elif account_type == "Vendor":
+        q = q.filter(AccountingLedgerLine.account_type == "Vendor", AccountingLedgerLine.vendor_id == account_id)
+    elif account_type == "BankCash":
+        q = q.filter(AccountingLedgerLine.account_type == "BankCash", AccountingLedgerLine.bank_cash_id == account_id)
+    else:
+        return {"message": f"Unknown account_type: {account_type}", "data": []}, 400
+
+    if from_date:
+        q = q.filter(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        q = q.filter(AccountingLedger.posting_date <= to_date)
+    if project_code:
+        q = q.filter(AccountingLedger.project_code == project_code)
+
+    q = q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
+
+    # Source type → frontend route mapping
+    source_routes = {
+        "purchase_bill": "/finance-management/account/purchases",
+        "payment_voucher": "/finance-management/account/payment",
+        "bill_payment": "/finance-management/account/payment",
+        "sale_bill": "/finance-management/account/sale",
+        "sale_receipt_billing": "/finance-management/account/receipt",
+        "journal_entry": "/finance-management/account/journal",
+        "contra_entry": "/finance-management/account/contra",
+        "debit_note": "/finance-management/account/debit-note",
+        "credit_note": "/finance-management/account/credit-note",
+        "petty_cash_docket": "/finance-management/account/petty-cash/expenses-docket",
+        "grn": "/resource/material-management/grn",
+        "gin": "/resource/material-management/gin",
+    }
+
+    # Group by source type
+    by_source = {}
+    total_dr = Decimal("0")
+    total_cr = Decimal("0")
+
+    for line, post_date, voucher_no, src_type, src_id, proj, remark in q.all():
+        dr = float(line.amount) if line.dr_cr == "Dr" else 0.0
+        cr = float(line.amount) if line.dr_cr == "Cr" else 0.0
+        total_dr += _d(dr)
+        total_cr += _d(cr)
+
+        base_route = source_routes.get(src_type, "")
+        link = f"{base_route}/{src_id}" if base_route and src_id else None
+
+        entry = {
+            "date": _fmt_date(post_date),
+            "voucherNo": voucher_no,
+            "sourceId": src_id,
+            "projectCode": proj,
+            "narration": line.narration or remark or "",
+            "drCr": line.dr_cr,
+            "debit": dr,
+            "credit": cr,
+            "link": link,
+        }
+
+        label = SOURCE_TYPE_LABELS.get(src_type, src_type or "Other")
+        by_source.setdefault(label, []).append(entry)
+
+    account_name = _get_account_name(account_type, account_id)
+
+    # Build grouped response
+    groups = []
+    for label, entries in by_source.items():
+        grp_dr = sum(e["debit"] for e in entries)
+        grp_cr = sum(e["credit"] for e in entries)
+        groups.append({
+            "sourceType": label,
+            "entries": entries,
+            "count": len(entries),
+            "totalDebit": grp_dr,
+            "totalCredit": grp_cr,
+        })
+
+    groups.sort(key=lambda g: g["totalDebit"] + g["totalCredit"], reverse=True)
+
+    return {
+        "message": "OK",
+        "data": {
+            "accountType": account_type,
+            "accountId": account_id,
+            "accountName": account_name,
+            "fromDate": _fmt_date(from_date),
+            "toDate": _fmt_date(to_date),
+            "projectCode": project_code,
+            "totalDebit": float(total_dr),
+            "totalCredit": float(total_cr),
+            "net": float(total_dr - total_cr),
+            "groups": groups,
         },
     }, 200
 
