@@ -118,3 +118,34 @@ def api_get_budget_rows_for_voucher(budget_id):
 def api_delete_petty_cash_voucher(voucher_id):
     from .service import delete_petty_cash_voucher
     return delete_petty_cash_voucher(voucher_id)
+
+
+# ── 13. BULK UPLOAD (Excel / CSV) ─────────────────────────────────
+from app.modules.finance.petty_cash.docket_voucher.bulk_import import (  # noqa: E402
+    get_bulk_docket_reference,
+    validate_bulk_docket,
+    import_bulk_docket,
+)
+
+
+@petty_cash_docket_voucher_bp.route("/bulk/reference", methods=["GET"])
+@login_required
+def api_bulk_docket_reference():
+    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
+    return get_bulk_docket_reference(request.args.to_dict(), user_id)
+
+
+@petty_cash_docket_voucher_bp.route("/bulk/validate", methods=["POST"])
+@login_required
+def api_bulk_validate_docket():
+    data    = request.get_json() or {}
+    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
+    return validate_bulk_docket(data, user_id)
+
+
+@petty_cash_docket_voucher_bp.route("/bulk/import", methods=["POST"])
+@login_required
+def api_bulk_import_docket():
+    data    = request.get_json() or {}
+    user_id = g.current_user.get("id") if hasattr(g, "current_user") else None
+    return import_bulk_docket(data, user_id)

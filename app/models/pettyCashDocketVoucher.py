@@ -5,6 +5,8 @@ from datetime import datetime
 class PettyCashDocketVoucher(db.Model):
 
     __tablename__ = "petty_cash_docket_voucher"
+    # list screen: WHERE project_code = ? ORDER BY id DESC
+    __table_args__ = (db.Index("ix_pcdv_project_code_id", "project_code", "id"),)
 
     id           = db.Column(db.Integer, primary_key=True)
     voucher_uuid = db.Column(db.String(36), unique=True, nullable=True, index=True)
@@ -63,7 +65,7 @@ class PettyCashDocketVoucherDetail(db.Model):
     __tablename__ = "petty_cash_docket_voucher_detail"
 
     id         = db.Column(db.Integer, primary_key=True)
-    voucher_id = db.Column(db.Integer, db.ForeignKey("petty_cash_docket_voucher.id"), nullable=False)
+    voucher_id = db.Column(db.Integer, db.ForeignKey("petty_cash_docket_voucher.id"), nullable=False, index=True)
 
     sl_no             = db.Column(db.Integer,     nullable=False)
     budget_detail_id  = db.Column(db.Integer, db.ForeignKey("petty_cash_budget_detail.id"), nullable=True)

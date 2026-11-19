@@ -484,7 +484,7 @@ def get_dc_detail(dc_id):
         def _user_name(user):
             if not user:
                 return None
-            return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+            return user.username
 
         dc_uuid_val = _ensure_dc_uuid(dc)
         data = {

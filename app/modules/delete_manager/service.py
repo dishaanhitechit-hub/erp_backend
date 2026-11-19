@@ -572,7 +572,7 @@ def list_notifications(
         # Requester name
         requester = User.query.get(dr.requested_by) if dr.requested_by else None
         row["requested_by_name"] = (
-            f"{requester.first_name} {requester.last_name}".strip()
+            requester.username
             if requester else None
         )
         results.append(row)

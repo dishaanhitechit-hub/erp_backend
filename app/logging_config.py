@@ -142,6 +142,11 @@ def register_request_logging(app):
             response.headers[REQUEST_ID_HEADER] = request_id
         started = g.get("request_started")
         duration_ms = round((time.perf_counter() - started) * 1000, 1) if started else None
+        if duration_ms is not None:
+            # Shows up in browser DevTools > Network > Timing > Server Timing
+            response.headers["Server-Timing"] = f"app;dur={duration_ms};desc=\"Flask\""
+            # Frontend may be on another origin; without this the browser hides the value
+            response.headers["Timing-Allow-Origin"] = "*"
         status = response.status_code
         level = logging.ERROR if status >= 500 else logging.WARNING if status >= 400 else logging.INFO
         if request.method == "OPTIONS":  # CORS pre-flight: noise
