@@ -8,8 +8,9 @@ rows and posts them here. One row = one CC expense line; rows sharing the same
 Every docket must reference an Approved petty-cash budget of the project.
 A CC line may use any valid CC code — same as the single docket form, CCs that
 are not in the budget are allowed (saved without a budget line link). For CCs
-that ARE in the budget the amount may not exceed what is left of that CC's
-budget (other dockets incl. earlier dockets of the same file count).
+that ARE in the budget, going over what is left of that CC's budget (other
+dockets incl. earlier dockets of the same file count) is only a WARNING — the
+docket can still be imported, same as the single docket form.
 
 Endpoints (see routes.py):
   GET  /finance/petty-cash/docket-voucher/bulk/reference?projectCode
@@ -355,13 +356,14 @@ def _validate(rows, project):
                 "description":    n["description"],
                 "amount":         n["amount"] if errs else float(amt),
                 "errors":         errs,
+                "warnings":       [],
             })
 
         # ── budget balance (per CC, cumulative over the upload) ──
         row_errors = any(r["errors"] for r in out_rows)
         balance_info = []
+        d_warnings = []
         if budget is not None and not row_errors:
-            over = False
             for cc_u, amt in line_amt.items():
                 bl = lk.budget_line.get((budget.id, cc_u))
                 if not bl:
@@ -373,14 +375,13 @@ def _validate(rows, project):
                     "ccCode": bl.cc_code, "budget": float(allotted),
                     "used": float(used), "remaining": float(remaining), "thisDocket": float(amt),
                 })
-                if amt > remaining:
-                    over = True
-                    msg = (f"Exceeds budget for {bl.cc_code}: balance {_money(max(remaining, Decimal('0')))}, "
-                           f"this docket {_money(amt)}")
+                if amt > remaining:          # allowed — warn only
+                    msg = (f"Over budget for {bl.cc_code} by {_money(amt - max(remaining, Decimal('0')))}: "
+                           f"balance {_money(max(remaining, Decimal('0')))}, this docket {_money(amt)}")
+                    d_warnings.append(msg)
                     for r in out_rows:
                         if (r["ccCode"] or "").upper() == cc_u:
-                            r["errors"].append(msg)
-            row_errors = row_errors or over
+                            r["warnings"].append(msg)
 
         if len(g_rows) > 200:
             d_errors.append("A docket can have at most 200 lines")
@@ -405,6 +406,7 @@ def _validate(rows, project):
             "lineCount":     len(g_rows),
             "valid":         valid,
             "errors":        d_errors,
+            "warnings":      d_warnings,
             "errorFields":   sorted(hdr_err_fields),
             "budgetBalance": balance_info,
             "rows":          out_rows,
