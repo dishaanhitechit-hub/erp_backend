@@ -53,8 +53,8 @@ _PDF_CSS = """
     @page { size: A4 landscape; margin: 1cm; }
     body { font-family: Helvetica, Arial, sans-serif; font-size: 9px; color: #222; }
     .header { text-align: center; margin-bottom: 10px; }
-    .header h1 { font-size: 14px; margin: 0; }
-    .header h2 { font-size: 11px; margin: 2px 0; font-weight: normal; }
+    .header h1 { font-size: 14px; margin: 0; font-weight: bold; }
+    .header h2 { font-size: 11px; margin: 2px 0; font-weight: bold; }
     .header .meta { font-size: 8px; color: #666; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     th { background: #2c3e50; color: white; padding: 4px 6px; text-align: left; font-size: 8px; }
@@ -63,6 +63,46 @@ _PDF_CSS = """
     .num { text-align: right; }
     .total-row { font-weight: bold; background: #eee !important; border-top: 2px solid #333; }
     .group-header { font-weight: bold; background: #e8e8e8; }
+    .footer { text-align: center; font-size: 7px; color: #999; margin-top: 10px; }
+</style>
+"""
+
+_PDF_CSS_TALLY = """
+<style>
+    @page { size: A4; margin: 1.5cm; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 10px; color: #000; }
+    .header { text-align: center; margin-bottom: 12px; }
+    .header h1 { font-size: 15px; margin: 0; font-weight: bold; }
+    .header .addr { font-size: 9px; margin: 2px 0; }
+    .header h2 { font-size: 13px; margin: 4px 0 2px; font-weight: bold; }
+    .header .period { font-size: 9px; }
+    table.ledger { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    table.ledger th { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 6px; text-align: left; font-size: 9px; font-weight: bold; }
+    table.ledger th.num { text-align: right; }
+    table.ledger td { padding: 2px 6px; font-size: 9px; vertical-align: top; }
+    table.ledger td.num { text-align: right; font-family: 'Courier New', monospace; font-size: 9px; }
+    table.ledger tr.total td { border-top: 1px solid #000; font-weight: bold; }
+    table.ledger tr.grand-total td { border-top: 2px solid #000; border-bottom: 2px solid #000; font-weight: bold; }
+    table.ledger tr.group-row td { font-weight: bold; padding-top: 6px; }
+    table.ledger tr.subgroup-row td { font-weight: bold; font-style: italic; }
+    .indent1 { padding-left: 20px !important; }
+    .indent2 { padding-left: 36px !important; }
+    .indent3 { padding-left: 52px !important; }
+    table.bs-layout { width: 100%; border-collapse: collapse; }
+    table.bs-layout > tbody > tr > td { width: 50%; vertical-align: top; padding: 0; }
+    table.bs-layout > tbody > tr > td:first-child { border-right: 1px solid #000; padding-right: 6px; }
+    table.bs-layout > tbody > tr > td:last-child { padding-left: 6px; }
+    table.bs-side { width: 100%; border-collapse: collapse; }
+    table.bs-side th { border-bottom: 1px solid #000; padding: 3px 4px; font-size: 9px; font-weight: bold; }
+    table.bs-side th.num { text-align: right; }
+    table.bs-side td { padding: 2px 4px; font-size: 9px; vertical-align: top; }
+    table.bs-side td.num { text-align: right; font-family: 'Courier New', monospace; }
+    table.bs-side tr.group-row td { font-weight: bold; padding-top: 5px; }
+    table.bs-side tr.total td { border-top: 1px solid #000; font-weight: bold; }
+    table.bs-side tr.grand-total td { border-top: 2px solid #000; border-bottom: 2px solid #000; font-weight: bold; }
+    .bs-indent1 { padding-left: 16px !important; }
+    .bs-indent2 { padding-left: 28px !important; }
+    .bs-indent3 { padding-left: 40px !important; }
     .footer { text-align: center; font-size: 7px; color: #999; margin-top: 10px; }
 </style>
 """
@@ -101,6 +141,51 @@ def _pdf_header(title, filters=None):
         <div class="meta">Generated: {datetime.now().strftime('%d-%b-%Y %H:%M')}</div>
     </div>
     """
+
+
+def _tally_header(title, period="", project=""):
+    company = _get_company_info()
+    addr = company.get("address", "")
+    period_line = f'<div class="period">{period}</div>' if period else ""
+    proj_line = f'<div class="period">Project: {project}</div>' if project and project != "All" else ""
+    return f"""
+    <div class="header">
+        <h1>{company['name']}</h1>
+        {'<div class="addr">' + addr + '</div>' if addr else ''}
+        <h2>{title}</h2>
+        {period_line}
+        {proj_line}
+    </div>
+    """
+
+
+def _flatten_subgroups_html(subgroups, depth=1, css_prefix=""):
+    """Recursively render subgroup tree rows for PDF."""
+    html = ""
+    indent_cls = f"{css_prefix}indent{min(depth, 3)}"
+    for sg in subgroups:
+        html += f'<tr class="subgroup-row"><td class="{indent_cls}">{sg["name"]}</td>'
+        html += f'<td class="num"></td><td class="num">{_fmt_num(sg["total"])}</td></tr>'
+        if sg.get("children"):
+            html += _flatten_subgroups_html(sg["children"], depth + 1, css_prefix)
+        for acc in sg.get("accounts", []):
+            acc_indent = f"{css_prefix}indent{min(depth + 1, 3)}"
+            html += f'<tr><td class="{acc_indent}">{acc["ccCode"]} - {acc["ccName"]}</td>'
+            html += f'<td class="num">{_fmt_num(acc["net"])}</td><td class="num"></td></tr>'
+    return html
+
+
+def _flatten_subgroups_rows(subgroups, depth=1):
+    """Recursively flatten subgroup tree for Excel rows."""
+    rows = []
+    prefix = "  " * depth
+    for sg in subgroups:
+        rows.append({"name": f"{prefix}{sg['name']}", "amount": sg["total"], "is_group": True})
+        if sg.get("children"):
+            rows.extend(_flatten_subgroups_rows(sg["children"], depth + 1))
+        for acc in sg.get("accounts", []):
+            rows.append({"name": f"{prefix}  {acc['ccCode']} - {acc['ccName']}", "amount": acc["net"], "is_group": False})
+    return rows
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -218,6 +303,14 @@ def _render_csv(headers, rows, filename):
 # EXPORT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _bal_suffix(val):
+    """Format balance with Dr/Cr suffix like Tally."""
+    if val is None or val == 0:
+        return "—"
+    n = float(val)
+    return f"{abs(n):,.2f} {'Dr' if n > 0 else 'Cr'}"
+
+
 def export_general_ledger(params):
     fmt = params.get("format", "excel")
     data_resp, code = get_general_ledger(params)
@@ -226,53 +319,48 @@ def export_general_ledger(params):
 
     data = data_resp["data"]
     entries = data["entries"]
-
-    filters = {
-        "Account": data.get("accountName", ""),
-        "From": data.get("fromDate", ""),
-        "To": data.get("toDate", ""),
-        "Project": data.get("projectCode", "All"),
-    }
+    account_name = data.get("accountName", "")
+    from_d = data.get("fromDate", "")
+    to_d = data.get("toDate", "")
+    project = data.get("projectCode", "All")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
 
     if fmt == "pdf":
         rows_html = ""
-        # Opening balance row
-        rows_html += f"""
-        <tr class="total-row">
-            <td colspan="4">Opening Balance</td>
-            <td class="num">{_fmt_num(data['openingBalance']) if data['openingBalance'] > 0 else ''}</td>
-            <td class="num">{_fmt_num(abs(data['openingBalance'])) if data['openingBalance'] < 0 else ''}</td>
-            <td class="num">{_fmt_num(data['openingBalance'])}</td>
-        </tr>
-        """
+        ob = data.get("openingBalance", 0)
+        rows_html += f'<tr class="total"><td colspan="4">Opening Balance</td>'
+        rows_html += f'<td class="num"></td><td class="num"></td><td class="num">{_bal_suffix(ob)}</td></tr>'
+
         for e in entries:
+            by_to = "By" if e.get("debit") else "To"
+            part = e.get("particulars") or e.get("sourceTypeLabel", "")
             rows_html += f"""
             <tr>
                 <td>{e['date']}</td>
-                <td>{e['sourceTypeLabel']}</td>
-                <td>{e['voucherNo']}</td>
-                <td>{e['narration'][:60]}</td>
-                <td class="num">{_fmt_num(e['debit']) if e['debit'] else ''}</td>
-                <td class="num">{_fmt_num(e['credit']) if e['credit'] else ''}</td>
-                <td class="num">{_fmt_num(e['balance'])}</td>
+                <td>{by_to}</td>
+                <td><b>{part}</b></td>
+                <td>{e.get('sourceTypeLabel', '')}</td>
+                <td>{e.get('voucherNo', '')}</td>
+                <td class="num">{_fmt_num(e['debit']) if e.get('debit') else ''}</td>
+                <td class="num">{_fmt_num(e['credit']) if e.get('credit') else ''}</td>
+                <td class="num">{_bal_suffix(e.get('balance', 0))}</td>
             </tr>
             """
-        # Closing
-        rows_html += f"""
-        <tr class="total-row">
-            <td colspan="4">Closing Balance</td>
-            <td class="num">{_fmt_num(data['totalDebit'])}</td>
-            <td class="num">{_fmt_num(data['totalCredit'])}</td>
-            <td class="num">{_fmt_num(data['closingBalance'])}</td>
-        </tr>
-        """
+
+        rows_html += f'<tr class="total"><td colspan="5">Closing Balance</td>'
+        rows_html += f'<td class="num"></td><td class="num"></td><td class="num">{_bal_suffix(data.get("closingBalance", 0))}</td></tr>'
+        rows_html += f'<tr class="grand-total"><td colspan="5"></td>'
+        rows_html += f'<td class="num">{_fmt_num(data["totalDebit"])}</td>'
+        rows_html += f'<td class="num">{_fmt_num(data["totalCredit"])}</td>'
+        rows_html += f'<td class="num">{_fmt_num(data["totalDebit"])}</td></tr>'
 
         html = f"""
-        <html><head>{_PDF_CSS}</head><body>
-        {_pdf_header("General Ledger", filters)}
-        <table>
+        <html><head>{_PDF_CSS_TALLY}</head><body>
+        {_tally_header("Ledger Account", period, project)}
+        <div style="text-align:center;font-size:11px;font-weight:bold;margin-bottom:6px;">{account_name}</div>
+        <table class="ledger">
             <thead>
-                <tr><th>Date</th><th>Type</th><th>Voucher No</th><th>Narration</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
+                <tr><th>Date</th><th></th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
             </thead>
             <tbody>{rows_html}</tbody>
         </table>
@@ -282,12 +370,22 @@ def export_general_ledger(params):
         return _render_pdf(html, "general_ledger.pdf")
 
     # Excel
-    headers = ["Date", "Type", "Voucher No", "Narration", "Debit", "Credit", "Balance"]
-    rows = [["", "", "", "Opening Balance", data["openingBalance"] if data["openingBalance"] > 0 else "", abs(data["openingBalance"]) if data["openingBalance"] < 0 else "", data["openingBalance"]]]
+    headers = ["Date", "Particulars", "Vch Type", "Vch No", "Debit", "Credit", "Balance"]
+    rows = [["", "Opening Balance", "", "", "", "", _bal_suffix(data.get("openingBalance", 0))]]
     for e in entries:
-        rows.append([e["date"], e["sourceTypeLabel"], e["voucherNo"], e["narration"][:60], e["debit"] or "", e["credit"] or "", e["balance"]])
-    rows.append(["", "", "", "Closing Balance", data["totalDebit"], data["totalCredit"], data["closingBalance"]])
-    return _render_excel(headers, rows, "general_ledger.xlsx", "Ledger", "General Ledger", filters)
+        rows.append([
+            e["date"],
+            e.get("particulars") or e.get("sourceTypeLabel", ""),
+            e.get("sourceTypeLabel", ""),
+            e.get("voucherNo", ""),
+            e["debit"] or "",
+            e["credit"] or "",
+            _bal_suffix(e.get("balance", 0)),
+        ])
+    rows.append(["", "Closing Balance", "", "", data["totalDebit"], data["totalCredit"], _bal_suffix(data.get("closingBalance", 0))])
+
+    filters = {"Account": account_name, "Period": period, "Project": project}
+    return _render_excel(headers, rows, "general_ledger.xlsx", "Ledger", "Ledger Account", filters)
 
 
 def export_trial_balance(params):
@@ -298,41 +396,39 @@ def export_trial_balance(params):
 
     data = data_resp["data"]
     rows_data = data["rows"]
-
-    filters = {
-        "From": data.get("fromDate", ""),
-        "To": data.get("toDate", ""),
-        "Project": data.get("projectCode", "All"),
-    }
+    from_d = data.get("fromDate", "")
+    to_d = data.get("toDate", "")
+    project = data.get("projectCode", "All")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
 
     if fmt == "pdf":
         rows_html = ""
         for r in rows_data:
+            head = r.get("headUnder", "")
             rows_html += f"""
             <tr>
+                <td>{r.get('accountType', '')}</td>
                 <td>{r['accountName']}</td>
-                <td>{r['groupName'] or ''}</td>
-                <td class="num">{_fmt_num(r['debit'])}</td>
-                <td class="num">{_fmt_num(r['credit'])}</td>
-                <td class="num">{_fmt_num(r['closingDebit']) if r['closingDebit'] else ''}</td>
-                <td class="num">{_fmt_num(r['closingCredit']) if r['closingCredit'] else ''}</td>
+                <td>{r.get('groupName', '') or ''}</td>
+                <td>{head}</td>
+                <td class="num">{_fmt_num(r['closingDebit']) if r.get('closingDebit') else ''}</td>
+                <td class="num">{_fmt_num(r['closingCredit']) if r.get('closingCredit') else ''}</td>
             </tr>
             """
         rows_html += f"""
-        <tr class="total-row">
-            <td colspan="2">Grand Total</td>
-            <td class="num">{_fmt_num(data['grandTotalDebit'])}</td>
-            <td class="num">{_fmt_num(data['grandTotalCredit'])}</td>
-            <td colspan="2"></td>
+        <tr class="grand-total">
+            <td colspan="4">Grand Total</td>
+            <td class="num">{_fmt_num(data.get('grandTotalDebit', 0))}</td>
+            <td class="num">{_fmt_num(data.get('grandTotalCredit', 0))}</td>
         </tr>
         """
 
         html = f"""
-        <html><head>{_PDF_CSS}</head><body>
-        {_pdf_header("Trial Balance", filters)}
-        <table>
+        <html><head>{_PDF_CSS_TALLY}</head><body>
+        {_tally_header("Trial Balance", period, project)}
+        <table class="ledger">
             <thead>
-                <tr><th>Account</th><th>Group</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Closing Dr</th><th class="num">Closing Cr</th></tr>
+                <tr><th>Type</th><th>Account Name</th><th>Group</th><th>Head Under</th><th class="num">Debit</th><th class="num">Credit</th></tr>
             </thead>
             <tbody>{rows_html}</tbody>
         </table>
@@ -341,10 +437,39 @@ def export_trial_balance(params):
         """
         return _render_pdf(html, "trial_balance.pdf")
 
-    headers = ["Account", "Group", "Debit", "Credit", "Closing Dr", "Closing Cr"]
-    rows = [[r["accountName"], r.get("groupName", ""), r["debit"], r["credit"], r["closingDebit"], r["closingCredit"]] for r in rows_data]
-    rows.append(["Grand Total", "", data["grandTotalDebit"], data["grandTotalCredit"], "", ""])
+    headers = ["Type", "Account Name", "Group", "Head Under", "Debit", "Credit"]
+    rows = [[r.get("accountType", ""), r["accountName"], r.get("groupName", ""), r.get("headUnder", ""), r.get("closingDebit", ""), r.get("closingCredit", "")] for r in rows_data]
+    rows.append(["", "Grand Total", "", "", data.get("grandTotalDebit", 0), data.get("grandTotalCredit", 0)])
+
+    filters = {"Period": period, "Project": project}
     return _render_excel(headers, rows, "trial_balance.xlsx", "Trial Balance", "Trial Balance", filters)
+
+
+def _render_pl_section_html(section_name, groups):
+    """Render a P&L section (Income or Expense) as HTML table rows."""
+    html = f'<tr class="group-row"><td colspan="3"><b>{section_name}</b></td></tr>'
+    for grp in groups:
+        html += f'<tr class="group-row"><td class="indent1">{grp["groupName"]}</td>'
+        html += f'<td class="num"></td><td class="num">{_fmt_num(grp["total"])}</td></tr>'
+        if grp.get("subGroups"):
+            html += _flatten_subgroups_html(grp["subGroups"], depth=2)
+        for acc in grp.get("accounts", []):
+            html += f'<tr><td class="indent2">{acc["ccCode"]} - {acc["ccName"]}</td>'
+            html += f'<td class="num">{_fmt_num(acc["net"])}</td><td class="num"></td></tr>'
+    return html
+
+
+def _render_pl_section_rows(section_name, groups):
+    """Flatten a P&L section (Income or Expense) for Excel."""
+    rows = []
+    rows.append({"name": section_name, "amount": "", "is_header": True})
+    for grp in groups:
+        rows.append({"name": f"  {grp['groupName']}", "amount": grp["total"], "is_group": True})
+        if grp.get("subGroups"):
+            rows.extend(_flatten_subgroups_rows(grp["subGroups"], depth=2))
+        for acc in grp.get("accounts", []):
+            rows.append({"name": f"    {acc['ccCode']} - {acc['ccName']}", "amount": acc["net"], "is_group": False})
+    return rows
 
 
 def export_profit_loss(params):
@@ -354,36 +479,27 @@ def export_profit_loss(params):
         return data_resp, code
 
     data = data_resp["data"]
-    filters = {
-        "From": data.get("fromDate", ""),
-        "To": data.get("toDate", ""),
-        "Project": data.get("projectCode", "All"),
-    }
+    from_d = data.get("fromDate", "")
+    to_d = data.get("toDate", "")
+    project = data.get("projectCode", "All")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
 
     if fmt == "pdf":
-        rows_html = ""
-        rows_html += '<tr class="group-header"><td colspan="3">INCOME</td></tr>'
-        for grp in data["income"]:
-            rows_html += f'<tr class="group-header"><td colspan="2">{grp["group"]}</td><td class="num">{_fmt_num(grp["total"])}</td></tr>'
-            for a in grp["accounts"]:
-                rows_html += f'<tr><td style="padding-left:20px">{a["ccCode"]} - {a["ccName"]}</td><td></td><td class="num">{_fmt_num(a["net"])}</td></tr>'
-
-        rows_html += f'<tr class="total-row"><td colspan="2">Total Income</td><td class="num">{_fmt_num(data["totalIncome"])}</td></tr>'
-
-        rows_html += '<tr class="group-header"><td colspan="3">EXPENSE</td></tr>'
-        for grp in data["expense"]:
-            rows_html += f'<tr class="group-header"><td colspan="2">{grp["group"]}</td><td class="num">{_fmt_num(grp["total"])}</td></tr>'
-            for a in grp["accounts"]:
-                rows_html += f'<tr><td style="padding-left:20px">{a["ccCode"]} - {a["ccName"]}</td><td></td><td class="num">{_fmt_num(a["net"])}</td></tr>'
-
-        rows_html += f'<tr class="total-row"><td colspan="2">Total Expense</td><td class="num">{_fmt_num(data["totalExpense"])}</td></tr>'
-        rows_html += f'<tr class="total-row"><td colspan="2">Net Profit / (Loss)</td><td class="num">{_fmt_num(data["netProfit"])}</td></tr>'
+        rows_html = _render_pl_section_html("INCOME", data.get("income", []))
+        rows_html += f'<tr class="total"><td>Total Income</td><td class="num"></td><td class="num">{_fmt_num(data["totalIncome"])}</td></tr>'
+        rows_html += '<tr><td colspan="3">&nbsp;</td></tr>'
+        rows_html += _render_pl_section_html("EXPENSE", data.get("expense", []))
+        rows_html += f'<tr class="total"><td>Total Expense</td><td class="num"></td><td class="num">{_fmt_num(data["totalExpense"])}</td></tr>'
+        rows_html += '<tr><td colspan="3">&nbsp;</td></tr>'
+        net = data["netProfit"]
+        label = "Net Profit" if net >= 0 else "Net Loss"
+        rows_html += f'<tr class="grand-total"><td>{label}</td><td class="num"></td><td class="num">{_fmt_num(abs(net))}</td></tr>'
 
         html = f"""
-        <html><head>{_PDF_CSS}</head><body>
-        {_pdf_header("Profit & Loss Statement", filters)}
-        <table>
-            <thead><tr><th>Particulars</th><th>Group</th><th class="num">Amount</th></tr></thead>
+        <html><head>{_PDF_CSS_TALLY}</head><body>
+        {_tally_header("Profit &amp; Loss Statement", period, project)}
+        <table class="ledger">
+            <thead><tr><th>Particulars</th><th class="num">Amount</th><th class="num">Total</th></tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
         <div class="footer">Page <pdf:pagenumber/></div>
@@ -391,25 +507,79 @@ def export_profit_loss(params):
         """
         return _render_pdf(html, "profit_loss.pdf")
 
-    # Excel
-    headers = ["Particulars", "Group", "Amount"]
+    # Excel — with tree nesting
+    headers = ["Particulars", "Amount", "Total"]
+    excel_rows = []
+    for r in _render_pl_section_rows("INCOME", data.get("income", [])):
+        if r.get("is_header"):
+            excel_rows.append([r["name"], "", ""])
+        elif r.get("is_group"):
+            excel_rows.append([r["name"], "", r["amount"]])
+        else:
+            excel_rows.append([r["name"], r["amount"], ""])
+    excel_rows.append(["Total Income", "", data["totalIncome"]])
+    excel_rows.append(["", "", ""])
+    for r in _render_pl_section_rows("EXPENSE", data.get("expense", [])):
+        if r.get("is_header"):
+            excel_rows.append([r["name"], "", ""])
+        elif r.get("is_group"):
+            excel_rows.append([r["name"], "", r["amount"]])
+        else:
+            excel_rows.append([r["name"], r["amount"], ""])
+    excel_rows.append(["Total Expense", "", data["totalExpense"]])
+    excel_rows.append(["", "", ""])
+    net = data["netProfit"]
+    label = "Net Profit" if net >= 0 else "Net Loss"
+    excel_rows.append([label, "", abs(net)])
+
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "profit_loss.xlsx", "P&L", "Profit & Loss Statement", filters)
+
+
+def _render_bs_side_html(groups, extra_items=None):
+    """Render one side (Assets or Liabilities) of the BS as table rows."""
+    html = ""
+    for grp in groups:
+        html += f'<tr class="group-row"><td><b>{grp["groupName"]}</b></td><td class="num"></td><td class="num">{_fmt_num(grp["total"])}</td></tr>'
+        if grp.get("subGroups"):
+            html += _flatten_subgroups_html(grp["subGroups"], depth=1, css_prefix="bs-")
+        for acc in grp.get("accounts", []):
+            html += f'<tr><td class="bs-indent1">{acc["ccCode"]} - {acc["ccName"]}</td>'
+            html += f'<td class="num">{_fmt_num(acc["net"])}</td><td class="num"></td></tr>'
+    for item in (extra_items or []):
+        if item.get("type") == "vendorSummary":
+            html += f'<tr class="group-row"><td><b>{item["name"]}</b></td><td class="num"></td><td class="num">{_fmt_num(item["balance"])}</td></tr>'
+            for d in item.get("details", []):
+                html += f'<tr><td class="bs-indent1">{d.get("code", "")} - {d["name"]}</td>'
+                html += f'<td class="num">{_fmt_num(d["balance"])}</td><td class="num"></td></tr>'
+        elif item.get("type") == "bankCash":
+            html += f'<tr><td class="bs-indent1">{item.get("code", "")} - {item["name"]}</td>'
+            html += f'<td class="num">{_fmt_num(item["balance"])}</td><td class="num"></td></tr>'
+        elif item.get("type") == "plResult":
+            html += f'<tr class="group-row"><td><b>{item["name"]}</b></td><td class="num"></td><td class="num">{_fmt_num(item["balance"])}</td></tr>'
+    return html
+
+
+def _flatten_bs_side_rows(groups, extra_items=None):
+    """Flatten one BS side for Excel."""
     rows = []
-    rows.append(["INCOME", "", ""])
-    for grp in data["income"]:
-        rows.append([grp["group"], "", grp["total"]])
-        for a in grp["accounts"]:
-            rows.append([f"  {a['ccCode']} - {a['ccName']}", "", a["net"]])
-    rows.append(["Total Income", "", data["totalIncome"]])
-    rows.append(["", "", ""])
-    rows.append(["EXPENSE", "", ""])
-    for grp in data["expense"]:
-        rows.append([grp["group"], "", grp["total"]])
-        for a in grp["accounts"]:
-            rows.append([f"  {a['ccCode']} - {a['ccName']}", "", a["net"]])
-    rows.append(["Total Expense", "", data["totalExpense"]])
-    rows.append(["", "", ""])
-    rows.append(["Net Profit / (Loss)", "", data["netProfit"]])
-    return _render_excel(headers, rows, "profit_loss.xlsx", "P&L", "Profit & Loss Statement", filters)
+    for grp in groups:
+        rows.append({"name": grp["groupName"], "sub": "", "total": grp["total"], "is_group": True})
+        if grp.get("subGroups"):
+            for sr in _flatten_subgroups_rows(grp["subGroups"], depth=1):
+                rows.append({"name": sr["name"], "sub": sr["amount"] if not sr["is_group"] else "", "total": sr["amount"] if sr["is_group"] else "", "is_group": sr["is_group"]})
+        for acc in grp.get("accounts", []):
+            rows.append({"name": f"  {acc['ccCode']} - {acc['ccName']}", "sub": acc["net"], "total": "", "is_group": False})
+    for item in (extra_items or []):
+        if item.get("type") == "vendorSummary":
+            rows.append({"name": item["name"], "sub": "", "total": item["balance"], "is_group": True})
+            for d in item.get("details", []):
+                rows.append({"name": f"  {d.get('code', '')} - {d['name']}", "sub": d["balance"], "total": "", "is_group": False})
+        elif item.get("type") == "bankCash":
+            rows.append({"name": f"  {item.get('code', '')} - {item['name']}", "sub": item["balance"], "total": "", "is_group": False})
+        elif item.get("type") == "plResult":
+            rows.append({"name": item["name"], "sub": "", "total": item["balance"], "is_group": True})
+    return rows
 
 
 def export_balance_sheet(params):
@@ -419,53 +589,88 @@ def export_balance_sheet(params):
         return data_resp, code
 
     data = data_resp["data"]
-    filters = {
-        "As of": data.get("asOfDate", ""),
-        "Project": data.get("projectCode", "All"),
-    }
+    as_of = data.get("asOfDate", "")
+    from_d = data.get("fromDate", "")
+    project = data.get("projectCode", "All")
+    period = f"{from_d} to {as_of}" if from_d else f"as at {as_of}"
+
+    # Collect extras for each side
+    asset_extras = []
+    for va in data.get("vendorAssets", []):
+        asset_extras.append(va)
+    for ba in data.get("bankAssets", []):
+        asset_extras.append(ba)
+    pl = data.get("plResult")
+    if pl and pl.get("code") == "NET_LOSS":
+        asset_extras.append(pl)
+
+    liability_extras = []
+    for vl in data.get("vendorLiabilities", []):
+        liability_extras.append(vl)
+    for bl in data.get("bankLiabilities", []):
+        liability_extras.append(bl)
+    if pl and pl.get("code") == "NET_PROFIT":
+        liability_extras.append(pl)
 
     if fmt == "pdf":
-        rows_html = ""
-        rows_html += '<tr class="group-header"><td colspan="2">ASSETS</td></tr>'
-        for a in data["assets"]:
-            name = a.get("name", a.get("code", ""))
-            rows_html += f'<tr><td>{name}</td><td class="num">{_fmt_num(a["balance"])}</td></tr>'
-        rows_html += f'<tr class="total-row"><td>Total Assets</td><td class="num">{_fmt_num(data["totalAssets"])}</td></tr>'
+        # T-format: Liabilities on left, Assets on right (like the reference)
+        liab_html = _render_bs_side_html(data.get("liabilityGroups", []), liability_extras)
+        liab_html += f'<tr class="grand-total"><td>Total</td><td class="num"></td><td class="num">{_fmt_num(data["totalLiabilities"])}</td></tr>'
 
-        rows_html += '<tr class="group-header"><td colspan="2">LIABILITIES & EQUITY</td></tr>'
-        for l in data["liabilities"]:
-            name = l.get("name", l.get("code", ""))
-            rows_html += f'<tr><td>{name}</td><td class="num">{_fmt_num(l["balance"])}</td></tr>'
-        rows_html += f'<tr class="total-row"><td>Total Liabilities</td><td class="num">{_fmt_num(data["totalLiabilities"])}</td></tr>'
-
-        diff = data.get("difference", 0)
-        if abs(diff) > 0.01:
-            rows_html += f'<tr class="total-row"><td>Difference (Assets - Liabilities)</td><td class="num">{_fmt_num(diff)}</td></tr>'
+        asset_html = _render_bs_side_html(data.get("assetGroups", []), asset_extras)
+        asset_html += f'<tr class="grand-total"><td>Total</td><td class="num"></td><td class="num">{_fmt_num(data["totalAssets"])}</td></tr>'
 
         html = f"""
-        <html><head>{_PDF_CSS}</head><body>
-        {_pdf_header("Balance Sheet", filters)}
-        <table>
-            <thead><tr><th>Particulars</th><th class="num">Amount</th></tr></thead>
-            <tbody>{rows_html}</tbody>
+        <html><head>{_PDF_CSS_TALLY}</head><body>
+        {_tally_header("Balance Sheet", period, project)}
+        <table class="bs-layout">
+            <thead>
+                <tr>
+                    <td>
+                        <table class="bs-side">
+                            <thead><tr><th>Liabilities</th><th class="num" style="width:90px">Amount</th><th class="num" style="width:100px">as at {as_of}</th></tr></thead>
+                            <tbody>{liab_html}</tbody>
+                        </table>
+                    </td>
+                    <td>
+                        <table class="bs-side">
+                            <thead><tr><th>Assets</th><th class="num" style="width:90px">Amount</th><th class="num" style="width:100px">as at {as_of}</th></tr></thead>
+                            <tbody>{asset_html}</tbody>
+                        </table>
+                    </td>
+                </tr>
+            </thead>
         </table>
         <div class="footer">Page <pdf:pagenumber/></div>
         </body></html>
         """
         return _render_pdf(html, "balance_sheet.pdf")
 
-    headers = ["Particulars", "Amount"]
-    rows = []
-    rows.append(["ASSETS", ""])
-    for a in data["assets"]:
-        rows.append([a.get("name", a.get("code", "")), a["balance"]])
-    rows.append(["Total Assets", data["totalAssets"]])
-    rows.append(["", ""])
-    rows.append(["LIABILITIES & EQUITY", ""])
-    for l in data["liabilities"]:
-        rows.append([l.get("name", l.get("code", "")), l["balance"]])
-    rows.append(["Total Liabilities", data["totalLiabilities"]])
+    # Excel — two-column layout is hard, so use sequential with clear sections
+    headers = ["Particulars", "Amount", "Total"]
+    excel_rows = []
+
+    excel_rows.append(["LIABILITIES", "", ""])
+    for r in _flatten_bs_side_rows(data.get("liabilityGroups", []), liability_extras):
+        if r["is_group"]:
+            excel_rows.append([r["name"], "", r["total"]])
+        else:
+            excel_rows.append([r["name"], r["sub"], ""])
+    excel_rows.append(["Total Liabilities", "", data["totalLiabilities"]])
+    excel_rows.append(["", "", ""])
+
+    excel_rows.append(["ASSETS", "", ""])
+    for r in _flatten_bs_side_rows(data.get("assetGroups", []), asset_extras):
+        if r["is_group"]:
+            excel_rows.append([r["name"], "", r["total"]])
+        else:
+            excel_rows.append([r["name"], r["sub"], ""])
+    excel_rows.append(["Total Assets", "", data["totalAssets"]])
+
     diff = data.get("difference", 0)
-    if abs(diff) > 0.01:
-        rows.append(["Difference", diff])
-    return _render_excel(headers, rows, "balance_sheet.xlsx", "Balance Sheet", "Balance Sheet", filters)
+    if abs(float(diff)) > 0.01:
+        excel_rows.append(["", "", ""])
+        excel_rows.append(["Difference (Assets - Liabilities)", "", diff])
+
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "balance_sheet.xlsx", "Balance Sheet", "Balance Sheet", filters)

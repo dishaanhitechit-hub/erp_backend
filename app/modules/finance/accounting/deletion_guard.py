@@ -69,6 +69,37 @@ def check_posted_before_delete(model_class_name, doc_id):
     return True, ""
 
 
+def cc_posting_count(cc_id):
+    """Return number of accounting ledger line entries for a CC code."""
+    from app.models.accounting import AccountingLedgerLine
+    return AccountingLedgerLine.query.filter_by(
+        account_type="CC", cc_id=cc_id
+    ).count()
+
+
+def cc_has_postings(cc_id):
+    """Check if a CC code has any accounting ledger line entries."""
+    return cc_posting_count(cc_id) > 0
+
+
+def group_posting_count(group_id):
+    """Return number of postings across all CC codes under a group."""
+    from app.models.cc_code import CCCode
+    from app.models.accounting import AccountingLedgerLine
+    cc_ids = [c.id for c in CCCode.query.filter_by(group_id=group_id).all()]
+    if not cc_ids:
+        return 0
+    return AccountingLedgerLine.query.filter(
+        AccountingLedgerLine.account_type == "CC",
+        AccountingLedgerLine.cc_id.in_(cc_ids),
+    ).count()
+
+
+def group_has_postings(group_id):
+    """Check if any CC code under a group has accounting postings."""
+    return group_posting_count(group_id) > 0
+
+
 def check_fy_has_postings(fy_id):
     """
     Prevent deletion of a FinancialYear that contains posted transactions.

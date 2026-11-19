@@ -905,6 +905,37 @@ def update_cc_code(ccId, data):
     if err:
         return res(err, [], 400)
 
+    # Guard: warn about group/subgroup/pl_linked changes when postings exist
+    new_pl_linked, new_pl_group_id, new_pl_sub_group_id = pl
+    group_changing = int(newGroupId) != int(cc.group_id)
+    sub_group_changing = (sub.id if sub else None) != cc.sub_group_id
+    pl_linked_changing = new_pl_linked != bool(cc.pl_linked)
+    pl_group_changing = new_pl_group_id != cc.pl_group_id
+    pl_sub_group_changing = new_pl_sub_group_id != cc.pl_sub_group_id
+
+    structural_change = group_changing or sub_group_changing or pl_linked_changing or pl_group_changing or pl_sub_group_changing
+    confirmed = data.get("confirmStructuralChange", False)
+
+    if structural_change and not confirmed:
+        from app.modules.finance.accounting.deletion_guard import cc_posting_count
+        count = cc_posting_count(cc.id)
+        if count > 0:
+            changed_parts = []
+            if group_changing:
+                changed_parts.append("group")
+            if sub_group_changing:
+                changed_parts.append("sub-group")
+            if pl_linked_changing or pl_group_changing or pl_sub_group_changing:
+                changed_parts.append("P&L linking")
+            return res(
+                f"This CC code has {count} accounting entries. "
+                f"Changing {', '.join(changed_parts)} will retroactively "
+                "affect all historical reports (P&L, Balance Sheet, Trial Balance). "
+                "Are you sure?",
+                [{"requiresConfirmation": True, "affectedPostings": count}],
+                409,
+            )
+
     cc.cc_name = data.get("ccName", cc.cc_name)
     cc.group_id = newGroupId
     cc.category_code = newCategory
@@ -926,12 +957,19 @@ def delete_cc_code(ccId):
     if not cc:
         return res("CC Code not found", [], 404)
 
-    # deletes only this CC code row (no cascade)
+    from app.modules.finance.accounting.deletion_guard import cc_has_postings
+    if cc_has_postings(cc.id):
+        return res(
+            "This CC code has accounting postings and cannot be deleted. "
+            "Deactivate it instead (set status to Inactive).",
+            [],
+            409,
+        )
+
     try:
         db.session.delete(cc)
         db.session.commit()
     except Exception:
-        # the database refuses when other records still point to this CC code
         db.session.rollback()
         return res(
             "This CC code is still used by other records (items, assets, bills or entries), so the database did not delete it.",
@@ -1024,8 +1062,24 @@ def update_group(groupId, data):
     if not group:
         return res("Group not found", [], 404)
 
+    new_head_under = data.get("headUnder", group.head_under)
+    confirmed = data.get("confirmStructuralChange", False)
+
+    if new_head_under != group.head_under and not confirmed:
+        from app.modules.finance.accounting.deletion_guard import group_posting_count
+        count = group_posting_count(group.id)
+        if count > 0:
+            return res(
+                f"This group has {count} accounting entries across its CC codes. "
+                f"Changing head_under from '{group.head_under}' to '{new_head_under}' "
+                "will move all accounts between Balance Sheet and Profit & Loss "
+                "retroactively in all historical reports. Are you sure?",
+                [{"requiresConfirmation": True, "affectedPostings": count}],
+                409,
+            )
+
     group.group_name = data.get("groupName", group.group_name)
-    group.head_under = data.get("headUnder", group.head_under)
+    group.head_under = new_head_under
 
     db.session.commit()
 
