@@ -33,6 +33,24 @@ _MODULE = "receipt"
 # HELPERS
 # ══════════════════════════════════════════════════════════════════
 
+def _resolve_output_gst_ccs():
+    """Look up dedicated Output GST CC codes in one query."""
+    ccs = CCCode.query.filter(
+        CCCode.gst_account_type.in_(["OUTPUT_SGST", "OUTPUT_CGST", "OUTPUT_IGST"])
+    ).all()
+    result = {}
+    for cc in ccs:
+        gst_type = cc.gst_account_type.replace("OUTPUT_", "")
+        result[gst_type] = (cc.cc_code, cc.cc_name)
+    if len(result) < 3:
+        for gst_type in ("SGST", "CGST", "IGST"):
+            if gst_type not in result:
+                cc = CCCode.query.filter(CCCode.cc_name.ilike(f"%Output%{gst_type}%")).first()
+                if cc:
+                    result[gst_type] = (cc.cc_code, cc.cc_name)
+    return result
+
+
 def _fmt_date(d):
     if d is None:
         return None
@@ -391,10 +409,14 @@ def get_details_by_invoice_no(data):
             })
 
         if not result_gst:
+            output_ccs = _resolve_output_gst_ccs()
+            igst_cc, igst_name = output_ccs.get("IGST", ("IGST", "Output-IGST"))
+            cgst_cc, cgst_name = output_ccs.get("CGST", ("CGST", "Output-CGST"))
+            sgst_cc, sgst_name = output_ccs.get("SGST", ("SGST", "Output-SGST"))
             for gst_type, cc_code, cc_name in [
-                ("IGST", "IGST", "Output-IGST"),
-                ("CGST", "CGST", "Output-CGST"),
-                ("SGST", "SGST", "Output-SGST"),
+                ("IGST", igst_cc, igst_name),
+                ("CGST", cgst_cc, cgst_name),
+                ("SGST", sgst_cc, sgst_name),
             ]:
                 result_gst.append({
                     "gstType": gst_type, "ccCode": cc_code, "ccName": cc_name,

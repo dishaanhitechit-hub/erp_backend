@@ -24,6 +24,7 @@ from .ledger_service import (
 from .historical_posting import run_historical_posting, get_posting_status
 from .opening_balance_service import list_opening_balances, save_opening_balance, delete_opening_balance
 from .cancellation_service import cancel_posted_document, get_cancellation_info
+from .posting_engine import fix_gst_ledger_lines
 
 accounting_bp = Blueprint("accounting", __name__)
 
@@ -355,3 +356,17 @@ def stock_summary():
         return {"message": "OK", "data": items}, 200
     except Exception as e:
         return {"message": str(e)}, 500
+
+
+# ── GST Fix ──────────────────────────────────────────────────────────────
+
+@accounting_bp.route("/fix-gst-lines", methods=["POST"])
+@jwt_required()
+def fix_gst():
+    try:
+        result = fix_gst_ledger_lines()
+        return {"message": f"Fixed {result['fixed']} GST ledger lines", "data": [result]}, 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"message": f"GST fix failed: {str(e)}"}, 500

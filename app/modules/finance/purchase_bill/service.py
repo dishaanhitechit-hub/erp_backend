@@ -64,6 +64,24 @@ def _generate_purchase_bill_no():
     return str(num + 1).zfill(3)
 
 
+def _resolve_input_gst_ccs():
+    """Look up dedicated Input GST CC codes in one query."""
+    ccs = CCCode.query.filter(
+        CCCode.gst_account_type.in_(["INPUT_SGST", "INPUT_CGST", "INPUT_IGST"])
+    ).all()
+    result = {}
+    for cc in ccs:
+        gst_type = cc.gst_account_type.replace("INPUT_", "")
+        result[gst_type] = (cc.cc_code, cc.cc_name)
+    if len(result) < 3:
+        for gst_type in ("SGST", "CGST", "IGST"):
+            if gst_type not in result:
+                cc = CCCode.query.filter(CCCode.cc_name.ilike(f"%Input%{gst_type}%")).first()
+                if cc:
+                    result[gst_type] = (cc.cc_code, cc.cc_name)
+    return result
+
+
 def _cc_summary_from_brb(brb_id, billing_type):
     """CC-grouped basic amounts and GST from a single BRB record."""
     if billing_type == "GRN":
@@ -547,7 +565,9 @@ def get_brr_items_grouped(data):
             for idx, k in enumerate(cc_order)
         ]
 
-        # Build gstLines: SGST + CGST (each half) and IGST (full), per CC code
+        # Build gstLines: SGST + CGST (each half) and IGST (full)
+        # Use dedicated Input GST CC codes (GST Input SGST/CGST/IGST)
+        input_gst_ccs = _resolve_input_gst_ccs()
         gst_lines = []
         for k in cc_order:
             entry     = cc_totals[k]
@@ -558,12 +578,15 @@ def get_brr_items_grouped(data):
             eff_pct  = (gst_amt / basic_amt * 100).quantize(Decimal("0.01")) if basic_amt else Decimal("0")
             half_pct = (eff_pct  / 2).quantize(Decimal("0.01"))
             half_amt = (gst_amt  / 2).quantize(Decimal("0.01"))
-            cc_code  = entry["ccCode"]
-            cc_name  = entry["ccName"]
+            fallback_cc   = entry["ccCode"]
+            fallback_name = entry["ccName"]
+            sgst_cc, sgst_name = input_gst_ccs.get("SGST", (fallback_cc, fallback_name))
+            cgst_cc, cgst_name = input_gst_ccs.get("CGST", (fallback_cc, fallback_name))
+            igst_cc, igst_name = input_gst_ccs.get("IGST", (fallback_cc, fallback_name))
             gst_lines.extend([
-                {"gstType": "SGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-                {"gstType": "CGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-                {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(gst_amt),  "isSelected": False},
+                {"gstType": "SGST", "ccCode": sgst_cc, "ccName": sgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+                {"gstType": "CGST", "ccCode": cgst_cc, "ccName": cgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+                {"gstType": "IGST", "ccCode": igst_cc, "ccName": igst_name, "percent": float(eff_pct),  "gstAmount": float(gst_amt),  "isSelected": False},
             ])
 
         return res("BRR items grouped by CC Code", {

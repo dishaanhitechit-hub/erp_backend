@@ -110,6 +110,16 @@ class CCCode(db.Model):
     pl_sub_group = db.relationship("SubGroupMaster", foreign_keys=[pl_sub_group_id], lazy=True)
 
     # =====================================
+    # GST ACCOUNT TYPE
+    # Explicit mapping for GST CC codes — survives renaming.
+    # Values: INPUT_SGST, INPUT_CGST, INPUT_IGST,
+    #         OUTPUT_SGST, OUTPUT_CGST, OUTPUT_IGST
+    # None for non-GST accounts.
+    # =====================================
+
+    gst_account_type = db.Column(db.String(20), nullable=True)
+
+    # =====================================
     # STATUS + AUDIT
     # =====================================
 

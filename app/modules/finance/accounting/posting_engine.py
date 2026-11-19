@@ -170,3 +170,60 @@ def reverse_posting(source_type, source_id, user_id=None):
         ))
 
     return reversal
+
+
+def fix_gst_ledger_lines():
+    """
+    One-time fix: update existing AccountingLedgerLine rows that have gst_type
+    so their cc_id points to the dedicated GST CC codes instead of the
+    expense/revenue CC that was incorrectly stored.
+
+    Returns dict with counts of fixed lines.
+    """
+    from app.models.cc_code import CCCode
+    from .posting_rules import _resolve_gst_cc
+
+    _INPUT_TYPES  = {"purchase_bill", "payment_voucher", "debit_note", "petty_cash_docket"}
+    _OUTPUT_TYPES = {"sale_bill", "credit_note", "sale_receipt_billing"}
+
+    rows = (
+        db.session.query(AccountingLedgerLine, AccountingLedger.source_type)
+        .join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+        .filter(AccountingLedgerLine.gst_type.isnot(None))
+        .all()
+    )
+
+    cc_code_cache = {}
+
+    fixed = 0
+    skipped = 0
+    for line, source_type in rows:
+        if source_type in _INPUT_TYPES:
+            direction = "Input"
+        elif source_type in _OUTPUT_TYPES:
+            direction = "Output"
+        else:
+            skipped += 1
+            continue
+
+        correct_cc_code = _resolve_gst_cc(direction, line.gst_type)
+        if not correct_cc_code:
+            skipped += 1
+            continue
+
+        if correct_cc_code not in cc_code_cache:
+            cc = CCCode.query.filter_by(cc_code=correct_cc_code).first()
+            cc_code_cache[correct_cc_code] = cc
+
+        cc = cc_code_cache[correct_cc_code]
+        if not cc:
+            skipped += 1
+            continue
+
+        if cc.id != line.cc_id:
+            line.cc_id = cc.id
+            line.cost_centre_code = cc.cc_code
+            fixed += 1
+
+    db.session.commit()
+    return {"fixed": fixed, "skipped": skipped, "total": len(rows)}

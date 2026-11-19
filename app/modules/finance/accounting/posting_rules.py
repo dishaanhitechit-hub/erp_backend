@@ -35,6 +35,40 @@ from decimal import Decimal
 from app.models.cc_code import CCCode
 
 
+_GST_CC_CACHE = {}
+
+def _resolve_gst_cc(direction, gst_type):
+    """
+    Resolve the dedicated GST CC code for accounting posting.
+    direction: "Input" (purchases/expenses) or "Output" (sales/revenue)
+    gst_type:  "SGST", "CGST", or "IGST"
+    Returns the cc_code string (e.g. "GST8") or None.
+
+    Primary: looks up by CCCode.gst_account_type (e.g. "INPUT_SGST").
+    Fallback: pattern-matches cc_name (e.g. "%Input%SGST%").
+    """
+    key = (direction, gst_type.upper())
+    if key in _GST_CC_CACHE:
+        return _GST_CC_CACHE[key]
+
+    gst_account_type = f"{direction.upper()}_{gst_type.upper()}"
+
+    cc = CCCode.query.filter_by(gst_account_type=gst_account_type).first()
+
+    if not cc:
+        pattern = f"%{direction}%{gst_type.upper()}%"
+        cc = CCCode.query.filter(CCCode.cc_name.ilike(pattern)).first()
+
+    result = cc.cc_code if cc else None
+    _GST_CC_CACHE[key] = result
+    return result
+
+
+def clear_gst_cc_cache():
+    """Clear the GST CC cache (call after CC master changes)."""
+    _GST_CC_CACHE.clear()
+
+
 def _resolve_cc_id(cc_code_str):
     """Resolve a CC-code string to cc_codes.id. Returns (cc_id, cc_code_str)."""
     if not cc_code_str:
@@ -116,8 +150,9 @@ def _post_purchase_bill(source_id):
 
     for gst in bill.gst_lines:
         if gst.is_selected and _d(gst.gst_amount) > 0:
+            gst_cc = _resolve_gst_cc("Input", gst.gst_type) or gst.cc_code
             lines.append(_cc_line(
-                gst.cc_code, "Dr", _d(gst.gst_amount),
+                gst_cc, "Dr", _d(gst.gst_amount),
                 project_code=bill.project_code,
                 gst_type=gst.gst_type,
                 gst_rate=_d(gst.percent),
@@ -168,8 +203,9 @@ def _post_payment_voucher(source_id):
 
     for gst in pv.gst_lines:
         if gst.is_selected and _d(gst.current_amount) > 0:
+            gst_cc = _resolve_gst_cc("Input", gst.gst_type) or gst.cc_code
             lines.append(_cc_line(
-                gst.cc_code, "Dr", _d(gst.current_amount),
+                gst_cc, "Dr", _d(gst.current_amount),
                 project_code=pv.project_code,
                 gst_type=gst.gst_type,
                 source_line_id=gst.id,
@@ -304,8 +340,9 @@ def _post_sale_bill(source_id):
     # Cr GST Output
     for gst in sb.gst_lines:
         if gst.is_selected and _d(gst.gst_amount) > 0:
+            gst_cc = _resolve_gst_cc("Output", gst.gst_type) or gst.cc_code
             lines.append(_cc_line(
-                gst.cc_code, "Cr", _d(gst.gst_amount),
+                gst_cc, "Cr", _d(gst.gst_amount),
                 project_code=sb.project_code,
                 gst_type=gst.gst_type,
                 gst_rate=_d(gst.percent),
@@ -535,8 +572,9 @@ def _post_debit_note(source_id):
     # Cr GST Input reversal
     for gst in dn.gst_lines:
         if gst.is_selected and _d(gst.gst_amount) > 0:
+            gst_cc = _resolve_gst_cc("Input", gst.gst_type) or gst.cc_code
             lines.append(_cc_line(
-                gst.cc_code, "Cr", _d(gst.gst_amount),
+                gst_cc, "Cr", _d(gst.gst_amount),
                 project_code=dn.project_code,
                 gst_type=gst.gst_type,
                 source_line_id=gst.id,
@@ -580,8 +618,9 @@ def _post_credit_note(source_id):
     # Dr GST Output reversal
     for gst in cn.gst_lines:
         if gst.is_selected and _d(gst.gst_amount) > 0:
+            gst_cc = _resolve_gst_cc("Output", gst.gst_type) or gst.cc_code
             lines.append(_cc_line(
-                gst.cc_code, "Dr", _d(gst.gst_amount),
+                gst_cc, "Dr", _d(gst.gst_amount),
                 project_code=cn.project_code,
                 gst_type=gst.gst_type,
                 source_line_id=gst.id,

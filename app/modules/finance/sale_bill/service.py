@@ -100,6 +100,24 @@ def _expand_items(billing_items, already_billed_map=None):
     return result
 
 
+def _resolve_output_gst_ccs():
+    """Look up dedicated Output GST CC codes in one query."""
+    ccs = CCCode.query.filter(
+        CCCode.gst_account_type.in_(["OUTPUT_SGST", "OUTPUT_CGST", "OUTPUT_IGST"])
+    ).all()
+    result = {}
+    for cc in ccs:
+        gst_type = cc.gst_account_type.replace("OUTPUT_", "")
+        result[gst_type] = (cc.cc_code, cc.cc_name)
+    if len(result) < 3:
+        for gst_type in ("SGST", "CGST", "IGST"):
+            if gst_type not in result:
+                cc = CCCode.query.filter(CCCode.cc_name.ilike(f"%Output%{gst_type}%")).first()
+                if cc:
+                    result[gst_type] = (cc.cc_code, cc.cc_name)
+    return result
+
+
 def _group_by_cc(billing_items):
     """Consolidate all certified bill items under the CRIN CC code (legacy helper)."""
     crin = CCCode.query.filter_by(cc_code="CRIN").first()
@@ -128,10 +146,16 @@ def _group_by_cc(billing_items):
         eff_pct  = (total_gst / total_basic * 100).quantize(Decimal("0.01"))
         half_pct = (eff_pct / 2).quantize(Decimal("0.01"))
         half_amt = (total_gst / 2).quantize(Decimal("0.01"))
+
+        gst_ccs = _resolve_output_gst_ccs()
+        sgst_cc, sgst_name = gst_ccs.get("SGST", (cc_code, cc_name))
+        cgst_cc, cgst_name = gst_ccs.get("CGST", (cc_code, cc_name))
+        igst_cc, igst_name = gst_ccs.get("IGST", (cc_code, cc_name))
+
         gst_lines = [
-            {"gstType": "SGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-            {"gstType": "CGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-            {"gstType": "IGST", "ccCode": cc_code, "ccName": cc_name, "percent": float(eff_pct),  "gstAmount": float(total_gst),  "isSelected": True},
+            {"gstType": "SGST", "ccCode": sgst_cc, "ccName": sgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+            {"gstType": "CGST", "ccCode": cgst_cc, "ccName": cgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
+            {"gstType": "IGST", "ccCode": igst_cc, "ccName": igst_name, "percent": float(eff_pct),  "gstAmount": float(total_gst),  "isSelected": True},
         ]
 
     return items, gst_lines

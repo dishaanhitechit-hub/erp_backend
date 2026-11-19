@@ -694,6 +694,7 @@ def _cc_row(cc):
         "ccCategoryName": cc.category.category_name if cc.category else None,
         "headUnder": cc.group.head_under if cc.group else None,
         "isNonLedger": cc.is_non_ledger,
+        "gstAccountType": cc.gst_account_type,
         **_sub_group_fields(cc),
         **_pl_fields(cc),
         **_audit(cc),
@@ -734,6 +735,7 @@ def create_cc_code(data, createdBy=None):
         sub_group_id=sub.id if sub else None,
         # head_under=head_under,
         is_non_ledger=is_non_ledger,
+        gst_account_type=data.get("gstAccountType") or None,
         pl_linked=pl[0],
         pl_group_id=pl[1],
         pl_sub_group_id=pl[2],
@@ -943,7 +945,14 @@ def update_cc_code(ccId, data):
     cc.cc_code = newCcCode
     # cc.head_under = new_head_under
     cc.is_non_ledger = new_is_non_ledger
+    if "gstAccountType" in data:
+        cc.gst_account_type = data.get("gstAccountType") or None
     cc.pl_linked, cc.pl_group_id, cc.pl_sub_group_id = pl
+
+    if cc.gst_account_type:
+        from app.modules.finance.accounting.posting_rules import clear_gst_cc_cache
+        clear_gst_cc_cache()
+
     try:
         db.session.commit()
         return res("CC Code updated successfully", [_cc_row(cc)], 200)
