@@ -125,6 +125,10 @@ def run_historical_posting(user_id, options=None):
             if hasattr(Model, "status"):
                 q = q.filter(Model.status != "Deleted")
 
+            # Exclude bulk_docket JEs — posted via petty_cash_docket
+            if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
+                q = q.filter(Model.entry_mode != "bulk_docket")
+
             date_field = getattr(Model, date_col, None)
             if date_field is not None:
                 q = q.order_by(date_field.asc(), Model.id.asc())
@@ -240,6 +244,11 @@ def get_posting_status():
             approved_q = Model.query.filter(status_field == "Approved")
             if hasattr(Model, "status"):
                 approved_q = approved_q.filter(Model.status != "Deleted")
+
+            # Exclude bulk_docket JEs — they are posted via petty_cash_docket
+            if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
+                approved_q = approved_q.filter(Model.entry_mode != "bulk_docket")
+
             total_approved = approved_q.count()
 
             # Already posted

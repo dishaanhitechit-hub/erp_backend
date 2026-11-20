@@ -466,6 +466,13 @@ DEPENDENCY_MAP = {
                 "module_code":  "PAYMENT_REQUEST",
                 "label":        "Payment Request",
             },
+            {
+                "child_model":  BillPaymentReceiptMaster,
+                "fk_column":    "journal_entry_id",
+                "doc_no_field": "receipt_no",
+                "module_code":  "BILL_PAYMENT",
+                "label":        "Bill Payment Receipt",
+            },
         ],
     },
 
