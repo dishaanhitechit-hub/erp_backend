@@ -917,11 +917,15 @@ def get_balance_sheet_report(params):
             bank_liabilities.append(row)
             total_liabilities += abs(net)
 
-    # Build group trees now that both CC codes and grouped bank/cash are in the buckets
-    asset_groups = _build_bs_group_tree(asset_by_group)
-    liability_groups = _build_bs_group_tree(liability_by_group)
+    # Ensure ALL BS groups appear in the tree, even those with no CC codes
+    for grp in bs_groups:
+        is_asset = _is_asset_group(grp)
+        if is_asset:
+            asset_by_group.setdefault(grp.id, {})
+        else:
+            liability_by_group.setdefault(grp.id, {})
 
-    # 8. P&L retained earnings
+    # 8. P&L retained earnings — inject into Equity group tree
     pl_data, _ = get_profit_loss({
         "to_date": _fmt_date(as_of_date),
         "from_date": _fmt_date(from_date),
@@ -929,18 +933,51 @@ def get_balance_sheet_report(params):
     })
     net_profit = Decimal(str(pl_data["data"]["netProfit"]))
 
+    equity_group_id = None
+    pl_sg_id = None
+    for grp in bs_groups:
+        if "equity" in (grp.group_name or "").lower():
+            equity_group_id = grp.id
+            break
+    if equity_group_id:
+        for sg in all_sgs:
+            if sg.group_id == equity_group_id:
+                sg_name = (sg.sub_group_name or "").lower()
+                if "current year" in sg_name or "current period" in sg_name:
+                    pl_sg_id = sg.id
+                    break
+                elif ("profit" in sg_name and "loss" in sg_name) and not pl_sg_id:
+                    pl_sg_id = sg.id
+
     pl_section = None
     if net_profit != 0:
-        pl_section = {
-            "type": "plResult",
-            "code": "NET_PROFIT" if net_profit > 0 else "NET_LOSS",
-            "name": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
-            "balance": float(abs(net_profit)),
-        }
-        if net_profit > 0:
+        if equity_group_id and pl_sg_id:
+            pl_row = {
+                "type": "account",
+                "ccId": "pl_result",
+                "ccCode": "P&L",
+                "ccName": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
+                "debit": 0.0,
+                "credit": 0.0,
+                "net": float(net_profit),
+            }
+            liability_by_group.setdefault(equity_group_id, {}).setdefault(pl_sg_id, []).append(pl_row)
             total_liabilities += net_profit
         else:
-            total_assets += abs(net_profit)
+            pl_section = {
+                "type": "plResult",
+                "code": "NET_PROFIT" if net_profit > 0 else "NET_LOSS",
+                "name": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
+                "balance": float(abs(net_profit)),
+            }
+            if net_profit > 0:
+                total_liabilities += net_profit
+            else:
+                total_assets += abs(net_profit)
+
+    # Build group trees now that all groups, bank/cash and P&L are in the buckets
+    asset_groups = _build_bs_group_tree(asset_by_group)
+    liability_groups = _build_bs_group_tree(liability_by_group)
 
     return {
         "message": "OK",
