@@ -260,17 +260,17 @@ def get_posting_status():
             # IDs of documents already posted
             posted_ids_q = db.session.query(AccountingLedger.source_id).filter(
                 AccountingLedger.source_type == source_type,
-                AccountingLedger.is_reversal == False,
+                AccountingLedger.is_reversal.is_(False),
             ).distinct()
 
-            posted_count = approved_q.filter(
-                Model.id.in_(posted_ids_q)
+            pending_count = approved_q.filter(
+                ~Model.id.in_(posted_ids_q)
             ).count()
 
             status[source_type] = {
                 "totalApproved": total_approved,
-                "posted": posted_count,
-                "pending": max(0, total_approved - posted_count),
+                "posted": total_approved - pending_count,
+                "pending": pending_count,
             }
         except Exception as e:
             logger.error(f"Error getting status for {source_type}: {e}")
