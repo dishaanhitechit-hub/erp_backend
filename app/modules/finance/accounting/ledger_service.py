@@ -344,11 +344,51 @@ def get_trial_balance(params):
         AccountingLedgerLine.bank_cash_id,
     )
 
+    raw_rows = q.all()
+
+    # Bulk-load all lookup tables to avoid N+1 queries
+    tb_cc_ids = {r[1] for r in raw_rows if r[0] == "CC" and r[1]}
+    tb_vendor_ids = {r[2] for r in raw_rows if r[0] == "Vendor" and r[2]}
+    tb_bc_ids = {r[3] for r in raw_rows if r[0] == "BankCash" and r[3]}
+
+    cc_cache = {}
+    cc_group_cache = {}
+    if tb_cc_ids:
+        for cc in CCCode.query.filter(CCCode.id.in_(list(tb_cc_ids))).all():
+            cc_cache[cc.id] = cc
+            if cc.group_id and cc.group_id not in cc_group_cache:
+                cc_group_cache[cc.group_id] = None
+        if cc_group_cache:
+            for grp in GroupMaster.query.filter(GroupMaster.id.in_(list(cc_group_cache.keys()))).all():
+                cc_group_cache[grp.id] = grp
+
+    vendor_cache = {}
+    if tb_vendor_ids:
+        for v in Vendor.query.filter(Vendor.id.in_(list(tb_vendor_ids))).all():
+            vendor_cache[v.id] = v
+
+    bc_cache = {}
+    if tb_bc_ids:
+        for bc in BankCash.query.filter(BankCash.id.in_(list(tb_bc_ids))).all():
+            bc_cache[bc.id] = bc
+
+    def _cached_name(acct_type, acct_id):
+        if acct_type == "CC":
+            cc = cc_cache.get(acct_id)
+            return f"{cc.cc_code} - {cc.cc_name}" if cc else str(acct_id)
+        elif acct_type == "Vendor":
+            v = vendor_cache.get(acct_id)
+            return f"{v.ledger_code} - {v.ledger_name}" if v else str(acct_id)
+        elif acct_type == "BankCash":
+            bc = bc_cache.get(acct_id)
+            return f"{bc.bank_code} - {bc.bank_name or bc.bank_holder_name or ''}" if bc else str(acct_id)
+        return str(acct_id)
+
     rows = []
     grand_dr = Decimal("0")
     grand_cr = Decimal("0")
 
-    for acct_type, cc_id, vendor_id, bc_id, dr_total, cr_total in q.all():
+    for acct_type, cc_id, vendor_id, bc_id, dr_total, cr_total in raw_rows:
         dr_total = _d(dr_total)
         cr_total = _d(cr_total)
         net = dr_total - cr_total
@@ -362,16 +402,17 @@ def get_trial_balance(params):
         else:
             acct_id = None
 
-        name = _get_account_name(acct_type, acct_id) if acct_id else "Unknown"
+        name = _cached_name(acct_type, acct_id) if acct_id else "Unknown"
 
-        # Group info for CC accounts
         group_name = None
         head_under = None
         if acct_type == "CC" and cc_id:
-            cc = CCCode.query.get(cc_id)
-            if cc and cc.group:
-                group_name = cc.group.group_name
-                head_under = cc.group.head_under
+            cc = cc_cache.get(cc_id)
+            if cc and cc.group_id:
+                grp = cc_group_cache.get(cc.group_id)
+                if grp:
+                    group_name = grp.group_name
+                    head_under = grp.head_under
 
         closing_dr = float(net) if net > 0 else 0.0
         closing_cr = float(abs(net)) if net < 0 else 0.0
@@ -794,13 +835,17 @@ def get_balance_sheet_report(params):
         )
     ).group_by(AccountingLedgerLine.vendor_id)
 
+    vendor_rows = vendor_q.all()
+    all_vids = {r[0] for r in vendor_rows if r[0]}
     vendor_cache = {}
-    for vid, dr, cr in vendor_q.all():
+    if all_vids:
+        for v in Vendor.query.filter(Vendor.id.in_(list(all_vids))).all():
+            vendor_cache[v.id] = v
+
+    for vid, dr, cr in vendor_rows:
         if not vid:
             continue
-        if vid not in vendor_cache:
-            vendor_cache[vid] = Vendor.query.get(vid)
-        v = vendor_cache[vid]
+        v = vendor_cache.get(vid)
         if not v:
             continue
         net = _d(dr) - _d(cr)
@@ -867,10 +912,17 @@ def get_balance_sheet_report(params):
         )
     ).group_by(AccountingLedgerLine.bank_cash_id)
 
-    for bc_id, dr, cr in bank_q.all():
+    bank_rows = bank_q.all()
+    all_bc_ids = {r[0] for r in bank_rows if r[0]}
+    bc_cache = {}
+    if all_bc_ids:
+        for bc in BankCash.query.filter(BankCash.id.in_(list(all_bc_ids))).all():
+            bc_cache[bc.id] = bc
+
+    for bc_id, dr, cr in bank_rows:
         if not bc_id:
             continue
-        bc = BankCash.query.get(bc_id)
+        bc = bc_cache.get(bc_id)
         if not bc:
             continue
         net = _d(dr) - _d(cr)
@@ -1219,15 +1271,36 @@ def get_day_book(params):
 
     q = q.order_by(AccountingLedger.posting_date.desc(), AccountingLedger.id.desc())
 
+    postings = q.all()
+
+    # Bulk-load all lines' account names to avoid N+1
+    all_lines = []
+    for p in postings:
+        all_lines.extend(p.lines)
+    db_cc_ids = {l.cc_id for l in all_lines if l.account_type == "CC" and l.cc_id}
+    db_vendor_ids = {l.vendor_id for l in all_lines if l.account_type == "Vendor" and l.vendor_id}
+    db_bc_ids = {l.bank_cash_id for l in all_lines if l.account_type == "BankCash" and l.bank_cash_id}
+
+    name_cache = {}
+    if db_cc_ids:
+        for cc in CCCode.query.filter(CCCode.id.in_(list(db_cc_ids))).all():
+            name_cache[("CC", cc.id)] = f"{cc.cc_code} - {cc.cc_name}"
+    if db_vendor_ids:
+        for v in Vendor.query.filter(Vendor.id.in_(list(db_vendor_ids))).all():
+            name_cache[("Vendor", v.id)] = f"{v.ledger_code} - {v.ledger_name}"
+    if db_bc_ids:
+        for bc in BankCash.query.filter(BankCash.id.in_(list(db_bc_ids))).all():
+            name_cache[("BankCash", bc.id)] = f"{bc.bank_code} - {bc.bank_name or bc.bank_holder_name or ''}"
+
     entries = []
-    for posting in q.all():
+    for posting in postings:
         lines_data = []
         for line in posting.lines:
+            acct_id = line.cc_id or line.vendor_id or line.bank_cash_id
             lines_data.append({
                 "slNo": line.sl_no,
                 "accountType": line.account_type,
-                "accountName": _get_account_name(line.account_type,
-                    line.cc_id or line.vendor_id or line.bank_cash_id),
+                "accountName": name_cache.get((line.account_type, acct_id), str(acct_id)),
                 "drCr": line.dr_cr,
                 "amount": float(line.amount),
                 "narration": line.narration,

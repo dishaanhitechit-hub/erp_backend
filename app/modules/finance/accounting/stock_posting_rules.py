@@ -39,8 +39,11 @@ def _resolve_cc_id(cc_code_str):
     return (cc.id if cc else None), cc_code_str.upper().strip()
 
 
-def _item_cc(item_code_str):
-    """Resolve CC from Item master's cc_code_id. Returns (cc_id, cc_code_str)."""
+def _item_cc(item_code_str, cc_map=None):
+    """Resolve CC from Item master's cc_code_id. Returns (cc_id, cc_code_str).
+    When cc_map is provided (from _build_item_cc_map), uses it for O(1) lookup."""
+    if cc_map is not None:
+        return cc_map.get(item_code_str) or _resolve_cc_id("DRMC")
     if not item_code_str:
         return _resolve_cc_id("DRMC")
     from app.models.item import Item
@@ -51,6 +54,23 @@ def _item_cc(item_code_str):
         if cc:
             return cc.id, cc.cc_code
     return _resolve_cc_id("DRMC")
+
+
+def _build_item_cc_map(item_codes):
+    """Batch-load Item → CCCode mapping. Returns {item_code: (cc_id, cc_code)}."""
+    if not item_codes:
+        return {}
+    from app.models.item import Item
+    from app.models.cc_code import CCCode
+    items = Item.query.filter(Item.item_code.in_(list(item_codes))).all()
+    cc_ids = {i.cc_code_id for i in items if i.cc_code_id}
+    cc_objs = {cc.id: cc for cc in CCCode.query.filter(CCCode.id.in_(list(cc_ids))).all()} if cc_ids else {}
+    result = {}
+    for i in items:
+        cc = cc_objs.get(i.cc_code_id)
+        if cc:
+            result[i.item_code] = (cc.id, cc.cc_code)
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -69,6 +89,22 @@ def post_grn_accounting(source_id):
         from .posting_engine import PostingError
         raise PostingError(f"GRN {source_id} not found")
 
+    # Batch-load OrderItems and Item→CC mapping
+    oi_ids = [item.order_item_id for item in grn.items if item.order_item_id]
+    oi_map = {}
+    if oi_ids:
+        for oi in OrderItem.query.filter(OrderItem.id.in_(oi_ids)).all():
+            oi_map[oi.id] = oi
+
+    all_item_codes = set()
+    for item in grn.items:
+        if item.item_code:
+            all_item_codes.add(item.item_code)
+        oi = oi_map.get(item.order_item_id)
+        if oi and oi.item_code:
+            all_item_codes.add(oi.item_code)
+    cc_map = _build_item_cc_map(all_item_codes)
+
     lines = []
     total = Decimal("0")
 
@@ -79,18 +115,17 @@ def post_grn_accounting(source_id):
 
         rate = Decimal("0")
         item_code = item.item_code
-        if item.order_item_id:
-            oi = OrderItem.query.get(item.order_item_id)
-            if oi:
-                rate = _d(oi.rate)
-                if not item_code:
-                    item_code = oi.item_code
+        oi = oi_map.get(item.order_item_id)
+        if oi:
+            rate = _d(oi.rate)
+            if not item_code:
+                item_code = oi.item_code
 
         amt = (qty * rate).quantize(Decimal("0.01"))
         if amt <= 0:
             continue
 
-        cc_id, cc_code = _item_cc(item_code)
+        cc_id, cc_code = _item_cc(item_code, cc_map)
         lines.append({
             "account_type": "CC",
             "cc_id": cc_id,
@@ -139,6 +174,16 @@ def post_gin_accounting(source_id):
         from .posting_engine import PostingError
         raise PostingError(f"GIN {source_id} not found")
 
+    # Batch-load OrderItems and Item→CC mapping
+    oi_ids = [item.order_item_id for item in gin.items if item.order_item_id]
+    oi_map = {}
+    if oi_ids:
+        for oi in OrderItem.query.filter(OrderItem.id.in_(oi_ids)).all():
+            oi_map[oi.id] = oi
+
+    all_item_codes = {oi.item_code for oi in oi_map.values() if oi.item_code}
+    cc_map = _build_item_cc_map(all_item_codes)
+
     lines = []
     total = Decimal("0")
 
@@ -149,10 +194,9 @@ def post_gin_accounting(source_id):
 
         item_id = item.order_item_id
         item_code = None
-        if item_id:
-            oi = OrderItem.query.get(item_id)
-            if oi:
-                item_code = oi.item_code
+        oi = oi_map.get(item_id)
+        if oi:
+            item_code = oi.item_code
 
         rate = get_gin_item_rate(
             item_id=item_id,
@@ -163,7 +207,7 @@ def post_gin_accounting(source_id):
         if amt <= 0:
             continue
 
-        cc_id, cc_code = _item_cc(item_code)
+        cc_id, cc_code = _item_cc(item_code, cc_map)
         lines.append({
             "account_type": "CC",
             "cc_id": cc_id,
@@ -213,6 +257,13 @@ def post_grn_stock(grn_id, user_id=None):
     if not grn:
         return []
 
+    # Batch-load OrderItems
+    oi_ids = [item.order_item_id for item in grn.items if item.order_item_id]
+    oi_map = {}
+    if oi_ids:
+        for oi in OrderItem.query.filter(OrderItem.id.in_(oi_ids)).all():
+            oi_map[oi.id] = oi
+
     entries = []
     for item in grn.items:
         qty = _d(item.current_received_qty)
@@ -221,12 +272,11 @@ def post_grn_stock(grn_id, user_id=None):
 
         rate = Decimal("0")
         item_code = item.item_code
-        if item.order_item_id:
-            oi = OrderItem.query.get(item.order_item_id)
-            if oi:
-                rate = _d(oi.rate)
-                if not item_code:
-                    item_code = oi.item_code
+        oi = oi_map.get(item.order_item_id)
+        if oi:
+            rate = _d(oi.rate)
+            if not item_code:
+                item_code = oi.item_code
 
         entry = post_stock_entry(
             source_type="grn",
@@ -260,6 +310,13 @@ def post_gin_stock(gin_id, user_id=None):
     if not gin:
         return []
 
+    # Batch-load OrderItems
+    oi_ids = [item.order_item_id for item in gin.items if item.order_item_id]
+    oi_map = {}
+    if oi_ids:
+        for oi in OrderItem.query.filter(OrderItem.id.in_(oi_ids)).all():
+            oi_map[oi.id] = oi
+
     entries = []
     for item in gin.items:
         qty = _d(item.issue_qty)
@@ -268,10 +325,9 @@ def post_gin_stock(gin_id, user_id=None):
 
         item_id = item.order_item_id
         item_code = None
-        if item_id:
-            oi = OrderItem.query.get(item_id)
-            if oi:
-                item_code = oi.item_code
+        oi = oi_map.get(item_id)
+        if oi:
+            item_code = oi.item_code
 
         rate = get_gin_item_rate(
             item_id=item_id,
