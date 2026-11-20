@@ -252,6 +252,34 @@ def export_balance_sheet():
     return export_balance_sheet(request.args)
 
 
+@accounting_bp.route("/export/group-ledger", methods=["GET"])
+@jwt_required()
+def export_group_ledger():
+    from .export_service import export_group_ledger
+    return export_group_ledger(request.args)
+
+
+@accounting_bp.route("/export/outstanding-payables", methods=["GET"])
+@jwt_required()
+def export_outstanding_payables():
+    from .export_service import export_outstanding_payables
+    return export_outstanding_payables(request.args)
+
+
+@accounting_bp.route("/export/outstanding-receivables", methods=["GET"])
+@jwt_required()
+def export_outstanding_receivables():
+    from .export_service import export_outstanding_receivables
+    return export_outstanding_receivables(request.args)
+
+
+@accounting_bp.route("/export/project-summary", methods=["GET"])
+@jwt_required()
+def export_project_summary():
+    from .export_service import export_project_summary
+    return export_project_summary(request.args)
+
+
 # ── Cancellation / Reversal ──────────────────────────────────────────────
 
 @accounting_bp.route("/cancel", methods=["POST"])

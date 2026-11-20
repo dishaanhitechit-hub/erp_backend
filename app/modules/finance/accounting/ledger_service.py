@@ -1754,18 +1754,36 @@ def get_group_ledger(params):
         else_=literal_column("0"),
     )), 0)
 
-    # --- 1) CC accounts: group via CCCode.group_id ---
-    cc_q = db.session.query(
-        CCCode.group_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
-    ).join(AccountingLedgerLine, AccountingLedgerLine.cc_id == CCCode.id
+    # --- 1) CC accounts: aggregate per cc_id, then map to groups ---
+    # CC codes have group_id (BS group) and optionally pl_group_id (P&L group
+    # when pl_linked=True).  Each CC's totals go under its native group_id,
+    # AND also under pl_group_id when pl_linked is set.
+    cc_balances = db.session.query(
+        AccountingLedgerLine.cc_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
     ).filter(AccountingLedgerLine.account_type == "CC", *date_filters
-    ).group_by(CCCode.group_id)
+    ).group_by(AccountingLedgerLine.cc_id).all()
 
-    for gid, dr, cr in cc_q.all():
-        t = group_totals.setdefault(gid, {"dr": Decimal("0"), "cr": Decimal("0")})
-        t["dr"] += _d(dr)
-        t["cr"] += _d(cr)
+    if cc_balances:
+        cc_obj_ids = [row[0] for row in cc_balances]
+        cc_objs = CCCode.query.filter(CCCode.id.in_(cc_obj_ids)).all()
+        cc_map = {cc.id: cc for cc in cc_objs}
+
+        for cc_id, dr, cr in cc_balances:
+            cc = cc_map.get(cc_id)
+            if not cc:
+                continue
+            dr_val = _d(dr)
+            cr_val = _d(cr)
+            # pl_linked overrides: use pl_group_id instead of group_id
+            if cc.pl_linked and cc.pl_group_id:
+                gid = cc.pl_group_id
+            else:
+                gid = cc.group_id
+            if gid:
+                t = group_totals.setdefault(gid, {"dr": Decimal("0"), "cr": Decimal("0")})
+                t["dr"] += dr_val
+                t["cr"] += cr_val
 
     # --- 2) BankCash accounts: group via BankCash.group_id ---
     bank_q = db.session.query(

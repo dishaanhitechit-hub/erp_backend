@@ -18,6 +18,10 @@ from .ledger_service import (
     get_trial_balance,
     get_profit_loss,
     get_balance_sheet_report,
+    get_group_ledger,
+    get_outstanding_payables,
+    get_outstanding_receivables,
+    get_project_summary,
 )
 
 
@@ -735,3 +739,270 @@ def export_balance_sheet(params):
 
     filters = {"Period": period, "Project": project}
     return _render_excel(headers, excel_rows, "balance_sheet.xlsx", "Balance Sheet", "Balance Sheet", filters)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GROUP LEDGER EXPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def export_group_ledger(params):
+    fmt = params.get("format", "excel")
+    data_resp, code = get_group_ledger(params)
+    if code != 200:
+        return data_resp, code
+
+    data = data_resp["data"]
+    rows_data = data["rows"]
+    from_d = data.get("fromDate", "")
+    to_d = data.get("toDate", "")
+    project = params.get("project_code", "All")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
+
+    # Split into P&L and BS like the frontend
+    pl_rows = [r for r in rows_data if r.get("headUnder") != "Balance Sheet"]
+    bs_rows = [r for r in rows_data if r.get("headUnder") == "Balance Sheet"]
+
+    if fmt == "pdf":
+        body = ""
+        if pl_rows:
+            body += '<tr class="grp"><td colspan="5"><b>Profit &amp; Loss</b></td></tr>'
+            pl_dr = pl_cr = 0
+            for r in pl_rows:
+                body += f'<tr><td>{r["groupName"]}</td><td>{r.get("headUnder", "")}</td>'
+                body += f'<td class="r">{_fmt_num(r["debit"])}</td>'
+                body += f'<td class="r">{_fmt_num(r["credit"])}</td>'
+                body += f'<td class="r">{_bal_dr_cr(r["net"])}</td></tr>'
+                pl_dr += r["debit"]
+                pl_cr += r["credit"]
+            body += f'<tr class="closing"><td class="i1">Sub-total ({len(pl_rows)} groups)</td><td></td>'
+            body += f'<td class="r">{_fmt_num(pl_dr)}</td><td class="r">{_fmt_num(pl_cr)}</td>'
+            body += f'<td class="r">{_bal_dr_cr(pl_dr - pl_cr)}</td></tr>'
+
+        if bs_rows:
+            body += '<tr class="grp"><td colspan="5"><b>Balance Sheet</b></td></tr>'
+            bs_dr = bs_cr = 0
+            for r in bs_rows:
+                body += f'<tr><td>{r["groupName"]}</td><td>{r.get("headUnder", "")}</td>'
+                body += f'<td class="r">{_fmt_num(r["debit"])}</td>'
+                body += f'<td class="r">{_fmt_num(r["credit"])}</td>'
+                body += f'<td class="r">{_bal_dr_cr(r["net"])}</td></tr>'
+                bs_dr += r["debit"]
+                bs_cr += r["credit"]
+            body += f'<tr class="closing"><td class="i1">Sub-total ({len(bs_rows)} groups)</td><td></td>'
+            body += f'<td class="r">{_fmt_num(bs_dr)}</td><td class="r">{_fmt_num(bs_cr)}</td>'
+            body += f'<td class="r">{_bal_dr_cr(bs_dr - bs_cr)}</td></tr>'
+
+        grand_dr = sum(r["debit"] for r in rows_data)
+        grand_cr = sum(r["credit"] for r in rows_data)
+        body += f'<tr class="grand"><td colspan="2">Grand Total</td>'
+        body += f'<td class="r">{_fmt_num(grand_dr)}</td><td class="r">{_fmt_num(grand_cr)}</td>'
+        body += f'<td class="r">{_bal_dr_cr(grand_dr - grand_cr)}</td></tr>'
+
+        html = f"""<html><head>{_PDF_CSS_TALLY}</head><body>
+        {_company_header_html("Group Summary", period=period, project=project)}
+        <table class="ledger">
+            <thead><tr>
+                <th>Group Name</th><th>Head Under</th>
+                <th class="r" style="width:100px">Total Debit</th>
+                <th class="r" style="width:100px">Total Credit</th>
+                <th class="r" style="width:110px">Net Balance</th>
+            </tr></thead>
+            <tbody>{body}</tbody>
+        </table>
+        <div class="footer">Page <pdf:pagenumber/></div>
+        </body></html>"""
+        return _render_pdf(html, "group_ledger.pdf")
+
+    # Excel
+    headers = ["Group Name", "Head Under", "Total Debit", "Total Credit", "Net Balance"]
+    excel_rows = []
+
+    if pl_rows:
+        excel_rows.append(["Profit & Loss", "", "", "", ""])
+        for r in pl_rows:
+            excel_rows.append([r["groupName"], r.get("headUnder", ""), r["debit"], r["credit"], _bal_dr_cr(r["net"])])
+        pl_dr = sum(r["debit"] for r in pl_rows)
+        pl_cr = sum(r["credit"] for r in pl_rows)
+        excel_rows.append([f"  Sub-total ({len(pl_rows)} groups)", "", pl_dr, pl_cr, _bal_dr_cr(pl_dr - pl_cr)])
+
+    if bs_rows:
+        excel_rows.append(["Balance Sheet", "", "", "", ""])
+        for r in bs_rows:
+            excel_rows.append([r["groupName"], r.get("headUnder", ""), r["debit"], r["credit"], _bal_dr_cr(r["net"])])
+        bs_dr = sum(r["debit"] for r in bs_rows)
+        bs_cr = sum(r["credit"] for r in bs_rows)
+        excel_rows.append([f"  Sub-total ({len(bs_rows)} groups)", "", bs_dr, bs_cr, _bal_dr_cr(bs_dr - bs_cr)])
+
+    grand_dr = sum(r["debit"] for r in rows_data)
+    grand_cr = sum(r["credit"] for r in rows_data)
+    excel_rows.append(["Grand Total", "", grand_dr, grand_cr, _bal_dr_cr(grand_dr - grand_cr)])
+
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "group_ledger.xlsx", "Group Summary", "Group Summary", filters)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OUTSTANDING PAYABLES EXPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def export_outstanding_payables(params):
+    fmt = params.get("format", "excel")
+    data_resp, code = get_outstanding_payables(params)
+    if code != 200:
+        return data_resp, code
+
+    data = data_resp["data"]
+    rows_data = data.get("rows", [])
+    total = data.get("total", 0)
+    project = params.get("project_code", "All")
+    from_d = params.get("from_date", "")
+    to_d = params.get("to_date", "")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
+
+    if fmt == "pdf":
+        body = ""
+        for r in rows_data:
+            body += f'<tr><td>{r.get("ledgerCode", "")}</td>'
+            body += f'<td>{r.get("ledgerName", "")}</td>'
+            body += f'<td class="r">{_fmt_num(r.get("outstanding", 0))}</td></tr>'
+        body += f'<tr class="grand"><td colspan="2">Grand Total</td>'
+        body += f'<td class="r">{_fmt_num(total)}</td></tr>'
+
+        html = f"""<html><head>{_PDF_CSS_TALLY}</head><body>
+        {_company_header_html("Outstanding Payables", period=period, project=project)}
+        <table class="ledger">
+            <thead><tr>
+                <th style="width:120px">Vendor Code</th>
+                <th>Vendor Name</th>
+                <th class="r" style="width:130px">Outstanding</th>
+            </tr></thead>
+            <tbody>{body}</tbody>
+        </table>
+        <div class="footer">Page <pdf:pagenumber/></div>
+        </body></html>"""
+        return _render_pdf(html, "outstanding_payables.pdf")
+
+    headers = ["Vendor Code", "Vendor Name", "Outstanding"]
+    excel_rows = [[r.get("ledgerCode", ""), r.get("ledgerName", ""), r.get("outstanding", 0)] for r in rows_data]
+    excel_rows.append(["", "Grand Total", total])
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "outstanding_payables.xlsx", "Payables", "Outstanding Payables", filters)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OUTSTANDING RECEIVABLES EXPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def export_outstanding_receivables(params):
+    fmt = params.get("format", "excel")
+    data_resp, code = get_outstanding_receivables(params)
+    if code != 200:
+        return data_resp, code
+
+    data = data_resp["data"]
+    rows_data = data.get("rows", [])
+    total = data.get("total", 0)
+    project = params.get("project_code", "All")
+    from_d = params.get("from_date", "")
+    to_d = params.get("to_date", "")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
+
+    if fmt == "pdf":
+        body = ""
+        for r in rows_data:
+            body += f'<tr><td>{r.get("ledgerCode", "")}</td>'
+            body += f'<td>{r.get("ledgerName", "")}</td>'
+            body += f'<td class="r">{_fmt_num(r.get("outstanding", 0))}</td></tr>'
+        body += f'<tr class="grand"><td colspan="2">Grand Total</td>'
+        body += f'<td class="r">{_fmt_num(total)}</td></tr>'
+
+        html = f"""<html><head>{_PDF_CSS_TALLY}</head><body>
+        {_company_header_html("Outstanding Receivables", period=period, project=project)}
+        <table class="ledger">
+            <thead><tr>
+                <th style="width:120px">Customer Code</th>
+                <th>Customer Name</th>
+                <th class="r" style="width:130px">Outstanding</th>
+            </tr></thead>
+            <tbody>{body}</tbody>
+        </table>
+        <div class="footer">Page <pdf:pagenumber/></div>
+        </body></html>"""
+        return _render_pdf(html, "outstanding_receivables.pdf")
+
+    headers = ["Customer Code", "Customer Name", "Outstanding"]
+    excel_rows = [[r.get("ledgerCode", ""), r.get("ledgerName", ""), r.get("outstanding", 0)] for r in rows_data]
+    excel_rows.append(["", "Grand Total", total])
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "outstanding_receivables.xlsx", "Receivables", "Outstanding Receivables", filters)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROJECT SUMMARY EXPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def export_project_summary(params):
+    fmt = params.get("format", "excel")
+    data_resp, code = get_project_summary(params)
+    if code != 200:
+        return data_resp, code
+
+    data = data_resp["data"]
+    project = data.get("projectCode", "All")
+    from_d = params.get("from_date", "")
+    to_d = params.get("to_date", "")
+    period = f"{from_d} to {to_d}" if from_d and to_d else ""
+
+    has_split = "creditorDebit" in data or "debtorDebit" in data
+    if has_split:
+        summary_rows = [
+            ("CC Codes (Expenses / Revenue)", data.get("ccDebit", 0), data.get("ccCredit", 0)),
+            ("Sundry Creditors (Vendors)", data.get("creditorDebit", 0), data.get("creditorCredit", 0)),
+            ("Sundry Debtors (Customers)", data.get("debtorDebit", 0), data.get("debtorCredit", 0)),
+            ("Bank / Cash", data.get("bankDebit", 0), data.get("bankCredit", 0)),
+        ]
+    else:
+        summary_rows = [
+            ("CC Codes (Expenses / Revenue)", data.get("ccDebit", 0), data.get("ccCredit", 0)),
+            ("Vendors / Customers", data.get("vendorDebit", 0), data.get("vendorCredit", 0)),
+            ("Bank / Cash", data.get("bankDebit", 0), data.get("bankCredit", 0)),
+        ]
+
+    total_dr = sum(r[1] for r in summary_rows)
+    total_cr = sum(r[2] for r in summary_rows)
+
+    if fmt == "pdf":
+        body = ""
+        for label, dr, cr in summary_rows:
+            net = dr - cr
+            body += f'<tr><td>{label}</td>'
+            body += f'<td class="r">{_fmt_num(dr)}</td>'
+            body += f'<td class="r">{_fmt_num(cr)}</td>'
+            body += f'<td class="r">{_bal_dr_cr(net)}</td></tr>'
+        body += f'<tr class="grand"><td>Grand Total</td>'
+        body += f'<td class="r">{_fmt_num(total_dr)}</td>'
+        body += f'<td class="r">{_fmt_num(total_cr)}</td>'
+        body += f'<td class="r">{_bal_dr_cr(total_dr - total_cr)}</td></tr>'
+
+        html = f"""<html><head>{_PDF_CSS_TALLY}</head><body>
+        {_company_header_html("Project Financial Summary", period=period, project=project)}
+        <table class="ledger">
+            <thead><tr>
+                <th>Account Type</th>
+                <th class="r" style="width:110px">Total Debit</th>
+                <th class="r" style="width:110px">Total Credit</th>
+                <th class="r" style="width:120px">Net Balance</th>
+            </tr></thead>
+            <tbody>{body}</tbody>
+        </table>
+        <div class="footer">Page <pdf:pagenumber/></div>
+        </body></html>"""
+        return _render_pdf(html, "project_summary.pdf")
+
+    headers = ["Account Type", "Total Debit", "Total Credit", "Net Balance"]
+    excel_rows = []
+    for label, dr, cr in summary_rows:
+        excel_rows.append([label, dr, cr, _bal_dr_cr(dr - cr)])
+    excel_rows.append(["Grand Total", total_dr, total_cr, _bal_dr_cr(total_dr - total_cr)])
+    filters = {"Period": period, "Project": project}
+    return _render_excel(headers, excel_rows, "project_summary.xlsx", "Summary", "Project Financial Summary", filters)
