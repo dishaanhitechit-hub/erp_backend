@@ -100,6 +100,7 @@ def run_historical_posting(user_id, options=None):
         "posted": {},
         "skipped": {},
         "errors": {},
+        "warnings": {},
         "summary": {},
     }
 
@@ -144,6 +145,7 @@ def run_historical_posting(user_id, options=None):
         posted_count = 0
         skipped_count = 0
         error_list = []
+        warning_list = []
 
         for doc in docs:
             doc_no = getattr(doc, doc_no_col, None) or f"#{doc.id}"
@@ -184,7 +186,7 @@ def run_historical_posting(user_id, options=None):
 
                 result = post_document(source_type, doc.id, user_id)
                 if result is None:
-                    error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": "Empty posting — missing vendor/bank or zero amount"})
+                    warning_list.append({"id": doc.id, "docNo": doc_no, "project": project, "reason": "Missing vendor/bank account or zero amount"})
                 else:
                     posted_count += 1
                     if posted_count % batch_size == 0:
@@ -204,15 +206,19 @@ def run_historical_posting(user_id, options=None):
         results["skipped"][source_type] = skipped_count
         if error_list:
             results["errors"][source_type] = error_list
+        if warning_list:
+            results["warnings"][source_type] = warning_list
 
     total_posted = sum(results["posted"].values())
     total_skipped = sum(results["skipped"].values())
     total_errors = sum(len(v) if isinstance(v, list) else 0 for v in results["errors"].values())
+    total_warnings = sum(len(v) if isinstance(v, list) else 0 for v in results["warnings"].values())
 
     results["summary"] = {
         "totalPosted": total_posted,
         "totalSkipped": total_skipped,
         "totalErrors": total_errors,
+        "totalWarnings": total_warnings,
         "dryRun": dry_run,
     }
 
