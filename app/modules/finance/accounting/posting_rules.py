@@ -160,6 +160,22 @@ def _post_purchase_bill(source_id):
                 narration=f"GST Input {gst.gst_type}",
             ))
 
+    discount = _d(bill.discount)
+    if discount > 0:
+        lines.append(_cc_line(
+            "DISC", "Cr", discount,
+            project_code=bill.project_code,
+            narration=f"PB discount: {bill.purchase_bill_no}",
+        ))
+
+    round_off = _d(bill.round_off)
+    if round_off != 0:
+        lines.append(_cc_line(
+            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            project_code=bill.project_code,
+            narration=f"PB round off: {bill.purchase_bill_no}",
+        ))
+
     total = _d(bill.total_invoice_amount)
     if total > 0 and bill.vendor_id:
         lines.append(_vendor_line(
@@ -212,6 +228,22 @@ def _post_payment_voucher(source_id):
                 narration=f"GST Input {gst.gst_type}",
             ))
 
+    discount = _d(pv.discount)
+    if discount > 0:
+        lines.append(_cc_line(
+            "DISC", "Cr", discount,
+            project_code=pv.project_code,
+            narration=f"PV discount: {pv.payment_vouch_no}",
+        ))
+
+    round_off = _d(pv.round_off)
+    if round_off != 0:
+        lines.append(_cc_line(
+            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            project_code=pv.project_code,
+            narration=f"PV round off: {pv.payment_vouch_no}",
+        ))
+
     bank_cash_id = pv.bank_ac_id if pv.payment_mode == "Bank" else pv.cash_ac_id
     total = _d(pv.total_invoice_amount)
     if total > 0 and bank_cash_id:
@@ -250,6 +282,22 @@ def _post_bill_payment_bill(source_id):
             bpr.vendor_id, "Dr", total,
             project_code=bpr.project_code,
             narration=f"BPR bill payment: {bpr.receipt_no}",
+        ))
+
+    discount = _d(bpr.discount)
+    if discount > 0:
+        lines.append(_cc_line(
+            "DISC", "Dr", discount,
+            project_code=bpr.project_code,
+            narration=f"BPR discount: {bpr.receipt_no}",
+        ))
+
+    round_off = _d(bpr.round_off)
+    if round_off != 0:
+        lines.append(_cc_line(
+            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            project_code=bpr.project_code,
+            narration=f"BPR round off: {bpr.receipt_no}",
         ))
 
     bank_cash_id = bpr.bank_ac_id if bpr.payment_mode == "Bank" else bpr.cash_ac_id
@@ -349,6 +397,22 @@ def _post_sale_bill(source_id):
                 source_line_id=gst.id,
                 narration=f"GST Output {gst.gst_type}",
             ))
+
+    discount = _d(sb.discount)
+    if discount > 0:
+        lines.append(_cc_line(
+            "DISC", "Dr", discount,
+            project_code=sb.project_code,
+            narration=f"SB discount: {sb.sale_bill_no}",
+        ))
+
+    round_off = _d(sb.round_off)
+    if round_off != 0:
+        lines.append(_cc_line(
+            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            project_code=sb.project_code,
+            narration=f"SB round off: {sb.sale_bill_no}",
+        ))
 
     header = {
         "posting_date": sb.invoice_date,
