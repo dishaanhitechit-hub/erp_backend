@@ -2,21 +2,21 @@
 Stock posting rules for GRN and GIN — C6.
 
 GRN (stock-in):
-  Dr CARM (raw materials / current asset)   — per item line
-  Cr Vendor payable                         — total GRN value
+  Dr CC code from GRN cost_head (Stock-in-Hand CC)  — per item line
+  Cr Vendor payable                                  — total GRN value
   Stock ledger: +qty at PO rate
 
 GIN (stock-out):
-  Dr CC code from GIN cost_head             — per item line at WAC rate
-  Cr CARM (raw materials consumed)          — per item line at WAC rate
+  Dr CC code from GIN cost_head (expense CC)         — per item line at WAC rate
+  Cr CC code from GIN cost_head (same CC, stock out) — per item line at WAC rate
   Stock ledger: -qty at WAC rate
 
 Rate lookup:
   GRN: GrnItem.order_item_id → OrderItem.rate
   GIN: WAC from stock_ledger_service.get_gin_item_rate()
 
-CC Head hierarchy is preserved: GinMaster.cost_head carries the CC code
-which maps to CC Head → Group → Subgroup → CC Code in reporting.
+CC Head hierarchy is preserved: GrnMaster.cost_head / GinMaster.cost_head
+carries the CC code which maps to CC Head → Group → Subgroup → CC Code.
 """
 
 from decimal import Decimal
@@ -45,7 +45,7 @@ def _resolve_cc_id(cc_code_str):
 def post_grn_accounting(source_id):
     """
     Build accounting posting data for an approved GRN.
-    Dr CARM (inventory asset) per item, Cr Vendor payable for total.
+    Dr cost_head CC (Stock-in-Hand) per item, Cr Vendor payable for total.
     """
     from app.models.grnMaster import GrnMaster
 
@@ -56,6 +56,7 @@ def post_grn_accounting(source_id):
 
     lines = []
     total = Decimal("0")
+    stock_cc_code = grn.cost_head or "DRMC"
 
     for item in grn.items:
         qty = _d(item.current_received_qty)
@@ -72,7 +73,7 @@ def post_grn_accounting(source_id):
         if amt <= 0:
             continue
 
-        cc_id, cc_code = _resolve_cc_id("CARM")
+        cc_id, cc_code = _resolve_cc_id(stock_cc_code)
         lines.append({
             "account_type": "CC",
             "cc_id": cc_id,
@@ -111,7 +112,7 @@ def post_grn_accounting(source_id):
 def post_gin_accounting(source_id):
     """
     Build accounting posting data for an approved GIN.
-    Dr CC-code (cost_head from GIN), Cr CARM per item at WAC rate.
+    Dr CC-code (cost_head from GIN), Cr same CC (stock reduction) per item at WAC rate.
     """
     from app.models.ginMaster import GinMaster
     from .stock_ledger_service import get_gin_item_rate
@@ -158,14 +159,13 @@ def post_gin_accounting(source_id):
             "narration": f"GIN consumption: {item_code or ''} qty={qty}",
         })
 
-        carm_id, carm_code = _resolve_cc_id("CARM")
         lines.append({
             "account_type": "CC",
-            "cc_id": carm_id,
+            "cc_id": cc_id,
             "dr_cr": "Cr",
             "amount": amt,
             "project_code": gin.project_code,
-            "cost_centre_code": carm_code,
+            "cost_centre_code": cc_code,
             "source_line_id": item.id,
             "narration": f"Inventory consumed: {item_code or ''} qty={qty}",
         })
