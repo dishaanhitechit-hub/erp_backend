@@ -169,9 +169,18 @@ def run_historical_posting(user_id, options=None):
                     except Exception:
                         pass
 
+                existing = AccountingLedger.query.filter_by(
+                    source_type=source_type,
+                    source_id=doc.id,
+                    is_reversal=False,
+                ).first()
+                if existing:
+                    skipped_count += 1
+                    continue
+
                 result = post_document(source_type, doc.id, user_id)
                 if result is None:
-                    skipped_count += 1
+                    error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": "Empty posting — missing vendor/bank or zero amount"})
                 else:
                     posted_count += 1
                     if posted_count % batch_size == 0:
