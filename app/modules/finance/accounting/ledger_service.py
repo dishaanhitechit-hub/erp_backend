@@ -762,8 +762,7 @@ def get_balance_sheet_report(params):
             })
         return result
 
-    asset_groups = _build_bs_group_tree(asset_by_group)
-    liability_groups = _build_bs_group_tree(liability_by_group)
+    # Tree building deferred until after bank/cash accounts are placed into groups
 
     # 6. Vendors — creditors vs debtors
     sundry_creditors = Decimal("0")
@@ -869,6 +868,29 @@ def get_balance_sheet_report(params):
         net = _d(dr) - _d(cr)
         if net == 0:
             continue
+
+        # If bank has a BS group assigned, place it in the group tree (like CC codes)
+        if bc.group_id and bc.group_id in bs_groups_map:
+            tree_row = {
+                "type": "account",
+                "ccId": f"bank_{bc.id}",
+                "ccCode": bc.bank_code,
+                "ccName": bc.bank_name or bc.bank_holder_name or "",
+                "debit": float(_d(dr)),
+                "credit": float(_d(cr)),
+                "net": float(abs(net)) if net != 0 else 0,
+                "_bankCashId": bc.id,
+            }
+            sg_id = bc.sub_group_id
+            if net > 0:
+                asset_by_group.setdefault(bc.group_id, {}).setdefault(sg_id, []).append(tree_row)
+                total_assets += net
+            else:
+                liability_by_group.setdefault(bc.group_id, {}).setdefault(sg_id, []).append(tree_row)
+                total_liabilities += abs(net)
+            bank_total += net if net > 0 else Decimal("0")
+            continue
+
         row = {
             "type": "bankCash",
             "id": bc.id,
@@ -884,6 +906,10 @@ def get_balance_sheet_report(params):
         else:
             bank_liabilities.append(row)
             total_liabilities += abs(net)
+
+    # Build group trees now that both CC codes and grouped bank/cash are in the buckets
+    asset_groups = _build_bs_group_tree(asset_by_group)
+    liability_groups = _build_bs_group_tree(liability_by_group)
 
     # 8. P&L retained earnings
     pl_data, _ = get_profit_loss({
