@@ -215,7 +215,7 @@ def accept_request(req_id, data):
     comment = str((data or {}).get("comment") or "").strip()
 
     try:
-        record, blocked = U.check_record(req.module, req.record_id)
+        record, blocked = U.check_record(req.module, req.record_id, lock=True)
         if record is None:
             return res(blocked, [], 404)
         if blocked:

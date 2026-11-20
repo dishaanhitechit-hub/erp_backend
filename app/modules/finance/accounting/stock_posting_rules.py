@@ -2,21 +2,22 @@
 Stock posting rules for GRN and GIN — C6.
 
 GRN (stock-in):
-  Dr CC code from GRN cost_head (Stock-in-Hand CC)  — per item line
-  Cr Vendor payable                                  — total GRN value
+  Dr Item's CC code (via Item.cc_code_id)  — per item line
+  Cr Vendor payable                        — total GRN value
   Stock ledger: +qty at PO rate
 
 GIN (stock-out):
-  Dr CC code from GIN cost_head (expense CC)         — per item line at WAC rate
-  Cr CC code from GIN cost_head (same CC, stock out) — per item line at WAC rate
+  Dr Item's CC code  — per item line at WAC rate
+  Cr Item's CC code  — per item line at WAC rate (stock reduction)
   Stock ledger: -qty at WAC rate
 
 Rate lookup:
   GRN: GrnItem.order_item_id → OrderItem.rate
   GIN: WAC from stock_ledger_service.get_gin_item_rate()
 
-CC Head hierarchy is preserved: GrnMaster.cost_head / GinMaster.cost_head
-carries the CC code which maps to CC Head → Group → Subgroup → CC Code.
+CC resolution: each item's CC is looked up from the Item master's cc_code_id,
+which maps to the correct Stock-in-Hand CC (DRMC, DRMH, etc.). Falls back to
+"DRMC" only when the item has no cc_code_id set.
 """
 
 from decimal import Decimal
@@ -38,6 +39,20 @@ def _resolve_cc_id(cc_code_str):
     return (cc.id if cc else None), cc_code_str.upper().strip()
 
 
+def _item_cc(item_code_str):
+    """Resolve CC from Item master's cc_code_id. Returns (cc_id, cc_code_str)."""
+    if not item_code_str:
+        return _resolve_cc_id("DRMC")
+    from app.models.item import Item
+    item = Item.query.filter_by(item_code=item_code_str).first()
+    if item and item.cc_code_id:
+        from app.models.cc_code import CCCode
+        cc = CCCode.query.get(item.cc_code_id)
+        if cc:
+            return cc.id, cc.cc_code
+    return _resolve_cc_id("DRMC")
+
+
 # ─────────────────────────────────────────────────────────────────
 # GRN posting rule (accounting entries)
 # ─────────────────────────────────────────────────────────────────
@@ -56,7 +71,6 @@ def post_grn_accounting(source_id):
 
     lines = []
     total = Decimal("0")
-    stock_cc_code = grn.cost_head or "DRMC"
 
     for item in grn.items:
         qty = _d(item.current_received_qty)
@@ -64,16 +78,19 @@ def post_grn_accounting(source_id):
             continue
 
         rate = Decimal("0")
+        item_code = item.item_code
         if item.order_item_id:
             oi = OrderItem.query.get(item.order_item_id)
             if oi:
                 rate = _d(oi.rate)
+                if not item_code:
+                    item_code = oi.item_code
 
         amt = (qty * rate).quantize(Decimal("0.01"))
         if amt <= 0:
             continue
 
-        cc_id, cc_code = _resolve_cc_id(stock_cc_code)
+        cc_id, cc_code = _item_cc(item_code)
         lines.append({
             "account_type": "CC",
             "cc_id": cc_id,
@@ -124,7 +141,6 @@ def post_gin_accounting(source_id):
 
     lines = []
     total = Decimal("0")
-    cost_head_code = gin.cost_head or gin.cost_factor or "DRMC"
 
     for item in gin.items:
         qty = _d(item.issue_qty)
@@ -147,7 +163,7 @@ def post_gin_accounting(source_id):
         if amt <= 0:
             continue
 
-        cc_id, cc_code = _resolve_cc_id(cost_head_code)
+        cc_id, cc_code = _item_cc(item_code)
         lines.append({
             "account_type": "CC",
             "cc_id": cc_id,

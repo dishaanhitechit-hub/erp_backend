@@ -317,12 +317,17 @@ def _check_ledgers(entry, record):
     return reasons
 
 
-def check_record(key, record_id):
-    """(record, None) when it can be sent back, else (record_or_None, reason)."""
+def check_record(key, record_id, lock=False):
+    """(record, None) when it can be sent back, else (record_or_None, reason).
+    lock=True takes a row-level FOR UPDATE lock (used by accept_request)."""
     entry = UNAPPROVE_MODULES.get(key)
     if not entry:
         return None, f"Unknown module: {key}"
-    record = _load(entry["model"]).query.get(record_id)
+    model = _load(entry["model"])
+    if lock:
+        record = model.query.filter_by(id=record_id).with_for_update().first()
+    else:
+        record = model.query.get(record_id)
     if not record:
         return None, "Record not found"
     if (record.workflow_status or "") != "Approved":
