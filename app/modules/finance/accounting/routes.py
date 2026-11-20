@@ -222,63 +222,6 @@ def remove_opening_balance(posting_id):
     return delete_opening_balance(posting_id, int(get_jwt_identity()))
 
 
-# ── Export endpoints ──────────────────────────────────────────────────────
-
-@accounting_bp.route("/export/ledger", methods=["GET"])
-@jwt_required()
-def export_ledger():
-    from .export_service import export_general_ledger
-    return export_general_ledger(request.args)
-
-
-@accounting_bp.route("/export/trial-balance", methods=["GET"])
-@jwt_required()
-def export_trial_balance():
-    from .export_service import export_trial_balance
-    return export_trial_balance(request.args)
-
-
-@accounting_bp.route("/export/profit-loss", methods=["GET"])
-@jwt_required()
-def export_profit_loss():
-    from .export_service import export_profit_loss
-    return export_profit_loss(request.args)
-
-
-@accounting_bp.route("/export/balance-sheet", methods=["GET"])
-@jwt_required()
-def export_balance_sheet():
-    from .export_service import export_balance_sheet
-    return export_balance_sheet(request.args)
-
-
-@accounting_bp.route("/export/group-ledger", methods=["GET"])
-@jwt_required()
-def export_group_ledger():
-    from .export_service import export_group_ledger
-    return export_group_ledger(request.args)
-
-
-@accounting_bp.route("/export/outstanding-payables", methods=["GET"])
-@jwt_required()
-def export_outstanding_payables():
-    from .export_service import export_outstanding_payables
-    return export_outstanding_payables(request.args)
-
-
-@accounting_bp.route("/export/outstanding-receivables", methods=["GET"])
-@jwt_required()
-def export_outstanding_receivables():
-    from .export_service import export_outstanding_receivables
-    return export_outstanding_receivables(request.args)
-
-
-@accounting_bp.route("/export/project-summary", methods=["GET"])
-@jwt_required()
-def export_project_summary():
-    from .export_service import export_project_summary
-    return export_project_summary(request.args)
-
 
 # ── Cancellation / Reversal ──────────────────────────────────────────────
 
