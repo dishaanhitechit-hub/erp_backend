@@ -33,6 +33,7 @@ def create_app():
     from .models import pmMaster  # noqa — registers PMMaster, PMServiceHistory, PMServiceSchedule
     from .models import whatsapp_log  # noqa — registers WhatsappLog with Alembic
     from .models import delete_request  # noqa — registers DeleteRequest with Alembic
+    from .models import rebackRequest  # noqa — registers RebackRequest with Alembic
     from .models import runtime_store  # noqa — registers RuntimeStore with Alembic
 
     # request id + one log line per request (registered before the maintenance
