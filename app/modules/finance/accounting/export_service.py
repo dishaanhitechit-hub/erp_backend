@@ -304,19 +304,20 @@ def _render_csv(headers, rows, filename):
 # TREE HELPERS (for P&L and BS)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _flatten_subgroups_html(subgroups, depth=1, prefix="i"):
+def _flatten_subgroups_html(subgroups, depth=1, prefix="i", fmt_fn=None):
     """Recursively render subgroup tree rows for PDF."""
+    fmt = fmt_fn or _fmt_num
     html = ""
     cls = f"{prefix}{min(depth, 3)}"
     for sg in subgroups:
         html += f'<tr class="sg"><td class="{cls}">{sg["name"]}</td>'
-        html += f'<td class="r"></td><td class="r">{_fmt_num(sg["total"])}</td></tr>'
+        html += f'<td class="r"></td><td class="r">{fmt(sg["total"])}</td></tr>'
         if sg.get("children"):
-            html += _flatten_subgroups_html(sg["children"], depth + 1, prefix)
+            html += _flatten_subgroups_html(sg["children"], depth + 1, prefix, fmt_fn)
         for acc in sg.get("accounts", []):
             acls = f"{prefix}{min(depth + 1, 3)}"
             html += f'<tr><td class="{acls}">{acc["ccCode"]} - {acc["ccName"]}</td>'
-            html += f'<td class="r">{_fmt_num(acc["net"])}</td><td class="r"></td></tr>'
+            html += f'<td class="r">{fmt(acc["net"])}</td><td class="r"></td></tr>'
     return html
 
 
@@ -586,29 +587,44 @@ def export_profit_loss(params):
 # BALANCE SHEET EXPORT
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _bs_side_html(groups, extras=None):
+def _fmt_bs_bal(val, side="asset"):
+    """Format BS balance with Dr/Cr suffix. Asset: +ve=Dr, -ve=Cr. Liability: +ve=Cr, -ve=Dr."""
+    if val is None:
+        return ""
+    n = float(val)
+    if n == 0:
+        return "—"
+    if side == "asset":
+        label = "Dr" if n > 0 else "Cr"
+    else:
+        label = "Cr" if n > 0 else "Dr"
+    return f"{_fmt_indian(abs(n))} {label}"
+
+
+def _bs_side_html(groups, extras=None, side="asset"):
     """Render one BS side (Assets or Liabilities) as table rows."""
+    fmt = lambda v: _fmt_bs_bal(v, side)
     html = ""
     for grp in groups:
-        html += f'<tr class="grp"><td><b>{grp["groupName"]}</b></td><td class="r"></td><td class="r">{_fmt_num(grp["total"])}</td></tr>'
+        html += f'<tr class="grp"><td><b>{grp["groupName"]}</b></td><td class="r"></td><td class="r">{fmt(grp["total"])}</td></tr>'
         if grp.get("subGroups"):
-            html += _flatten_subgroups_html(grp["subGroups"], depth=1, prefix="bi")
+            html += _flatten_subgroups_html(grp["subGroups"], depth=1, prefix="bi", fmt_fn=fmt)
         for acc in grp.get("accounts", []):
             html += f'<tr><td class="bi1">{acc["ccCode"]} - {acc["ccName"]}</td>'
-            html += f'<td class="r">{_fmt_num(acc["net"])}</td><td class="r"></td></tr>'
+            html += f'<td class="r">{fmt(acc["net"])}</td><td class="r"></td></tr>'
     for item in (extras or []):
         if item.get("type") == "vendorSummary":
-            html += f'<tr class="grp"><td><b>{item["name"]}</b></td><td class="r"></td><td class="r">{_fmt_num(item["balance"])}</td></tr>'
+            html += f'<tr class="grp"><td><b>{item["name"]}</b></td><td class="r"></td><td class="r">{fmt(item["balance"])}</td></tr>'
             for d in item.get("details", []):
                 html += f'<tr><td class="bi1">{d.get("code", "")} - {d["name"]}</td>'
-                html += f'<td class="r">{_fmt_num(d["balance"])}</td><td class="r"></td></tr>'
+                html += f'<td class="r">{fmt(d["balance"])}</td><td class="r"></td></tr>'
         elif item.get("type") == "bankCash":
             html += f'<tr><td class="bi1">{item.get("code", "")} - {item["name"]}</td>'
-            html += f'<td class="r">{_fmt_num(item["balance"])}</td><td class="r"></td></tr>'
+            html += f'<td class="r">{fmt(item["balance"])}</td><td class="r"></td></tr>'
         elif item.get("type") == "plResult":
-            html += f'<tr class="grp"><td><b>Profit &amp; Loss A/c</b></td><td class="r"></td><td class="r">{_fmt_num(item["balance"])}</td></tr>'
+            html += f'<tr class="grp"><td><b>Profit &amp; Loss A/c</b></td><td class="r"></td><td class="r">{fmt(item["balance"])}</td></tr>'
             html += f'<tr><td class="bi1">{item["name"]}</td>'
-            html += f'<td class="r">{_fmt_num(item["balance"])}</td><td class="r"></td></tr>'
+            html += f'<td class="r">{fmt(item["balance"])}</td><td class="r"></td></tr>'
     return html
 
 
@@ -663,11 +679,11 @@ def export_balance_sheet(params):
 
     if fmt == "pdf":
         # T-format: Liabilities LEFT, Assets RIGHT (matching reference)
-        liab_body = _bs_side_html(data.get("liabilityGroups", []), liability_extras)
-        liab_body += f'<tr class="grand"><td>T o t a l</td><td class="r"></td><td class="r">{_fmt_num(data["totalLiabilities"])}</td></tr>'
+        liab_body = _bs_side_html(data.get("liabilityGroups", []), liability_extras, side="liability")
+        liab_body += f'<tr class="grand"><td>T o t a l</td><td class="r"></td><td class="r">{_fmt_bs_bal(data["totalLiabilities"], "liability")}</td></tr>'
 
-        asset_body = _bs_side_html(data.get("assetGroups", []), asset_extras)
-        asset_body += f'<tr class="grand"><td>T o t a l</td><td class="r"></td><td class="r">{_fmt_num(data["totalAssets"])}</td></tr>'
+        asset_body = _bs_side_html(data.get("assetGroups", []), asset_extras, side="asset")
+        asset_body += f'<tr class="grand"><td>T o t a l</td><td class="r"></td><td class="r">{_fmt_bs_bal(data["totalAssets"], "asset")}</td></tr>'
 
         html = f"""<html><head>{_PDF_CSS_TALLY}</head><body>
         {_company_header_html("Balance Sheet", period=period, project=project)}
