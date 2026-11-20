@@ -63,10 +63,26 @@ def post_document(source_type, source_id, user_id=None):
     total_cr = sum(Decimal(str(l["amount"])) for l in lines_data if l["dr_cr"] == "Cr")
 
     if total_dr != total_cr:
-        raise PostingError(
-            f"Unbalanced entry for {source_type}:{source_id}: "
-            f"Dr={total_dr}, Cr={total_cr}"
-        )
+        diff = abs(total_dr - total_cr)
+        if diff <= Decimal("1.00"):
+            side = "Dr" if total_cr > total_dr else "Cr"
+            lines_data.append({
+                "account_type": "CC",
+                "cc_code": "ROFF",
+                "dr_cr": side,
+                "amount": diff,
+                "project_code": header_data.get("project_code"),
+                "narration": f"Auto round-off adjustment ({diff})",
+            })
+            if side == "Dr":
+                total_dr += diff
+            else:
+                total_cr += diff
+        else:
+            raise PostingError(
+                f"Unbalanced entry for {source_type}:{source_id}: "
+                f"Dr={total_dr}, Cr={total_cr}"
+            )
 
     if total_dr == 0:
         raise PostingError(f"Zero-amount entry for {source_type}:{source_id}")
