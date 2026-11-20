@@ -184,23 +184,24 @@ def run_historical_posting(user_id, options=None):
                     skipped_count += 1
                     continue
 
+                sp = db.session.begin_nested()
                 try:
                     result = post_document(source_type, doc.id, user_id)
                 except PostingError as pe:
+                    sp.rollback()
                     error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(pe)})
-                    db.session.rollback()
                     continue
                 except Exception as ex:
+                    sp.rollback()
                     error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(ex)})
-                    db.session.rollback()
                     continue
 
                 if result is None:
+                    sp.rollback()
                     warning_list.append({"id": doc.id, "docNo": doc_no, "project": project, "reason": "Cannot post — no vendor/bank account linked or zero amount"})
                 else:
+                    sp.commit()
                     posted_count += 1
-                    if posted_count % batch_size == 0:
-                        db.session.commit()
 
             except Exception as e:
                 error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": f"Unexpected: {str(e)}"})
