@@ -654,17 +654,21 @@ def get_balance_sheet_report(params):
     as_of_date = _parse_date(params.get("as_of_date") or params.get("to_date"))
     from_date = _parse_date(params.get("from_date"))
     project_code = params.get("project_code")
+    include_pl_accounts = str(params.get("include_pl_accounts", "")).lower() in ("true", "1", "yes")
 
     # 1. Load all BS groups and their sub-groups
     bs_groups = GroupMaster.query.filter_by(head_under="Balance Sheet", status="Active").all()
     bs_group_ids = [g.id for g in bs_groups]
     bs_groups_map = {g.id: g for g in bs_groups}
 
-    # Eager-load all CC codes under BS groups
-    bs_ccs = CCCode.query.filter(
-        CCCode.group_id.in_(bs_group_ids),
-        CCCode.status == "Active",
-    ).all() if bs_group_ids else []
+    # Eager-load CC codes under BS groups
+    # By default, exclude pl_linked CCs (they go to P&L only; their net
+    # effect reaches the BS through the P&L result under Equity).
+    # Pass include_pl_accounts=True to show all CCs on the BS.
+    cc_q_filter = [CCCode.group_id.in_(bs_group_ids), CCCode.status == "Active"]
+    if not include_pl_accounts:
+        cc_q_filter.append(CCCode.pl_linked == False)
+    bs_ccs = CCCode.query.filter(*cc_q_filter).all() if bs_group_ids else []
     cc_map = {cc.id: cc for cc in bs_ccs}
 
     # Eager-load all sub-groups for BS groups
@@ -949,8 +953,12 @@ def get_balance_sheet_report(params):
                 elif ("profit" in sg_name and "loss" in sg_name) and not pl_sg_id:
                     pl_sg_id = sg.id
 
+    # When pl_linked CCs are excluded (default), their net effect is
+    # captured by the P&L result placed under Equity.
+    # When include_pl_accounts=True, income/expense CCs are already on the
+    # BS so adding P&L result again would double-count — skip it.
     pl_section = None
-    if net_profit != 0:
+    if net_profit != 0 and not include_pl_accounts:
         if equity_group_id and pl_sg_id:
             pl_row = {
                 "type": "account",
