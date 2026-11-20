@@ -1719,38 +1719,93 @@ def get_project_summary(params):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def get_group_ledger(params):
-    """Summary by GroupMaster for all CC accounts."""
+    """
+    Tally-style Group Summary.
+    Shows ALL groups from GroupMaster (even zero-balance) with Dr/Cr totals
+    aggregated from CC, Vendor and BankCash account lines.
+    """
     from_date = _parse_date(params.get("from_date"))
     to_date = _parse_date(params.get("to_date"))
     project_code = params.get("project_code")
 
-    q = db.session.query(
-        CCCode.group_id,
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("dr"),
-        func.coalesce(func.sum(case(
-            (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
-            else_=literal_column("0"),
-        )), 0).label("cr"),
+    date_filters = []
+    if from_date:
+        date_filters.append(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        date_filters.append(AccountingLedger.posting_date <= to_date)
+    if project_code:
+        date_filters.append(AccountingLedger.project_code == project_code)
+
+    # Start with ALL active groups — Tally shows every group
+    all_groups = GroupMaster.query.filter(
+        GroupMaster.status != "Deleted",
+    ).order_by(GroupMaster.group_name).all()
+
+    group_totals = {}
+    for g in all_groups:
+        group_totals[g.id] = {"dr": Decimal("0"), "cr": Decimal("0")}
+
+    _dr_sum = func.coalesce(func.sum(case(
+        (AccountingLedgerLine.dr_cr == "Dr", AccountingLedgerLine.amount),
+        else_=literal_column("0"),
+    )), 0)
+    _cr_sum = func.coalesce(func.sum(case(
+        (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
+        else_=literal_column("0"),
+    )), 0)
+
+    # --- 1) CC accounts: group via CCCode.group_id ---
+    cc_q = db.session.query(
+        CCCode.group_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
     ).join(AccountingLedgerLine, AccountingLedgerLine.cc_id == CCCode.id
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
-    ).filter(AccountingLedgerLine.account_type == "CC")
+    ).filter(AccountingLedgerLine.account_type == "CC", *date_filters
+    ).group_by(CCCode.group_id)
 
-    if from_date:
-        q = q.filter(AccountingLedger.posting_date >= from_date)
-    if to_date:
-        q = q.filter(AccountingLedger.posting_date <= to_date)
-    if project_code:
-        q = q.filter(AccountingLedger.project_code == project_code)
+    for gid, dr, cr in cc_q.all():
+        t = group_totals.setdefault(gid, {"dr": Decimal("0"), "cr": Decimal("0")})
+        t["dr"] += _d(dr)
+        t["cr"] += _d(cr)
 
-    q = q.group_by(CCCode.group_id)
+    # --- 2) BankCash accounts: group via BankCash.group_id ---
+    bank_q = db.session.query(
+        BankCash.group_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
+    ).join(AccountingLedgerLine, AccountingLedgerLine.bank_cash_id == BankCash.id
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
+    ).filter(AccountingLedgerLine.account_type == "BankCash", *date_filters
+    ).group_by(BankCash.group_id)
 
+    for gid, dr, cr in bank_q.all():
+        if gid is None:
+            continue
+        t = group_totals.setdefault(gid, {"dr": Decimal("0"), "cr": Decimal("0")})
+        t["dr"] += _d(dr)
+        t["cr"] += _d(cr)
+
+    # --- 3) Vendor accounts: use is_debtor flag directly ---
+    # Vendors don't have group_id; is_debtor determines Creditor vs Debtor
+    vendor_q = db.session.query(
+        func.coalesce(Vendor.is_debtor, False).label("is_debtor"),
+        _dr_sum.label("dr"), _cr_sum.label("cr"),
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
+    ).outerjoin(Vendor, AccountingLedgerLine.vendor_id == Vendor.id
+    ).filter(AccountingLedgerLine.account_type == "Vendor", *date_filters
+    ).group_by("is_debtor")
+
+    vendor_rows = {}  # "creditor"/"debtor" -> {dr, cr}
+    for is_debtor, dr, cr in vendor_q.all():
+        key = "debtor" if is_debtor else "creditor"
+        vendor_rows[key] = {"dr": _d(dr), "cr": _d(cr)}
+
+    # --- Build result rows ---
     rows = []
-    for gid, dr, cr in q.all():
-        grp = GroupMaster.query.get(gid) if gid else None
-        net = float(_d(dr) - _d(cr))
+    group_map = {g.id: g for g in all_groups}
+
+    for gid, totals in group_totals.items():
+        dr = totals["dr"]
+        cr = totals["cr"]
+        net = float(dr - cr)
+        grp = group_map.get(gid)
         rows.append({
             "groupId": gid,
             "groupName": grp.group_name if grp else "Ungrouped",
@@ -1758,6 +1813,20 @@ def get_group_ledger(params):
             "debit": float(dr),
             "credit": float(cr),
             "net": net,
+        })
+
+    # Vendor rows always appear as dedicated Balance Sheet entries
+    for key, label in [("creditor", "Sundry Creditors"), ("debtor", "Sundry Debtors")]:
+        totals = vendor_rows.get(key, {"dr": Decimal("0"), "cr": Decimal("0")})
+        dr = totals["dr"]
+        cr = totals["cr"]
+        rows.append({
+            "groupId": None,
+            "groupName": label,
+            "headUnder": "Balance Sheet",
+            "debit": float(dr),
+            "credit": float(cr),
+            "net": float(dr - cr),
         })
 
     rows.sort(key=lambda r: r["groupName"])
