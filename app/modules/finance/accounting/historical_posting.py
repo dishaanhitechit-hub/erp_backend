@@ -184,19 +184,26 @@ def run_historical_posting(user_id, options=None):
                     skipped_count += 1
                     continue
 
-                result = post_document(source_type, doc.id, user_id)
+                try:
+                    result = post_document(source_type, doc.id, user_id)
+                except PostingError as pe:
+                    error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(pe)})
+                    db.session.rollback()
+                    continue
+                except Exception as ex:
+                    error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(ex)})
+                    db.session.rollback()
+                    continue
+
                 if result is None:
-                    warning_list.append({"id": doc.id, "docNo": doc_no, "project": project, "reason": "Missing vendor/bank account or zero amount"})
+                    warning_list.append({"id": doc.id, "docNo": doc_no, "project": project, "reason": "Cannot post — no vendor/bank account linked or zero amount"})
                 else:
                     posted_count += 1
                     if posted_count % batch_size == 0:
                         db.session.commit()
 
-            except PostingError as e:
-                error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(e)})
-                db.session.rollback()
             except Exception as e:
-                error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(e)})
+                error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": f"Unexpected: {str(e)}"})
                 db.session.rollback()
 
         if not dry_run and posted_count > 0:
