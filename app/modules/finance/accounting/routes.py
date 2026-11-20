@@ -16,6 +16,7 @@ from .ledger_service import (
     get_outstanding_payables,
     get_outstanding_receivables,
     get_gst_summary,
+    get_gst_reconciliation,
     get_project_summary,
     get_group_ledger,
     list_financial_years,
@@ -139,6 +140,12 @@ def outstanding_receivables():
 @jwt_required()
 def gst_summary():
     return get_gst_summary(request.args)
+
+
+@accounting_bp.route("/gst-reconciliation", methods=["GET"])
+@jwt_required()
+def gst_reconciliation():
+    return get_gst_reconciliation(request.args)
 
 
 # ── Project Financial Summary ─────────────────────────────────────────────

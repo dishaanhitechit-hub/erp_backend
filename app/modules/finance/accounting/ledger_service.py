@@ -1386,6 +1386,118 @@ def get_gst_summary(params):
     }, 200
 
 
+def get_gst_reconciliation(params):
+    gst_type = params.get("gst_type")
+    dr_cr = params.get("dr_cr")
+    from_date = _parse_date(params.get("from_date"))
+    to_date = _parse_date(params.get("to_date"))
+    project_code = params.get("project_code")
+
+    if not gst_type and not dr_cr:
+        return {"message": "gst_type or dr_cr required", "data": []}, 400
+
+    q = db.session.query(
+        AccountingLedgerLine,
+        AccountingLedger.posting_date,
+        AccountingLedger.voucher_no,
+        AccountingLedger.source_type,
+        AccountingLedger.source_id,
+        AccountingLedger.project_code,
+        AccountingLedger.remarks,
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
+    ).filter(AccountingLedgerLine.gst_type.isnot(None))
+
+    if gst_type:
+        q = q.filter(AccountingLedgerLine.gst_type == gst_type)
+
+    if dr_cr:
+        q = q.filter(AccountingLedgerLine.dr_cr == dr_cr)
+    if from_date:
+        q = q.filter(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        q = q.filter(AccountingLedger.posting_date <= to_date)
+    if project_code:
+        q = q.filter(AccountingLedger.project_code == project_code)
+
+    q = q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
+
+    source_routes = {
+        "purchase_bill": "/finance-management/account/purchases",
+        "payment_voucher": "/finance-management/account/payment",
+        "bill_payment": "/finance-management/account/payment",
+        "sale_bill": "/finance-management/account/sale",
+        "sale_receipt_billing": "/finance-management/account/receipt",
+        "journal_entry": "/finance-management/account/journal",
+        "contra_entry": "/finance-management/account/contra",
+        "debit_note": "/finance-management/account/debit-note",
+        "credit_note": "/finance-management/account/credit-note",
+        "petty_cash_docket": "/finance-management/account/petty-cash/expenses-docket",
+        "grn": "/resource/material-management/grn",
+        "gin": "/resource/material-management/gin",
+    }
+
+    by_source = {}
+    total_dr = Decimal("0")
+    total_cr = Decimal("0")
+
+    for line, post_date, voucher_no, src_type, src_id, proj, remark in q.all():
+        dr = float(line.amount) if line.dr_cr == "Dr" else 0.0
+        cr = float(line.amount) if line.dr_cr == "Cr" else 0.0
+        total_dr += _d(dr)
+        total_cr += _d(cr)
+
+        base_route = source_routes.get(src_type, "")
+        link = f"{base_route}/{src_id}" if base_route and src_id else None
+
+        entry = {
+            "date": _fmt_date(post_date),
+            "voucherNo": voucher_no,
+            "sourceId": src_id,
+            "projectCode": proj,
+            "narration": line.narration or remark or "",
+            "drCr": line.dr_cr,
+            "debit": dr,
+            "credit": cr,
+            "link": link,
+        }
+
+        label = SOURCE_TYPE_LABELS.get(src_type, src_type or "Other")
+        by_source.setdefault(label, []).append(entry)
+
+    groups = []
+    for label, entries in by_source.items():
+        grp_dr = sum(e["debit"] for e in entries)
+        grp_cr = sum(e["credit"] for e in entries)
+        groups.append({
+            "sourceType": label,
+            "entries": entries,
+            "count": len(entries),
+            "totalDebit": grp_dr,
+            "totalCredit": grp_cr,
+        })
+
+    groups.sort(key=lambda g: g["totalDebit"] + g["totalCredit"], reverse=True)
+
+    side_label = "Input" if dr_cr == "Dr" else "Output" if dr_cr == "Cr" else "All"
+    type_label = gst_type or "All Types"
+
+    return {
+        "message": "OK",
+        "data": {
+            "accountType": "GST",
+            "accountId": gst_type or "all",
+            "accountName": f"{type_label} — {side_label} GST",
+            "fromDate": _fmt_date(from_date),
+            "toDate": _fmt_date(to_date),
+            "projectCode": project_code,
+            "totalDebit": float(total_dr),
+            "totalCredit": float(total_cr),
+            "net": float(total_dr - total_cr),
+            "groups": groups,
+        },
+    }, 200
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PROJECT FINANCIAL SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1395,23 +1507,40 @@ def get_project_summary(params):
     from_date = _parse_date(params.get("from_date"))
     to_date = _parse_date(params.get("to_date"))
 
+    base_filter = []
+    if project_code:
+        base_filter.append(AccountingLedger.project_code == project_code)
+    if from_date:
+        base_filter.append(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        base_filter.append(AccountingLedger.posting_date <= to_date)
+
+    # CC and BankCash: simple group by account_type + dr_cr
     q = db.session.query(
         AccountingLedgerLine.account_type,
         AccountingLedgerLine.dr_cr,
         func.sum(AccountingLedgerLine.amount).label("total"),
-    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
-    if project_code:
-        q = q.filter(AccountingLedger.project_code == project_code)
-    if from_date:
-        q = q.filter(AccountingLedger.posting_date >= from_date)
-    if to_date:
-        q = q.filter(AccountingLedger.posting_date <= to_date)
-    q = q.group_by(AccountingLedgerLine.account_type, AccountingLedgerLine.dr_cr)
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
+    ).filter(AccountingLedgerLine.account_type.in_(["CC", "BankCash"]), *base_filter
+    ).group_by(AccountingLedgerLine.account_type, AccountingLedgerLine.dr_cr)
 
     summary = {}
     for acct_type, dr_cr, total in q.all():
-        key = f"{acct_type}_{dr_cr}"
-        summary[key] = float(total or 0)
+        summary[f"{acct_type}_{dr_cr}"] = float(total or 0)
+
+    # Vendor lines: split by is_debtor (sundry debtors vs sundry creditors)
+    vq = db.session.query(
+        func.coalesce(Vendor.is_debtor, False).label("is_debtor"),
+        AccountingLedgerLine.dr_cr,
+        func.sum(AccountingLedgerLine.amount).label("total"),
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
+    ).outerjoin(Vendor, AccountingLedgerLine.vendor_id == Vendor.id
+    ).filter(AccountingLedgerLine.account_type == "Vendor", *base_filter
+    ).group_by("is_debtor", AccountingLedgerLine.dr_cr)
+
+    for is_debtor, dr_cr, total in vq.all():
+        prefix = "debtor" if is_debtor else "creditor"
+        summary[f"{prefix}_{dr_cr}"] = float(total or 0)
 
     return {
         "message": "OK",
@@ -1419,10 +1548,15 @@ def get_project_summary(params):
             "projectCode": project_code,
             "ccDebit": summary.get("CC_Dr", 0),
             "ccCredit": summary.get("CC_Cr", 0),
-            "vendorDebit": summary.get("Vendor_Dr", 0),
-            "vendorCredit": summary.get("Vendor_Cr", 0),
+            "creditorDebit": summary.get("creditor_Dr", 0),
+            "creditorCredit": summary.get("creditor_Cr", 0),
+            "debtorDebit": summary.get("debtor_Dr", 0),
+            "debtorCredit": summary.get("debtor_Cr", 0),
             "bankDebit": summary.get("BankCash_Dr", 0),
             "bankCredit": summary.get("BankCash_Cr", 0),
+            # backward compat: total vendor = creditor + debtor
+            "vendorDebit": summary.get("creditor_Dr", 0) + summary.get("debtor_Dr", 0),
+            "vendorCredit": summary.get("creditor_Cr", 0) + summary.get("debtor_Cr", 0),
         },
     }, 200
 
