@@ -104,6 +104,25 @@ def _payload(req, names=None, user_id=None):
     }
 
 
+def _log(key, record, action, user_id, comments):
+    """Request events go into the record's own approval history, so the
+    Timeline / History sheet of every module shows them."""
+    from app.modules.work_flow import create_history
+    create_history(
+        project_code=U._project(U.UNAPPROVE_MODULES[key], record),
+        module_code=U._value(U.UNAPPROVE_MODULES[key]["history"], record),
+        record_id=record.id,
+        level_no=None,
+        action=action,
+        action_by=user_id,
+        comments=comments,
+    )
+
+
+def _record_of(req):
+    return U._load(U.UNAPPROVE_MODULES[req.module]["model"]).query.get(req.record_id)
+
+
 def _pending(key, record_id):
     return RebackRequest.query.filter_by(module=key, record_id=record_id, status="PENDING").first()
 
@@ -188,6 +207,7 @@ def raise_request(data):
                         project_code=U._project(entry, record), approval_module=_approval_code(module, record),
                         requested_by=user_id, reason=reason, status="PENDING", page_url=page_url)
     db.session.add(req)
+    _log(module, record, "REBACK_REQUEST", user_id, reason)
     try:
         db.session.commit()
     except IntegrityError:          # someone raised one at the same moment
@@ -223,6 +243,7 @@ def accept_request(req_id, data):
         names = _names({req.requested_by, user_id})
         history = (f"[Reback after approval] Requested by {names.get(req.requested_by)}: {req.reason}"
                    f" | Accepted by {names.get(user_id)}" + (f": {comment}" if comment else ""))
+        _log(req.module, record, "REBACK_REQUEST_ACCEPTED", user_id, comment or None)
         U._apply(req.module, record, user_id, history)
         req.status = "ACCEPTED"
         req.decided_by = user_id
@@ -252,6 +273,9 @@ def decline_request(req_id, data):
     req.decided_by = user_id
     req.decided_at = datetime.utcnow()
     req.decision_comment = comment
+    record = _record_of(req)
+    if record is not None:
+        _log(req.module, record, "REBACK_REQUEST_DECLINED", user_id, comment)
     db.session.commit()
     return res("Reback request declined", _payload(req, user_id=user_id), 200)
 
@@ -266,6 +290,9 @@ def cancel_request(req_id):
     req.status = "CANCELLED"
     req.decided_by = user_id
     req.decided_at = datetime.utcnow()
+    record = _record_of(req)
+    if record is not None:
+        _log(req.module, record, "REBACK_REQUEST_CANCELLED", user_id, None)
     db.session.commit()
     return res("Reback request cancelled", _payload(req, user_id=user_id), 200)
 
