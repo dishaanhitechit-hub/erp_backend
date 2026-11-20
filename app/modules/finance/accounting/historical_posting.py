@@ -22,19 +22,20 @@ def _table_exists(table_name):
         return False
 
 # Posting order: liabilities/receivables first, then settlements
+# (source_type, model_name, table_name, status_col, date_col, doc_no_col)
 _POSTING_ORDER = [
-    ("journal_entry", "JournalEntryMaster", "journal_entry_master", "workflow_status", "entry_date"),
-    ("purchase_bill", "PurchaseBillMaster", "purchase_bill_master", "workflow_status", "processing_date"),
-    ("sale_bill", "SaleBillMaster", "sale_bill_master", "workflow_status", "invoice_date"),
-    ("payment_voucher", "PaymentVoucherMaster", "payment_voucher_master", "workflow_status", "payment_date"),
-    ("petty_cash_docket", "PettyCashDocketVoucher", "petty_cash_docket_voucher", "workflow_status", "voucher_date"),
-    ("bill_payment", "BillPaymentReceiptMaster", "bill_payment_receipt_master", "workflow_status", "payment_date"),
-    ("sale_receipt_billing", "SaleReceiptBillingMaster", "sale_receipt_billing", "workflow_status", "srb_date"),
-    ("debit_note", "DebitNoteMaster", "debit_note_master", "workflow_status", "entry_date"),
-    ("credit_note", "CreditNoteMaster", "credit_note_master", "workflow_status", "entry_date"),
-    ("contra_entry", "ContraEntryMaster", "contra_entry_master", "workflow_status", "entry_date"),
-    ("grn", "GrnMaster", "grn_master", "workflow_status", "grn_date"),
-    ("gin", "GinMaster", "gin_master", "workflow_status", "gin_date"),
+    ("journal_entry", "JournalEntryMaster", "journal_entry_master", "workflow_status", "entry_date", "voucher_no"),
+    ("purchase_bill", "PurchaseBillMaster", "purchase_bill_master", "workflow_status", "processing_date", "purchase_bill_no"),
+    ("sale_bill", "SaleBillMaster", "sale_bill_master", "workflow_status", "invoice_date", "sale_bill_no"),
+    ("payment_voucher", "PaymentVoucherMaster", "payment_voucher_master", "workflow_status", "payment_date", "payment_vouch_no"),
+    ("petty_cash_docket", "PettyCashDocketVoucher", "petty_cash_docket_voucher", "workflow_status", "voucher_date", "voucher_no"),
+    ("bill_payment", "BillPaymentReceiptMaster", "bill_payment_receipt_master", "workflow_status", "payment_date", "receipt_no"),
+    ("sale_receipt_billing", "SaleReceiptBillingMaster", "sale_receipt_billing", "workflow_status", "srb_date", "srb_no"),
+    ("debit_note", "DebitNoteMaster", "debit_note_master", "workflow_status", "entry_date", "debit_note_no"),
+    ("credit_note", "CreditNoteMaster", "credit_note_master", "workflow_status", "entry_date", "credit_note_no"),
+    ("contra_entry", "ContraEntryMaster", "contra_entry_master", "workflow_status", "entry_date", "contra_entry_no"),
+    ("grn", "GrnMaster", "grn_master", "workflow_status", "grn_date", "grn_no"),
+    ("gin", "GinMaster", "gin_master", "workflow_status", "gin_date", "gin_no"),
 ]
 
 
@@ -102,7 +103,7 @@ def run_historical_posting(user_id, options=None):
         "summary": {},
     }
 
-    for source_type, model_name, table_name, status_col, date_col in _POSTING_ORDER:
+    for source_type, model_name, table_name, status_col, date_col, doc_no_col in _POSTING_ORDER:
         if source_type in ("grn", "gin") and not stock_table_ready:
             results["skipped"][source_type] = 0
             results["errors"][source_type] = ["stock_ledger table not yet created — skipping GRN/GIN posting"]
@@ -141,6 +142,9 @@ def run_historical_posting(user_id, options=None):
         error_list = []
 
         for doc in docs:
+            doc_no = getattr(doc, doc_no_col, None) or f"#{doc.id}"
+            project = getattr(doc, "project_code", None) or "—"
+
             try:
                 if dry_run:
                     # Check if already posted
@@ -174,10 +178,10 @@ def run_historical_posting(user_id, options=None):
                         db.session.commit()
 
             except PostingError as e:
-                error_list.append({"id": doc.id, "error": str(e)})
+                error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(e)})
                 db.session.rollback()
             except Exception as e:
-                error_list.append({"id": doc.id, "error": str(e)})
+                error_list.append({"id": doc.id, "docNo": doc_no, "project": project, "error": str(e)})
                 db.session.rollback()
 
         if not dry_run and posted_count > 0:
@@ -210,7 +214,7 @@ def get_posting_status():
     stock_table_ready = _table_exists("stock_ledger")
     status = {}
 
-    for source_type, model_name, table_name, status_col, date_col in _POSTING_ORDER:
+    for source_type, model_name, table_name, status_col, date_col, _doc_no_col in _POSTING_ORDER:
         if source_type in ("grn", "gin") and not stock_table_ready:
             continue
 
