@@ -251,10 +251,14 @@ def get_posting_status():
 
             total_approved = approved_q.count()
 
-            # Already posted
-            posted_count = AccountingLedger.query.filter_by(
-                source_type=source_type,
-                is_reversal=False,
+            # IDs of documents already posted
+            posted_ids_q = db.session.query(AccountingLedger.source_id).filter(
+                AccountingLedger.source_type == source_type,
+                AccountingLedger.is_reversal == False,
+            ).distinct()
+
+            posted_count = approved_q.filter(
+                Model.id.in_(posted_ids_q)
             ).count()
 
             status[source_type] = {
