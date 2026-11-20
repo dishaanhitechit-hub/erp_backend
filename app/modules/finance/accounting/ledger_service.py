@@ -1133,7 +1133,11 @@ def get_day_book(params):
         q = q.filter(AccountingLedger.posting_date == target_date)
     if project_code:
         q = q.filter(AccountingLedger.project_code == project_code)
-    q = q.order_by(AccountingLedger.id)
+    source_type = params.get("source_type")
+    if source_type:
+        q = q.filter(AccountingLedger.source_type == source_type)
+
+    q = q.order_by(AccountingLedger.posting_date.desc(), AccountingLedger.id.desc())
 
     entries = []
     for posting in q.all():

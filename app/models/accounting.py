@@ -60,6 +60,7 @@ class AccountingLedger(db.Model):
             unique=True,
             postgresql_where=db.text("is_reversal = FALSE"),
         ),
+        db.Index("ix_ledger_date_project", "posting_date", "project_code"),
     )
 
     def __repr__(self):
