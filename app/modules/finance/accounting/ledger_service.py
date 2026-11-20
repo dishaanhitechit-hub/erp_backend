@@ -713,10 +713,26 @@ def get_balance_sheet_report(params):
 
     cc_balances = {row[0]: (_d(row[1]), _d(row[2])) for row in cc_q.all()}
 
-    # Include ALL BS CCs, even those with zero balances
+    def _is_asset_group(grp):
+        if not grp:
+            return True
+        name = (grp.group_name or "").lower()
+        return "asset" in name
+
+    # Place ALL BS CCs on their group's natural side (Tally standard)
     for cc in bs_ccs:
         dr_total, cr_total = cc_balances.get(cc.id, (Decimal("0"), Decimal("0")))
         net = dr_total - cr_total
+
+        grp_id = cc.group_id
+        sg_id = cc.sub_group_id
+        grp = bs_groups_map.get(grp_id)
+        is_asset = _is_asset_group(grp)
+
+        # For assets: net = Dr - Cr (positive = natural debit balance)
+        # For liabilities: net = Cr - Dr (positive = natural credit balance)
+        # Negative net means balance is opposite to group's natural side
+        side_net = net if is_asset else -net
 
         row = {
             "type": "account",
@@ -725,26 +741,15 @@ def get_balance_sheet_report(params):
             "ccName": cc.cc_name,
             "debit": float(dr_total),
             "credit": float(cr_total),
-            "net": float(abs(net)) if net != 0 else 0,
+            "net": float(side_net),
         }
 
-        grp_id = cc.group_id
-        sg_id = cc.sub_group_id
-        grp = bs_groups_map.get(grp_id)
-
-        if net > 0:
+        if is_asset:
             asset_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
             total_assets += net
-        elif net < 0:
-            liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
-            total_liabilities += abs(net)
         else:
-            # Zero balance — place on the natural side based on group name
-            grp_name = (grp.group_name or "").lower() if grp else ""
-            if "asset" in grp_name:
-                asset_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
-            else:
-                liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
+            liability_by_group.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
+            total_liabilities += -net  # Cr - Dr: positive when credit-heavy
 
     def _build_bs_group_tree(group_bucket):
         result = []
@@ -871,6 +876,11 @@ def get_balance_sheet_report(params):
 
         # If bank has a BS group assigned, place it in the group tree (like CC codes)
         if bc.group_id and bc.group_id in bs_groups_map:
+            sg_id = bc.sub_group_id
+            grp = bs_groups_map.get(bc.group_id)
+            is_asset = _is_asset_group(grp)
+            side_net = net if is_asset else -net
+
             tree_row = {
                 "type": "account",
                 "ccId": f"bank_{bc.id}",
@@ -878,16 +888,16 @@ def get_balance_sheet_report(params):
                 "ccName": bc.bank_name or bc.bank_holder_name or "",
                 "debit": float(_d(dr)),
                 "credit": float(_d(cr)),
-                "net": float(abs(net)) if net != 0 else 0,
+                "net": float(side_net),
                 "_bankCashId": bc.id,
             }
-            sg_id = bc.sub_group_id
-            if net > 0:
+
+            if is_asset:
                 asset_by_group.setdefault(bc.group_id, {}).setdefault(sg_id, []).append(tree_row)
                 total_assets += net
             else:
                 liability_by_group.setdefault(bc.group_id, {}).setdefault(sg_id, []).append(tree_row)
-                total_liabilities += abs(net)
+                total_liabilities += -net
             bank_total += net if net > 0 else Decimal("0")
             continue
 
