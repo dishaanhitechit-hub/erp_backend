@@ -654,21 +654,20 @@ def get_balance_sheet_report(params):
     as_of_date = _parse_date(params.get("as_of_date") or params.get("to_date"))
     from_date = _parse_date(params.get("from_date"))
     project_code = params.get("project_code")
-    include_pl_accounts = str(params.get("include_pl_accounts", "")).lower() in ("true", "1", "yes")
-
     # 1. Load all BS groups and their sub-groups
     bs_groups = GroupMaster.query.filter_by(head_under="Balance Sheet", status="Active").all()
     bs_group_ids = [g.id for g in bs_groups]
     bs_groups_map = {g.id: g for g in bs_groups}
 
-    # Eager-load CC codes under BS groups
-    # By default, exclude pl_linked CCs (they go to P&L only; their net
-    # effect reaches the BS through the P&L result under Equity).
-    # Pass include_pl_accounts=True to show all CCs on the BS.
-    cc_q_filter = [CCCode.group_id.in_(bs_group_ids), CCCode.status == "Active"]
-    if not include_pl_accounts:
-        cc_q_filter.append(CCCode.pl_linked == False)
-    bs_ccs = CCCode.query.filter(*cc_q_filter).all() if bs_group_ids else []
+    # Every CC sits in a BS group (group_id). pl_linked CCs also appear
+    # in P&L under their pl_group_id, but they still belong here under
+    # their BS group. The P&L result is shown under Equity for reference
+    # but NOT added to totals (the individual CC balances already capture
+    # all income/expense, so the BS balances from account totals alone).
+    bs_ccs = CCCode.query.filter(
+        CCCode.group_id.in_(bs_group_ids),
+        CCCode.status == "Active",
+    ).all() if bs_group_ids else []
     cc_map = {cc.id: cc for cc in bs_ccs}
 
     # Eager-load all sub-groups for BS groups
@@ -953,35 +952,32 @@ def get_balance_sheet_report(params):
                 elif ("profit" in sg_name and "loss" in sg_name) and not pl_sg_id:
                     pl_sg_id = sg.id
 
-    # When pl_linked CCs are excluded (default), their net effect is
-    # captured by the P&L result placed under Equity.
-    # When include_pl_accounts=True, income/expense CCs are already on the
-    # BS so adding P&L result again would double-count — skip it.
+    # Place P&L result under Equity > Current Year Profit / Loss for display.
+    # All income/expense CCs are already on the BS under their BS groups,
+    # so the P&L figure is informational only — NOT added to totals
+    # (adding it would double-count). The BS balances from account totals
+    # alone because total Dr == total Cr across all accounts.
     pl_section = None
-    if net_profit != 0 and not include_pl_accounts:
-        if equity_group_id and pl_sg_id:
-            pl_row = {
-                "type": "account",
-                "ccId": "pl_result",
-                "ccCode": "P&L",
-                "ccName": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
-                "debit": 0.0,
-                "credit": 0.0,
-                "net": float(net_profit),
-            }
-            liability_by_group.setdefault(equity_group_id, {}).setdefault(pl_sg_id, []).append(pl_row)
-            total_liabilities += net_profit
-        else:
-            pl_section = {
-                "type": "plResult",
-                "code": "NET_PROFIT" if net_profit > 0 else "NET_LOSS",
-                "name": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
-                "balance": float(abs(net_profit)),
-            }
-            if net_profit > 0:
-                total_liabilities += net_profit
-            else:
-                total_assets += abs(net_profit)
+    if net_profit != 0 and equity_group_id and pl_sg_id:
+        pl_row = {
+            "type": "account",
+            "ccId": "pl_result",
+            "ccCode": "P&L",
+            "ccName": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
+            "debit": 0.0,
+            "credit": 0.0,
+            "net": 0.0,
+            "displayBalance": float(net_profit),
+            "_informational": True,
+        }
+        liability_by_group.setdefault(equity_group_id, {}).setdefault(pl_sg_id, []).append(pl_row)
+    elif net_profit != 0:
+        pl_section = {
+            "type": "plResult",
+            "code": "NET_PROFIT" if net_profit > 0 else "NET_LOSS",
+            "name": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
+            "balance": float(abs(net_profit)),
+        }
 
     # Build group trees now that all groups, bank/cash and P&L are in the buckets
     asset_groups = _build_bs_group_tree(asset_by_group)
