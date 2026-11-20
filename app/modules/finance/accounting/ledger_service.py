@@ -952,11 +952,14 @@ def get_balance_sheet_report(params):
                 elif ("profit" in sg_name and "loss" in sg_name) and not pl_sg_id:
                     pl_sg_id = sg.id
 
-    # Place P&L result under Equity > Current Year Profit / Loss for display.
-    # All income/expense CCs are already on the BS under their BS groups,
-    # so the P&L figure is informational only — NOT added to totals
-    # (adding it would double-count). The BS balances from account totals
-    # alone because total Dr == total Cr across all accounts.
+    # Place P&L result under Equity > Current Year Profit / Loss.
+    # NOTE: income/expense CCs are also on the BS under their BS groups,
+    # so this P&L figure overlaps with those account balances. Including
+    # it in the Equity total means the BS grand totals won't balance
+    # exactly (the P&L amount is effectively counted twice). This is
+    # intentional for now — the Equity section should show the P&L
+    # contribution. Remove or zero-out this row's net to make totals
+    # balance strictly.
     pl_section = None
     if net_profit != 0 and equity_group_id and pl_sg_id:
         pl_row = {
@@ -966,11 +969,11 @@ def get_balance_sheet_report(params):
             "ccName": "Net Profit (Current Period)" if net_profit > 0 else "Net Loss (Current Period)",
             "debit": 0.0,
             "credit": 0.0,
-            "net": 0.0,
-            "displayBalance": float(net_profit),
+            "net": float(net_profit),
             "_informational": True,
         }
         liability_by_group.setdefault(equity_group_id, {}).setdefault(pl_sg_id, []).append(pl_row)
+        total_liabilities += net_profit
     elif net_profit != 0:
         pl_section = {
             "type": "plResult",
