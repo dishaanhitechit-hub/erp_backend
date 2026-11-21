@@ -32,6 +32,28 @@ def create():
     return create_og_sale_order(request, user_id)
 
 
+# ── Bulk upload (Excel: Orders + Items sheets) ──────────────────
+@og_sale_order_bp.route("/bulk/reference", methods=["GET"])
+@jwt_required()
+def bulk_reference():
+    from .bulk_import import get_bulk_sale_order_reference
+    return get_bulk_sale_order_reference(request.args.to_dict(), get_jwt_identity())
+
+
+@og_sale_order_bp.route("/bulk/validate", methods=["POST"])
+@jwt_required()
+def bulk_validate():
+    from .bulk_import import validate_bulk_sale_order
+    return validate_bulk_sale_order(request.get_json(silent=True) or {}, get_jwt_identity())
+
+
+@og_sale_order_bp.route("/bulk/import", methods=["POST"])
+@jwt_required()
+def bulk_import():
+    from .bulk_import import import_bulk_sale_order
+    return import_bulk_sale_order(request.get_json(silent=True) or {}, get_jwt_identity())
+
+
 # ── Single record ───────────────────────────────────────────────
 @og_sale_order_bp.route("/<int:so_id>", methods=["GET"])
 @jwt_required()
