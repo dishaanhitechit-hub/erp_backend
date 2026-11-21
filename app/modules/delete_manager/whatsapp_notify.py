@@ -45,6 +45,7 @@ MODULE_NOTIFICATION_ROLE = {
     "PETTY_CASH_BUDGET":    "Site Manager",
     "PETTY_CASH_VOUCHER":   "Finance Head",
     "JOURNAL_ENTRY":        "Finance Head",
+    "JOURNAL_VOUCHER":      "Finance Head",
     "CONTRA_ENTRY":         "Finance Head",
     "CREDIT_NOTE":          "Finance Head",
     "DEBIT_NOTE":           "Finance Head",

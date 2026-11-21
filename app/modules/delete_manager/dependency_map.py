@@ -453,7 +453,9 @@ DEPENDENCY_MAP = {
         "model_class":  PettyCashDocketVoucher,
         "doc_no_field": "voucher_no",
         "project_field": "project_code",
-        "children": [],  # leaf
+        "children": [],
+        # its lines can be grouped into a Bulk Docket (BV…) — block until removed
+        "special_checks": ["docket_in_bulk_docket"],
     },
 
     # ══════════════════════════════════════════════════════════════════
@@ -485,6 +487,18 @@ DEPENDENCY_MAP = {
         # Deleting the journal releases them back to the picker — they are its
         # source, not something made from it, so they must not block the delete.
         "release_first": [(PettyCashJournalVoucher, "linked_journal_id")],
+    },
+
+    # Bulk Docket (petty-cash journal voucher, BV…). Groups approved docket
+    # lines; does not post to accounts. Its lines cascade on delete, which
+    # frees those docket lines for another bulk docket. Blocked while a Bulk
+    # Docket Journal (JB…) has been made from it (linked_journal_id).
+    "JOURNAL_VOUCHER": {
+        "model_class":  PettyCashJournalVoucher,
+        "doc_no_field": "voucher_no",
+        "project_field": "project_code",
+        "children": [],
+        "special_checks": ["jv_linked_journal"],
     },
 
     "CONTRA_ENTRY": {
@@ -654,6 +668,7 @@ MODULE_DISPLAY_NAMES = {
     "PETTY_CASH_BUDGET":    "Petty Cash Budget",
     "PETTY_CASH_VOUCHER":   "Petty Cash Voucher",
     "JOURNAL_ENTRY":        "Journal Entry",
+    "JOURNAL_VOUCHER":      "Bulk Docket",
     "CONTRA_ENTRY":         "Contra Entry",
     "CREDIT_NOTE":          "Credit Note",
     "DEBIT_NOTE":           "Debit Note",

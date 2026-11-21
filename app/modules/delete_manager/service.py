@@ -183,6 +183,38 @@ def _check_lb_posted_to_finance(lb_id: int) -> list[dict]:
     return blocking
 
 
+def _check_jv_linked_journal(jv_id: int) -> list[dict]:
+    """Block Bulk Docket delete while a Bulk Docket Journal (JB…) is made from it."""
+    from app.models.journalVoucher import PettyCashJournalVoucher
+    from app.models.journalEntry import JournalEntryMaster
+    jv = PettyCashJournalVoucher.query.get(jv_id)
+    if not jv or not jv.linked_journal_id:
+        return []
+    je = JournalEntryMaster.query.get(jv.linked_journal_id)
+    return [{
+        "doc_no":      (je.voucher_no if je else None) or f"#{jv.linked_journal_id}",
+        "module_code": "JOURNAL_ENTRY",
+        "label":       "Bulk Docket Journal",
+        "record_id":   jv.linked_journal_id,
+    }]
+
+
+def _check_docket_in_bulk_docket(docket_id: int) -> list[dict]:
+    """Block docket delete while any of its lines sits in a Bulk Docket (BV…)."""
+    from app.models.journalVoucher import PettyCashJournalVoucher, PettyCashJournalLine
+    jv_ids = {r.journal_voucher_id for r in
+              PettyCashJournalLine.query.filter_by(docket_voucher_id=docket_id).all()}
+    blocking = []
+    for jv in PettyCashJournalVoucher.query.filter(PettyCashJournalVoucher.id.in_(jv_ids)).all() if jv_ids else []:
+        blocking.append({
+            "doc_no":      jv.voucher_no or f"#{jv.id}",
+            "module_code": "JOURNAL_VOUCHER",
+            "label":       "Bulk Docket",
+            "record_id":   jv.id,
+        })
+    return blocking
+
+
 def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[dict]:
     """Run any special FK checks that can't be expressed as simple column checks."""
     blocking = []
@@ -197,6 +229,10 @@ def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[
             blocking.extend(_check_dc_in_logistics_bill(record_id))
         elif check_name == "lb_posted_to_finance":
             blocking.extend(_check_lb_posted_to_finance(record_id))
+        elif check_name == "jv_linked_journal":
+            blocking.extend(_check_jv_linked_journal(record_id))
+        elif check_name == "docket_in_bulk_docket":
+            blocking.extend(_check_docket_in_bulk_docket(record_id))
     return blocking
 
 

@@ -138,7 +138,7 @@ UNAPPROVE_MODULES = {
     "petty_cash_docket": {"model": "app.models.pettyCashDocketVoucher:PettyCashDocketVoucher",
                         "dep": "PETTY_CASH_VOUCHER",
                         "extra": [("app.models.journalVoucher:PettyCashJournalLine", "docket_voucher_id",
-                                   "journal_voucher_id", "Journal Voucher")],
+                                   "journal_voucher_id", "Bulk Docket")],
                         "history": "petty_cash", "posting": "petty_cash_docket", "bank_line": True,
                         "doc": "voucher_no"},
     # ── Project management
@@ -260,7 +260,7 @@ def find_blockers(key, record):
         model = _load(path)
         rows = model.query.filter(getattr(model, fk) == record.id).all()
         nos = sorted({str(getattr(r, doc_field, None) or r.id) for r in rows})
-        if label == "Journal Voucher" and nos:
+        if label == "Bulk Docket" and nos:
             from app.models.journalVoucher import PettyCashJournalVoucher
             jvs = PettyCashJournalVoucher.query.filter(PettyCashJournalVoucher.id.in_([int(n) for n in nos])).all()
             nos = sorted({jv.voucher_no or str(jv.id) for jv in jvs})
