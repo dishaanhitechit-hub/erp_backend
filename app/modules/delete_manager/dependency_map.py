@@ -23,7 +23,12 @@ Structure per entry:
             "label":         "<human-readable child type name>",
         },
         ...
-    ]
+    ],
+    # optional:
+    "delete_first":  [(Model, fk_column)],   # owned rows deleted with the record
+    "release_first": [(Model, fk_column)],   # rows that only POINT at the record
+                                             # (e.g. "already used" markers): the
+                                             # pointer is set to NULL, rows are kept
 }
 """
 
@@ -58,6 +63,7 @@ from app.models.batchingPlant      import BatchingPlantMaster
 from app.models.pettyCashBudget    import PettyCashBudget
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher
 from app.models.journalEntry       import JournalEntryMaster
+from app.models.journalVoucher     import PettyCashJournalVoucher
 from app.models.contraEntry        import ContraEntryMaster
 from app.models.creditNote         import CreditNoteMaster
 from app.models.debitNote          import DebitNoteMaster
@@ -474,6 +480,11 @@ DEPENDENCY_MAP = {
                 "label":        "Bill Payment Receipt",
             },
         ],
+        # Bulk-docket journals (JB…) are built FROM approved petty-cash journal
+        # vouchers, which get linked_journal_id = this journal ("already used").
+        # Deleting the journal releases them back to the picker — they are its
+        # source, not something made from it, so they must not block the delete.
+        "release_first": [(PettyCashJournalVoucher, "linked_journal_id")],
     },
 
     "CONTRA_ENTRY": {

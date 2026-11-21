@@ -245,6 +245,12 @@ def _do_delete_record(module_code: str, record_id: int, config: dict):
         from app.modules.finance.accounting.reversal_service import assert_hard_deletable
         assert_hard_deletable(record)
         try:
+            # Rows that only point at the record: clear the pointer, keep the row
+            # (config "release_first": [(Model, fk_column)]) — same transaction.
+            for ref_model, fk_col in config.get("release_first", []):
+                ref_model.query.filter(
+                    getattr(ref_model, fk_col) == record_id
+                ).update({fk_col: None}, synchronize_session=False)
             # Owned rows the ORM doesn't cascade (config "delete_first": [(Model, fk_column)])
             for owned_model, fk_col in config.get("delete_first", []):
                 owned_model.query.filter(
