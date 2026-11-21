@@ -6,10 +6,8 @@ from datetime import datetime
 import uuid as _uuid
 
 from app.models.saleBill import SaleBillMaster, SaleBillItem, SaleBillGst, SaleBillSource
-from app.models.billingMaster import BillingMaster, BillingBoqItem
+from app.models.billingMaster import BillingMaster
 from app.models.ogSaleOrder import OgSaleOrderMaster
-from app.models.cc_code import CCCode
-from app.models.bankCash import BankCash
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -60,127 +58,7 @@ def generate_sale_bill_no(project_code, invoice_date):
     return f"{prefix}{str(count + 1).zfill(3)}{project_code}"
 
 
-def _expand_items(billing_items, already_billed_map=None):
-    """
-    Return individual billing items with their GST rates.
-    already_billed_map: {billing_item_id: Decimal} of amounts already invoiced.
-    """
-    result = []
-    if already_billed_map is None:
-        already_billed_map = {}
-
-    for idx, bi in enumerate(billing_items):
-        original    = Decimal(str(bi.amount or 0))
-        gst_pct     = Decimal(str(bi.gst_percent or 0))
-        already     = already_billed_map.get(bi.id, Decimal("0"))
-        remaining   = max(original - already, Decimal("0"))
-
-        status = "UNBILLED"
-        if already >= original and original > 0:
-            status = "FULLY_BILLED"
-        elif already > 0:
-            status = "PARTIALLY_BILLED"
-
-        result.append({
-            "billingItemId": bi.id,
-            "slNo":          idx + 1,
-            "itemCode":      getattr(bi, "item_code", None) or "",
-            "itemName":      getattr(bi, "item_name", None) or "",
-            "description":   getattr(bi, "item_name_desc", None) or "",
-            "unit":          getattr(bi, "unit", None) or "",
-            "claimQty":      float(getattr(bi, "claim_qty", 0) or 0),
-            "rate":          float(getattr(bi, "rate", 0) or 0),
-            "hsnSac":        "",
-            "originalAmount": float(original),
-            "alreadyBilled":  float(already),
-            "remaining":      float(remaining),
-            "gstPercent":     float(gst_pct),
-            "billingStatus":  status,
-        })
-    return result
-
-
-def _resolve_output_gst_ccs():
-    """Look up dedicated Output GST CC codes in one query."""
-    ccs = CCCode.query.filter(
-        CCCode.gst_account_type.in_(["OUTPUT_SGST", "OUTPUT_CGST", "OUTPUT_IGST"])
-    ).all()
-    result = {}
-    for cc in ccs:
-        gst_type = cc.gst_account_type.replace("OUTPUT_", "")
-        result[gst_type] = (cc.cc_code, cc.cc_name)
-    if len(result) < 3:
-        for gst_type in ("SGST", "CGST", "IGST"):
-            if gst_type not in result:
-                cc = CCCode.query.filter(CCCode.cc_name.ilike(f"%Output%{gst_type}%")).first()
-                if cc:
-                    result[gst_type] = (cc.cc_code, cc.cc_name)
-    return result
-
-
-def _group_by_cc(billing_items):
-    """Consolidate all certified bill items under the CRIN CC code (legacy helper)."""
-    crin = CCCode.query.filter_by(cc_code="CRIN").first()
-    cc_code = crin.cc_code if crin else "CRIN"
-    cc_name = crin.cc_name if crin else "CRIN"
-
-    total_basic = Decimal('0')
-    total_gst   = Decimal('0')
-    for bi in billing_items:
-        total_basic += Decimal(str(bi.amount     or 0))
-        total_gst   += Decimal(str(bi.gst_amount or 0))
-
-    items = [
-        {
-            "slNo":        1,
-            "ccCode":      cc_code,
-            "ccName":      cc_name,
-            "description": "",
-            "hsnSac":      "",
-            "basicAmount": float(total_basic),
-        }
-    ]
-
-    gst_lines = []
-    if total_gst > 0 and total_basic > 0:
-        eff_pct  = (total_gst / total_basic * 100).quantize(Decimal("0.01"))
-        half_pct = (eff_pct / 2).quantize(Decimal("0.01"))
-        half_amt = (total_gst / 2).quantize(Decimal("0.01"))
-
-        gst_ccs = _resolve_output_gst_ccs()
-        sgst_cc, sgst_name = gst_ccs.get("SGST", (cc_code, cc_name))
-        cgst_cc, cgst_name = gst_ccs.get("CGST", (cc_code, cc_name))
-        igst_cc, igst_name = gst_ccs.get("IGST", (cc_code, cc_name))
-
-        gst_lines = [
-            {"gstType": "SGST", "ccCode": sgst_cc, "ccName": sgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-            {"gstType": "CGST", "ccCode": cgst_cc, "ccName": cgst_name, "percent": float(half_pct), "gstAmount": float(half_amt), "isSelected": False},
-            {"gstType": "IGST", "ccCode": igst_cc, "ccName": igst_name, "percent": float(eff_pct),  "gstAmount": float(total_gst),  "isSelected": True},
-        ]
-
-    return items, gst_lines
-
-
 _INACTIVE_STATUSES = ("Draft", "Reback", "Rejected")
-
-
-def _get_cert_bill_billed_amounts(cert_bill_id):
-    """
-    Return dict {billing_item_id: Decimal(billed_amount)} from active sale bills.
-    Draft, Reback and Rejected bills are excluded — their certified amounts are free again.
-    """
-    rows = (
-        db.session.query(SaleBillItem.billing_item_id, func.coalesce(func.sum(SaleBillItem.basic_amount), 0))
-        .join(SaleBillSource, SaleBillSource.id == SaleBillItem.source_id)
-        .join(SaleBillMaster, SaleBillMaster.id == SaleBillItem.sale_bill_id)
-        .filter(
-            SaleBillSource.certified_bill_id == cert_bill_id,
-            SaleBillMaster.workflow_status.notin_(_INACTIVE_STATUSES),
-        )
-        .group_by(SaleBillItem.billing_item_id)
-        .all()
-    )
-    return {r[0]: Decimal(str(r[1])) for r in rows if r[0] is not None}
 
 
 def _get_cert_bill_total_billed(cert_bill_id):
@@ -296,125 +174,87 @@ def _build_detail_payload(bill):
 # 1. CERTIFIED BILLS LOOKUP
 # ══════════════════════════════════════════════════════════════════
 
-def get_certified_bills_for_order(data):
+def get_orders_with_pending_bills(data):
     """
-    Return Approved certified bills for a sale order with their partial billing balances.
-    Supports partial billing: a cert bill is shown even if previously partially invoiced.
-    Only fully-billed cert bills are excluded (remaining == 0).
+    Single API for the Certified Bill Picker modal.
+    Returns only Approved OG Sale Orders that have at least one certified bill
+    with remaining > 0, with those pending bills already nested inside each order.
+    Pass excludeSaleBillId when editing a sale invoice so its own billing is not counted.
     """
     try:
-        erp_no       = (data.get("erpDocNumber") or "").strip()
-        project_code = (data.get("projectCode")  or "").strip()
+        project_code         = (data.get("projectCode") or "").strip()
+        exclude_sale_bill_id = data.get("excludeSaleBillId")
 
-        if not erp_no:
-            return res("erpDocNumber required", [], 400)
         if not project_code:
             return res("projectCode required", [], 400)
 
-        bills = BillingMaster.query.filter(
-            BillingMaster.og_sale_order_erp_no == erp_no,
-            BillingMaster.project_code         == project_code,
-            BillingMaster.mode                 == "sale_certified_bill",
-            BillingMaster.workflow_status       == "Approved",
+        orders = OgSaleOrderMaster.query.filter(
+            OgSaleOrderMaster.project_code    == project_code,
+            OgSaleOrderMaster.workflow_status  == "Approved",
+        ).order_by(OgSaleOrderMaster.id.desc()).all()
+
+        # Fetch all approved certified bills for this project in one query
+        all_cert_bills = BillingMaster.query.filter(
+            BillingMaster.project_code   == project_code,
+            BillingMaster.mode           == "sale_certified_bill",
+            BillingMaster.workflow_status == "Approved",
         ).order_by(BillingMaster.id.asc()).all()
 
-        # Deduplicate by billing_no: keep latest per billing_no
-        latest_by_billing_no = {}
-        for b in bills:
+        # Group by og_sale_order_erp_no, deduplicating by billing_no (keep latest)
+        bills_by_erp_no = {}
+        for b in all_cert_bills:
+            erp = b.og_sale_order_erp_no
+            if not erp:
+                continue
+            if erp not in bills_by_erp_no:
+                bills_by_erp_no[erp] = {}
             key = b.billing_no or b.erp_no or str(b.id)
-            if key not in latest_by_billing_no or b.id > latest_by_billing_no[key].id:
-                latest_by_billing_no[key] = b
+            if key not in bills_by_erp_no[erp] or b.id > bills_by_erp_no[erp][key].id:
+                bills_by_erp_no[erp][key] = b
 
         result = []
-        for b in latest_by_billing_no.values():
-            original      = Decimal(str(b.this_bill_claim or 0))
-            already_billed = _get_cert_bill_total_billed(b.id)
-            remaining      = max(original - already_billed, Decimal("0"))
+        for order in orders:
+            erp_no = order.erp_no
+            cert_map = bills_by_erp_no.get(erp_no, {})
 
-            status = "UNBILLED"
-            if already_billed >= original and original > 0:
-                status = "FULLY_BILLED"
-            elif already_billed > 0:
-                status = "PARTIALLY_BILLED"
+            pending_bills = []
+            for b in cert_map.values():
+                original = Decimal(str(b.this_bill_claim or 0))
+                if exclude_sale_bill_id:
+                    already_billed = _get_cert_bill_total_billed_excluding(b.id, exclude_sale_bill_id)
+                else:
+                    already_billed = _get_cert_bill_total_billed(b.id)
+                remaining = max(original - already_billed, Decimal("0"))
+
+                if remaining <= 0:
+                    continue
+
+                pending_bills.append({
+                    "id":            b.id,
+                    "billingNo":     b.billing_no or b.erp_no,
+                    "erpNo":         b.erp_no,
+                    "billingDate":   _fmt_date(b.billing_date),
+                    "thisBillClaim": float(original),
+                    "alreadyBilled": float(already_billed),
+                    "remaining":     float(remaining),
+                    "billingStatus": "PARTIALLY_BILLED" if already_billed > 0 else "UNBILLED",
+                })
+
+            if not pending_bills:
+                continue
 
             result.append({
-                "id":              b.id,
-                "billingNo":       b.billing_no or b.erp_no,
-                "erpNo":           b.erp_no,
-                "billingDate":     _fmt_date(b.billing_date),
-                "thisBillClaim":   float(original),
-                "alreadyBilled":   float(already_billed),
-                "remaining":       float(remaining),
-                "billingStatus":   status,
+                "id":                     order.id,
+                "erpDocNumber":           erp_no,
+                "orderNo":                order.order_no,
+                "orderTitle":             order.order_title,
+                "debtorName":             order.debtor.ledger_name       if order.debtor else None,
+                "debtorCorporateAddress": order.debtor.corporate_address if order.debtor else None,
+                "certifiedBills":         pending_bills,
             })
 
-        return res("Certified bills fetched", result, 200)
+        return res("Orders with pending bills fetched", result, 200)
 
-    except ValueError as e:
-        db.session.rollback()
-        return res(str(e), [], 400)
-    except Exception as e:
-        return res(str(e), [], 500)
-
-
-# ══════════════════════════════════════════════════════════════════
-# 2. ITEMS GROUPED BY CC CODE
-# ══════════════════════════════════════════════════════════════════
-
-def get_certified_bill_items_grouped(data):
-    """
-    Fetch items from an approved certified bill with individual item detail and
-    partial billing balances. Each item shows originalAmount, alreadyBilled, remaining.
-    """
-    try:
-        certified_bill_id = data.get("certifiedBillId")
-        project_code      = (data.get("projectCode") or "").strip()
-
-        if not certified_bill_id:
-            return res("certifiedBillId required", [], 400)
-        if not project_code:
-            return res("projectCode required", [], 400)
-
-        bill = BillingMaster.query.filter_by(
-            id              = int(certified_bill_id),
-            mode            = "sale_certified_bill",
-            workflow_status = "Approved",
-        ).first()
-
-        if not bill:
-            return res("Approved certified bill not found", [], 404)
-        if bill.project_code != project_code:
-            return res("Certified bill does not belong to this project", [], 403)
-
-        already_billed_map = _get_cert_bill_billed_amounts(bill.id)
-        total_billed       = _get_cert_bill_total_billed(bill.id)
-
-        all_items = list(bill.items) + list(BillingBoqItem.query.filter_by(billing_id=bill.id).all())
-        items = _expand_items(all_items, already_billed_map)
-
-        # Build aggregate GST lines for the right panel (grouped by rate)
-        total_basic = Decimal(str(bill.this_bill_claim or 0))
-        total_gst   = sum(Decimal(str(bi.gst_amount or 0)) for bi in all_items)
-        _, gst_lines = _group_by_cc(all_items)
-
-        original  = Decimal(str(bill.this_bill_claim or 0))
-        remaining = max(original - total_billed, Decimal("0"))
-
-        return res("Certified bill items fetched", {
-            "certifiedBillId":  bill.id,
-            "certifiedErpDocNo": bill.erp_no,
-            "billingNo":        bill.billing_no or bill.erp_no,
-            "ogSaleOrderNo":    bill.og_sale_order_erp_no,
-            "thisBillClaim":    float(original),
-            "alreadyBilled":    float(total_billed),
-            "remaining":        float(remaining),
-            "items":            items,
-            "gstLines":         gst_lines,
-        }, 200)
-
-    except ValueError as e:
-        db.session.rollback()
-        return res(str(e), [], 400)
     except Exception as e:
         return res(str(e), [], 500)
 

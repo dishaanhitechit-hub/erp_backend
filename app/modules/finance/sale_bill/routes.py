@@ -2,8 +2,7 @@ from flask import Blueprint, request
 from flask import g
 from app.middleware.auth_middleware import login_required
 from app.modules.finance.sale_bill.service import (
-    get_certified_bills_for_order,
-    get_certified_bill_items_grouped,
+    get_orders_with_pending_bills,
     create_sale_bill,
     get_sale_bill_list,
     get_sale_bill_details,
@@ -20,18 +19,11 @@ from app.modules.finance.sale_bill.service import (
 sale_bill_bp = Blueprint("sale_bill", __name__)
 
 
-# ── 1. CERTIFIED BILLS LOOKUP ─────────────────────────────────────
-@sale_bill_bp.route("/certified-bills", methods=["GET"])
+# ── 1. ORDERS WITH PENDING CERTIFIED BILLS ───────────────────────
+@sale_bill_bp.route("/orders-with-pending-bills", methods=["GET"])
 @login_required
-def api_certified_bills():
-    return get_certified_bills_for_order(request.args.to_dict())
-
-
-# ── 2. ITEMS GROUPED BY CC CODE ───────────────────────────────────
-@sale_bill_bp.route("/certified-bill-items", methods=["GET"])
-@login_required
-def api_certified_bill_items():
-    return get_certified_bill_items_grouped(request.args.to_dict())
+def api_orders_with_pending_bills():
+    return get_orders_with_pending_bills(request.args.to_dict())
 
 
 # ── 3. CREATE ─────────────────────────────────────────────────────
