@@ -258,7 +258,7 @@ def get_available_invoices(params):
                 .filter(
                     SaleReceiptBillingMaster.invoice_no    == bill.sale_bill_no,
                     SaleReceiptBillingMaster.project_code  == project_code,
-                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptBillingMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                 )
                 .scalar() or 0
             ))
@@ -365,7 +365,7 @@ def get_details_by_invoice_no(data):
                 .filter(
                     SaleReceiptBillingMaster.invoice_no    == invoice_no,
                     SaleReceiptBillingMaster.project_code  == project_code,
-                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptBillingMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                     SaleReceiptItem.cc_code                == cc_code,
                 )
                 .scalar() or 0
@@ -391,7 +391,7 @@ def get_details_by_invoice_no(data):
                 .filter(
                     SaleReceiptBillingMaster.invoice_no    == invoice_no,
                     SaleReceiptBillingMaster.project_code  == project_code,
-                    SaleReceiptBillingMaster.workflow_status != "Rejected",
+                    SaleReceiptBillingMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                     SaleReceiptGst.gst_type               == row.gst_type,
                 )
                 .scalar() or 0

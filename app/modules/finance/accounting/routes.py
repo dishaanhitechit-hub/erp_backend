@@ -1,5 +1,6 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.middleware.auth_middleware import login_required
 
 from .ledger_service import (
     get_general_ledger,
@@ -226,7 +227,7 @@ def remove_opening_balance(posting_id):
 # ── Cancellation / Reversal ──────────────────────────────────────────────
 
 @accounting_bp.route("/cancel", methods=["POST"])
-@jwt_required()
+@login_required          # sets g.current_user (role) for the admin / final-approver check
 def cancel_document():
     body = request.get_json(silent=True) or {}
     source_type = body.get("source_type")

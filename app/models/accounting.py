@@ -36,8 +36,14 @@ class AccountingLedger(db.Model):
 
     is_reversal         = db.Column(db.Boolean, default=False)
     reversed_posting_id = db.Column(db.Integer, db.ForeignKey("accounting_ledger.id"), nullable=True)
+    # True on an ORIGINAL posting once a reversal has been posted against it.
+    # An original that is not reversed is the document's "active" posting.
+    # uq_ledger_source allows one active posting per document, so after a
+    # reversal (reback / cancel) the document can post again on re-approval.
+    is_reversed         = db.Column(db.Boolean, nullable=False, default=False,
+                                    server_default=db.text("false"))
 
-    total_debit   = db.Column(db.Numeric(14, 2), default=0)
+    total_debit  = db.Column(db.Numeric(14, 2), default=0)
     total_credit  = db.Column(db.Numeric(14, 2), default=0)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
@@ -58,7 +64,11 @@ class AccountingLedger(db.Model):
         db.Index(
             "uq_ledger_source", "source_type", "source_id",
             unique=True,
-            postgresql_where=db.text("is_reversal = FALSE"),
+            postgresql_where=db.text("is_reversal = FALSE AND is_reversed = FALSE"),
+        ),
+        db.Index(
+            "ix_ledger_reversed_posting", "reversed_posting_id",
+            postgresql_where=db.text("reversed_posting_id IS NOT NULL"),
         ),
         db.Index("ix_ledger_date_project", "posting_date", "project_code"),
     )

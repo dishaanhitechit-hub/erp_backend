@@ -35,6 +35,35 @@ def _d(val):
     return Decimal(str(val))
 
 
+# ── Cancelled / reversed entries ───────────────────────────────────────────
+# A cancelled (or rebacked) document leaves two postings in the ledger: the
+# original (is_reversed=TRUE) and its reversal (is_reversal=TRUE). They net to
+# zero and share the posting date, so line-level screens hide BOTH by default
+# — balances and totals stay correct — and show them (struck through in the
+# UI) only when ?include_cancelled=true.
+
+def _include_cancelled(params):
+    return str(params.get("include_cancelled") or "").strip().lower() in ("1", "true", "yes")
+
+
+def _not_cancelled():
+    """SQL filter: postings that are in the books (not part of a cancelled pair)."""
+    return and_(AccountingLedger.is_reversal.is_(False), AccountingLedger.is_reversed.is_(False))
+
+
+def _cancelled():
+    return or_(AccountingLedger.is_reversal.is_(True), AccountingLedger.is_reversed.is_(True))
+
+
+def _cancel_flags(is_reversal, is_reversed):
+    """(isCancelled, cancelLabel) for one posting."""
+    if is_reversal:
+        return True, "Reversal entry"
+    if is_reversed:
+        return True, "Cancelled / reversed"
+    return False, None
+
+
 def _fmt_date(d):
     if d is None:
         return None
@@ -173,6 +202,7 @@ def get_general_ledger(params):
         return {"message": "account_type and account_id required", "data": []}, 400
 
     account_id = int(account_id)
+    include_cancelled = _include_cancelled(params)
 
     # Build account filter for lines
     def _acct_filter(q):
@@ -188,6 +218,10 @@ def get_general_ledger(params):
         if project_code:
             q = q.filter(AccountingLedger.project_code == project_code)
         return q
+
+    def _cancel_filter(q):
+        # pairs net to zero, so hiding them changes no balance
+        return q if include_cancelled else q.filter(_not_cancelled())
 
     # Opening balance: sum of all transactions BEFORE from_date
     opening_dr = Decimal("0")
@@ -205,6 +239,7 @@ def get_general_ledger(params):
         ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
         ob_q = _acct_filter(ob_q)
         ob_q = _project_filter(ob_q)
+        ob_q = _cancel_filter(ob_q)
         ob_q = ob_q.filter(AccountingLedger.posting_date < from_date)
         result = ob_q.first()
         if result:
@@ -222,6 +257,8 @@ def get_general_ledger(params):
         AccountingLedger.source_id,
         AccountingLedger.project_code,
         AccountingLedger.remarks,
+        AccountingLedger.is_reversal,
+        AccountingLedger.is_reversed,
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
     txn_q = _acct_filter(txn_q)
     txn_q = _project_filter(txn_q)
@@ -229,17 +266,32 @@ def get_general_ledger(params):
         txn_q = txn_q.filter(AccountingLedger.posting_date >= from_date)
     if to_date:
         txn_q = txn_q.filter(AccountingLedger.posting_date <= to_date)
+
+    # how many cancelled lines the default view hides (for the "show" toggle)
+    hidden_q = _project_filter(_acct_filter(
+        db.session.query(func.count(AccountingLedgerLine.id))
+        .join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)))
+    if from_date:
+        hidden_q = hidden_q.filter(AccountingLedger.posting_date >= from_date)
+    if to_date:
+        hidden_q = hidden_q.filter(AccountingLedger.posting_date <= to_date)
+    cancelled_count = hidden_q.filter(_cancelled()).scalar() or 0
+
+    txn_q = _cancel_filter(txn_q)
     txn_q = txn_q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
 
     running = Decimal(str(opening_balance))
     raw_entries = []
     posting_ids = set()
-    for line, post_date, voucher_no, src_type, src_id, proj, remark in txn_q.all():
+    for line, post_date, voucher_no, src_type, src_id, proj, remark, is_rev, is_revd in txn_q.all():
         dr = float(line.amount) if line.dr_cr == "Dr" else 0.0
         cr = float(line.amount) if line.dr_cr == "Cr" else 0.0
         running += Decimal(str(dr)) - Decimal(str(cr))
         posting_ids.add(line.posting_id)
+        is_cancelled, cancel_label = _cancel_flags(is_rev, is_revd)
         raw_entries.append({
+            "isCancelled": is_cancelled,
+            "cancelLabel": cancel_label,
             "posting_id": line.posting_id,
             "line_id": line.id,
             "date": _fmt_date(post_date),
@@ -284,6 +336,8 @@ def get_general_ledger(params):
             "closingBalance": closing_balance,
             "totalDebit": float(sum(Decimal(str(e["debit"])) for e in entries)),
             "totalCredit": float(sum(Decimal(str(e["credit"])) for e in entries)),
+            "includeCancelled": include_cancelled,
+            "cancelledCount": cancelled_count,
             "entries": entries,
         },
     }, 200
@@ -1269,6 +1323,11 @@ def get_day_book(params):
     if source_type:
         q = q.filter(AccountingLedger.source_type == source_type)
 
+    include_cancelled = _include_cancelled(params)
+    cancelled_count = q.filter(_cancelled()).count()
+    if not include_cancelled:
+        q = q.filter(_not_cancelled())
+
     q = q.order_by(AccountingLedger.posting_date.desc(), AccountingLedger.id.desc())
 
     postings = q.all()
@@ -1306,6 +1365,7 @@ def get_day_book(params):
                 "narration": line.narration,
             })
 
+        is_cancelled, cancel_label = _cancel_flags(posting.is_reversal, posting.is_reversed)
         entries.append({
             "postingId": posting.id,
             "date": _fmt_date(posting.posting_date),
@@ -1317,6 +1377,8 @@ def get_day_book(params):
             "totalDebit": float(posting.total_debit),
             "totalCredit": float(posting.total_credit),
             "remarks": posting.remarks,
+            "isCancelled": is_cancelled,
+            "cancelLabel": cancel_label,
             "lines": lines_data,
         })
 
@@ -1325,6 +1387,8 @@ def get_day_book(params):
         "data": {
             "date": _fmt_date(target_date),
             "projectCode": project_code,
+            "includeCancelled": include_cancelled,
+            "cancelledCount": cancelled_count,
             "entries": entries,
             "totalDebit": sum(e["totalDebit"] for e in entries),
             "totalCredit": sum(e["totalCredit"] for e in entries),
@@ -1351,11 +1415,18 @@ def get_voucher_register(params):
         q = q.filter(AccountingLedger.project_code == project_code)
     if source_type:
         q = q.filter(AccountingLedger.source_type == source_type)
+    include_cancelled = _include_cancelled(params)
+    cancelled_count = q.filter(_cancelled()).count()
+    if not include_cancelled:
+        q = q.filter(_not_cancelled())
     q = q.order_by(AccountingLedger.posting_date, AccountingLedger.id)
 
     entries = []
     for posting in q.all():
+        is_cancelled, cancel_label = _cancel_flags(posting.is_reversal, posting.is_reversed)
         entries.append({
+            "isCancelled": is_cancelled,
+            "cancelLabel": cancel_label,
             "postingId": posting.id,
             "date": _fmt_date(posting.posting_date),
             "voucherNo": posting.voucher_no,
@@ -1374,6 +1445,8 @@ def get_voucher_register(params):
         "data": {
             "fromDate": _fmt_date(from_date),
             "toDate": _fmt_date(to_date),
+            "includeCancelled": include_cancelled,
+            "cancelledCount": cancelled_count,
             "entries": entries,
         },
     }, 200

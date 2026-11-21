@@ -456,7 +456,7 @@ def get_available_brrs(data):
 
         def _resolve_status(bid):
             statuses = brr_status_map.get(bid, set())
-            active = {s for s in statuses if s != "Rejected"}
+            active = {s for s in statuses if s not in ("Rejected", "Cancelled")}
             if not active:
                 return "Free"
             if "Approved" in active:

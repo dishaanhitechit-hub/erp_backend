@@ -1,18 +1,25 @@
 """
 Accounting Deletion Guard.
 
-Centralized safeguard that prevents physical deletion of source documents
-that have been posted to the accounting ledger. Each module's delete
-function should call `check_posted_before_delete()` before proceeding.
+Rule: a document that is IN THE BOOKS (has an active posting) is never
+physically deleted, and its ledger rows are never deleted either.
 
-If a posted document needs cancellation, the caller must use the
-cancellation workflow instead: reverse the accounting posting, then
-mark the source document as Cancelled.
+  * active posting  → block delete; the document must be cancelled
+                      (reversal posting) — see reversal_service.cancel_document.
+                      The delete manager does this automatically.
+  * reversed only   → (rebacked, then edited) the document is no longer in the
+                      books; the original + reversal pair stays in the ledger as
+                      the audit trail and the draft itself may be deleted.
+  * never posted    → delete freely.
+
+Every module's own delete function calls `check_posted_before_delete()`;
+the central delete manager calls `posting_source_for()` + `is_posted()`.
 """
 
 from app.models.accounting import AccountingLedger
 
-# Maps source document types to their posting engine source_type keys
+# Source document model → posting engine source_type.
+# A callable takes the record (BillingMaster posts under its mode).
 _SOURCE_TYPE_MAP = {
     "PurchaseBillMaster": "purchase_bill",
     "PaymentVoucherMaster": "payment_voucher",
@@ -26,20 +33,50 @@ _SOURCE_TYPE_MAP = {
     "PettyCashDocketVoucher": "petty_cash_docket",
     "GrnMaster": "grn",
     "GinMaster": "gin",
+    "BillingMaster": lambda record: getattr(record, "mode", None),
+    "UncertainAllocationMaster": "uncertified_statement",
+}
+
+# Every source_type that can be cancelled (reversed) as a document.
+CANCELLABLE_SOURCE_TYPES = {
+    "purchase_bill", "payment_voucher", "bill_payment", "sale_bill",
+    "sale_receipt_billing", "journal_entry", "contra_entry", "debit_note",
+    "credit_note", "petty_cash_docket", "grn", "gin",
+    "sale_claim_bill", "sale_certified_bill", "uncertified_statement",
 }
 
 
+def source_type_of(model_class_name, record=None):
+    spec = _SOURCE_TYPE_MAP.get(model_class_name)
+    if callable(spec):
+        return spec(record) if record is not None else None
+    return spec
+
+
 def is_posted(source_type, source_id):
-    """Check if a document has been posted to the accounting ledger."""
+    """True while the document is in the books (has an active posting)."""
+    if not source_type:
+        return False
     return AccountingLedger.query.filter_by(
         source_type=source_type,
         source_id=source_id,
         is_reversal=False,
+        is_reversed=False,
+    ).first() is not None
+
+
+def was_ever_posted(source_type, source_id):
+    """True if the document has any posting history (active or reversed)."""
+    if not source_type:
+        return False
+    return AccountingLedger.query.filter_by(
+        source_type=source_type,
+        source_id=source_id,
     ).first() is not None
 
 
 def is_reversed(source_type, source_id):
-    """Check if a document's posting has already been reversed."""
+    """True if at least one posting of the document has been reversed."""
     return AccountingLedger.query.filter_by(
         source_type=source_type,
         source_id=source_id,
@@ -47,23 +84,27 @@ def is_reversed(source_type, source_id):
     ).first() is not None
 
 
-def check_posted_before_delete(model_class_name, doc_id):
+def posting_source_for(record):
+    """source_type the record posts under (None = the model never posts)."""
+    return source_type_of(type(record).__name__, record)
+
+
+def check_posted_before_delete(model_class_name, doc_id, record=None):
     """
     Call from a module's delete function AFTER the locked check passes.
     Returns (can_delete: bool, message: str).
-
-    If the document has been posted, physical deletion is blocked.
-    The caller should return the message as a 400 error.
     """
-    source_type = _SOURCE_TYPE_MAP.get(model_class_name)
+    if record is None and callable(_SOURCE_TYPE_MAP.get(model_class_name)):
+        return True, ""
+    source_type = source_type_of(model_class_name, record)
     if not source_type:
         return True, ""
 
     if is_posted(source_type, doc_id):
         return False, (
-            f"This {model_class_name} has been posted to the accounting ledger. "
-            "It cannot be deleted. Use the cancellation workflow to reverse "
-            "the accounting entry first."
+            "This document is posted to the accounting ledger and cannot be deleted. "
+            "Delete it from the Delete button (it will be cancelled with a reversal "
+            "entry) or raise a reback request."
         )
 
     return True, ""

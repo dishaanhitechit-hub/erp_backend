@@ -240,6 +240,10 @@ def _do_delete_record(module_code: str, record_id: int, config: dict):
     model_class = config["model_class"]
     record = model_class.query.get(record_id)
     if record:
+        # Central accounting safety net: a document that is in the books is
+        # never hard-deleted (covers raise / auto-complete / recheck / scripts).
+        from app.modules.finance.accounting.reversal_service import assert_hard_deletable
+        assert_hard_deletable(record)
         try:
             # Owned rows the ORM doesn't cascade (config "delete_first": [(Model, fk_column)])
             for owned_model, fk_col in config.get("delete_first", []):
@@ -251,6 +255,29 @@ def _do_delete_record(module_code: str, record_id: int, config: dict):
         except Exception:
             db.session.rollback()
             raise
+
+
+def _accounting_route(module_code: str, record):
+    """
+    How the delete button must treat this record, as far as accounting goes:
+      "delete" — not in the books: normal delete flow
+      "cancel" — has an active posting: cancel with a reversal entry instead
+      "kept"   — already Cancelled (posted earlier): never deleted
+      "refuse" — posted, but the module has no cancellation support
+    """
+    from app.modules.finance.accounting.reversal_service import (
+        has_active_posting, key_for_dep, source_type_for,
+    )
+    from app.modules.finance.accounting.deletion_guard import posting_source_for, was_ever_posted
+    key = key_for_dep(module_code)
+    source = source_type_for(key, record) if key else posting_source_for(record)
+    if not source:
+        return "delete"
+    if (getattr(record, "workflow_status", None) or "") == "Cancelled" and was_ever_posted(source, record.id):
+        return "kept"
+    if has_active_posting(record, key):
+        return "cancel" if key else "refuse"
+    return "delete"
 
 
 # ─── public API ───────────────────────────────────────────────────────────
@@ -279,6 +306,18 @@ def raise_delete_request(
     access_check = config.get("access_check")
     if access_check and not access_check(record, requested_by):
         return {"status": "error", "message": "You do not have permission to delete this record"}, 403
+
+    # ── Central accounting: posted documents are cancelled, not deleted ──
+    accounting = _accounting_route(module_code, record)
+    if accounting == "kept":
+        return {"status": "error",
+                "message": "Cancelled documents are kept for audit and cannot be deleted."}, 400
+    if accounting == "cancel":
+        from app.modules.finance.accounting.reversal_service import cancel_document, key_for_dep
+        return cancel_document(key_for_dep(module_code), record_id, requested_by, reason)
+    if accounting == "refuse":
+        return {"status": "error",
+                "message": "This document is posted to the accounting ledger and cannot be deleted."}, 400
 
     record_no    = _get_record_no(record, config)
     project_code = _get_project_code(record, config)
@@ -412,8 +451,13 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
             deleted_id     = dr.record_id
             try:
                 _do_delete_record(dr.module_code, dr.record_id, config)
-            except Exception:
+            except Exception as e:
+                # Delete refused (e.g. posted to accounts) or failed — the
+                # request stays PENDING with the reason; never mark COMPLETED.
                 db.session.rollback()
+                dr.blocked_by_docs = str(e).splitlines()[0][:250] if str(e) else type(e).__name__
+                db.session.commit()
+                continue
 
             dr.status             = "COMPLETED"
             dr.completed_at       = datetime.utcnow()
@@ -527,13 +571,33 @@ def check_delete_status(module_code: str, record_id: int) -> tuple[dict, int]:
 
     blocking = _check_children(module_code, record_id, config)
 
+    # Central accounting: a posted document is cancelled (reversal), not deleted
+    accounting = _accounting_route(module_code, record)
+    cancel_problem = None
+    if accounting == "cancel":
+        from flask import g
+        from app.modules.finance.accounting.reversal_service import (
+            cancel_problem as _cancel_problem, key_for_dep,
+        )
+        user_id = (g.get("current_user") or {}).get("id")
+        problem = _cancel_problem(key_for_dep(module_code), record, user_id)
+        cancel_problem = problem[0] if problem else None
+    elif accounting in ("kept", "refuse"):
+        cancel_problem = ("Cancelled documents are kept for audit and cannot be deleted."
+                          if accounting == "kept" else
+                          "This document is posted to the accounting ledger and cannot be deleted.")
+
     return {
-        "can_delete_now":  len(blocking) == 0,
+        "can_delete_now":  len(blocking) == 0 and cancel_problem is None,
         "blocked_by":      blocking,
         "pending_request": existing_dr.to_dict() if existing_dr else None,
         "module_code":     module_code,
         "record_id":       record_id,
         "record_no":       _get_record_no(record, config),
+        # "delete" | "cancel" (posted → reversal entry) | "kept" | "refuse"
+        "accounting_action": accounting,
+        "will_cancel":     accounting == "cancel",
+        "cancel_problem":  cancel_problem,
     }, 200
 
 

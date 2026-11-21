@@ -158,6 +158,7 @@ def run_historical_posting(user_id, options=None):
                         source_type=source_type,
                         source_id=doc.id,
                         is_reversal=False,
+                        is_reversed=False,
                     ).first()
                     if existing:
                         skipped_count += 1
@@ -179,6 +180,7 @@ def run_historical_posting(user_id, options=None):
                     source_type=source_type,
                     source_id=doc.id,
                     is_reversal=False,
+                    is_reversed=False,
                 ).first()
                 if existing:
                     skipped_count += 1
@@ -269,6 +271,7 @@ def get_posting_status():
             posted_ids_q = db.session.query(AccountingLedger.source_id).filter(
                 AccountingLedger.source_type == source_type,
                 AccountingLedger.is_reversal.is_(False),
+                AccountingLedger.is_reversed.is_(False),
             ).distinct()
 
             pending_count = approved_q.filter(

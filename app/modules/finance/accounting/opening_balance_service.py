@@ -267,6 +267,7 @@ def delete_opening_balance(posting_id, user_id):
         created_by=user_id,
     )
     db.session.add(reversal)
+    posting.is_reversed = True
     db.session.flush()
 
     for line in posting.lines:

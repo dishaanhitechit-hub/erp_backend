@@ -1155,6 +1155,10 @@ def delete_uncertain_allocation(ua_id):
             return res("Uncertain Allocation not found", [], 404)
         if ua.locked:
             return res("Only draft Uncertain Allocation can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("UncertainAllocationMaster", ua_id, ua)
+        if not can_delete:
+            return res(msg, [], 400)
         UncertainAllocationLine.query.filter_by(ua_id=ua.id).delete()
         db.session.delete(ua)
         db.session.commit()

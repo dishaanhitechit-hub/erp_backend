@@ -164,7 +164,7 @@ def get_budget_rows_for_voucher(budget_id):
             return res("Only Approved budgets can be referenced in a Docket Voucher", [], 400)
 
         # Sum used amounts per cc_code from active vouchers (exclude only Rejected)
-        _EXCLUDED = ("Rejected",)
+        _EXCLUDED = ("Rejected", "Cancelled")
         used_map = dict(
             db.session.query(
                 PettyCashDocketVoucherDetail.cc_code,

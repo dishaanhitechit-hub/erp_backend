@@ -6,7 +6,8 @@ has been made from it yet — the same "used further on?" rule that delete uses
 (delete_manager.dependency_map), plus a few links delete does not cover.
 
 What final approval did is undone in the same transaction:
-  * accounting posting for the record is removed (re-approval posts again)
+  * accounting posting is REVERSED, not deleted (reversal_service) — the
+    original + reversal stay in the ledger; re-approval posts a fresh entry
   * GRN / GIN stock rows are removed (only allowed while they are the latest
     movement for those items, so running balances stay right)
   * expense docket: its bank line goes from Reconciled back to reserved
@@ -390,10 +391,12 @@ def _apply(key, record, user_id, remarks):
     entry = UNAPPROVE_MODULES[key]
     now = datetime.utcnow()
 
-    posting = _value(entry.get("posting"), record)
-    if posting:
-        for row in _posting_rows(posting, record.id):
-            db.session.delete(row)            # lines go with it (cascade)
+    # Accounting: never delete ledger rows — post a reversal (central accounting).
+    # The original is flagged is_reversed, so re-approval posts a fresh entry.
+    from app.modules.finance.accounting.reversal_service import reverse_for_reback
+    reverse_for_reback(entry, record, user_id, remarks)
+    # Stock rows are still removed (allowed only while they are the latest
+    # movement — see _check_ledgers), so re-approval can post stock again.
     if entry.get("stock"):
         for row in sorted(_stock_rows(entry["stock"], record.id), key=lambda r: r.id, reverse=True):
             db.session.delete(row)

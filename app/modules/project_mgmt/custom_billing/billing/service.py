@@ -1499,6 +1499,10 @@ def delete_billing(billing_id):
             return res("Billing not found", [], 404)
         if billing.locked:
             return res("Only draft Billing can be deleted", [], 400)
+        from app.modules.finance.accounting.deletion_guard import check_posted_before_delete
+        can_delete, msg = check_posted_before_delete("BillingMaster", billing_id, billing)
+        if not can_delete:
+            return res(msg, [], 400)
         BillingBoqItem.query.filter_by(billing_id=billing.id).delete()
         BillingItem.query.filter_by(billing_id=billing.id).delete()
         db.session.delete(billing)

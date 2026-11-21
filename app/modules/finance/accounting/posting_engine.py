@@ -29,13 +29,26 @@ def _resolve_fy(posting_date):
     return fy.id if fy else None
 
 
-def _already_posted(source_type, source_id):
-    """Check if a non-reversed posting already exists."""
-    return AccountingLedger.query.filter_by(
+def active_posting(source_type, source_id, for_update=False):
+    """
+    The document's ACTIVE posting: an original (not a reversal) that has not
+    been reversed. None when the document is not in the books right now
+    (never posted, or posted and then reversed by reback / cancel).
+    """
+    q = AccountingLedger.query.filter_by(
         source_type=source_type,
         source_id=source_id,
         is_reversal=False,
-    ).first()
+        is_reversed=False,
+    )
+    if for_update:
+        q = q.with_for_update()
+    return q.first()
+
+
+def _already_posted(source_type, source_id):
+    """Check if an active (not reversed) posting already exists."""
+    return active_posting(source_type, source_id)
 
 
 def post_document(source_type, source_id, user_id=None):
@@ -127,36 +140,38 @@ def post_document(source_type, source_id, user_id=None):
     return ledger
 
 
-def reverse_posting(source_type, source_id, user_id=None):
+def reverse_posting(source_type, source_id, user_id=None, remarks=None):
     """
-    Create a reversal entry (all Dr/Cr swapped) for the given document.
-    Returns the reversal AccountingLedger, or None if nothing to reverse.
-    Uses SELECT FOR UPDATE to prevent duplicate reversals under concurrency.
+    Create a reversal entry (all Dr/Cr swapped) for the document's ACTIVE
+    posting and flag that original is_reversed=True. Ledger rows are never
+    deleted — the original and its reversal both stay and net to zero.
+
+    The reversal is dated on the original posting date, so the period's
+    figures come out right; callers must refuse when that FY is locked.
+
+    Returns the reversal AccountingLedger, or None if nothing is active.
+    SELECT FOR UPDATE on the original prevents a double reversal.
+    Caller commits.
     """
-    original = AccountingLedger.query.filter_by(
-        source_type=source_type,
-        source_id=source_id,
-        is_reversal=False,
-    ).with_for_update().first()
+    original = active_posting(source_type, source_id, for_update=True)
     if not original:
         return None
 
-    existing_reversal = AccountingLedger.query.filter_by(
+    cycle = AccountingLedger.query.filter_by(
         source_type=source_type,
         source_id=source_id,
         is_reversal=True,
-    ).first()
-    if existing_reversal:
-        return None
+    ).count() + 1
+    suffix = "-REV" if cycle == 1 else f"-REV{cycle}"
 
     reversal = AccountingLedger(
         posting_date=original.posting_date,
         financial_year_id=original.financial_year_id,
         source_type=source_type,
         source_id=source_id,
-        voucher_no=original.voucher_no + "-REV",
+        voucher_no=original.voucher_no + suffix,
         project_code=original.project_code,
-        remarks=f"Reversal of {original.voucher_no}",
+        remarks=remarks or f"Reversal of {original.voucher_no}",
         is_reversal=True,
         reversed_posting_id=original.id,
         total_debit=original.total_credit,
@@ -164,6 +179,7 @@ def reverse_posting(source_type, source_id, user_id=None):
         created_by=user_id,
     )
     db.session.add(reversal)
+    original.is_reversed = True
     db.session.flush()
 
     for line in original.lines:
