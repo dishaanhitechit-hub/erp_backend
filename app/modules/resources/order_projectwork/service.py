@@ -185,7 +185,7 @@ def get_item_list_by_subcategories(
                 )
                 .filter(
                     ProjectWorkOrderMaster.project_code == project_code,
-                    ProjectWorkOrderMaster.workflow_status != "Rejected",
+                    ProjectWorkOrderMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                 )
                 .group_by(ProjectWorkOrderItem.item_code)
                 .subquery()
@@ -381,7 +381,7 @@ def create_pw_order(data, user_id, files=None):
                 .filter(
                     ProjectWorkOrderMaster.project_code == order.project_code,
                     ProjectWorkOrderItem.item_code      == item_code,
-                    ProjectWorkOrderMaster.workflow_status != "Rejected",
+                    ProjectWorkOrderMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                 )
                 .scalar() or 0
             ))
@@ -580,7 +580,7 @@ def edit_pw_order(order_id, data, user_id, files=None):
                 .filter(
                     ProjectWorkOrderMaster.project_code == order.project_code,
                     ProjectWorkOrderItem.item_code      == item_code,
-                    ProjectWorkOrderMaster.workflow_status != "Rejected",
+                    ProjectWorkOrderMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                 )
                 .scalar() or 0
             ))

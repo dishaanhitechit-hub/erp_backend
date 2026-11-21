@@ -74,7 +74,7 @@ def _already_billed_qty(grn_item_id):
         .join(BvsMaster, BvsMaster.id == BvsItem.bvs_id)
         .filter(
             BvsItem.grn_item_id == grn_item_id,
-            BvsMaster.workflow_status != "Rejected"
+            BvsMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )

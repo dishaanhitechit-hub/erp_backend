@@ -338,7 +338,7 @@ def get_indent_list(filters=None):
                     func.coalesce(
                         func.sum(
                             case(
-                                (OrderMaster.workflow_status != "Rejected",
+                                (OrderMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                                  OrderItem.qty),
                                 else_=0
                             )

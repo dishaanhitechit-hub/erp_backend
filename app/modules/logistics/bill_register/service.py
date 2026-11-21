@@ -142,7 +142,7 @@ def get_eligible_dcs(project_code):
             row.dc_id
             for row in db.session.query(LogisticsBillChallan.dc_id)
             .join(LogisticsBill, LogisticsBill.id == LogisticsBillChallan.lb_id)
-            .filter(LogisticsBill.workflow_status != "Rejected")
+            .filter(LogisticsBill.workflow_status.notin_(("Rejected", "Cancelled")))
             .all()
         )
 

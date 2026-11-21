@@ -54,7 +54,7 @@ def _pre_received_qty(pw_order_item_id):
         .join(SrnMaster, SrnMaster.id == SrnItem.srn_id)
         .filter(
             SrnItem.pw_order_item_id == pw_order_item_id,
-            SrnMaster.workflow_status != "Rejected"
+            SrnMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )

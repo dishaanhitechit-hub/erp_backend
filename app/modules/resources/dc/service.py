@@ -90,7 +90,7 @@ def _pre_issued_dc_qty(order_item_id):
         .join(DcMaster, DcMaster.id == DcItem.dc_id)
         .filter(
             DcItem.order_item_id == order_item_id,
-            DcMaster.workflow_status != "Rejected"
+            DcMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )
@@ -1072,7 +1072,7 @@ def update_dc(dc_id, data, user_id, files=None):
                     .join(DcMaster, DcMaster.id == DcItem.dc_id)
                     .filter(
                         DcItem.order_item_id == order_item_id,
-                        DcMaster.workflow_status != "Rejected",
+                        DcMaster.workflow_status.notin_(("Rejected", "Cancelled")),
                         DcMaster.id != dc_id,
                     )
                     .scalar()

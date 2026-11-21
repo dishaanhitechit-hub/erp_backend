@@ -331,7 +331,7 @@ files=None,
                     .join(OrderMaster, OrderMaster.id == OrderItem.order_id)
                     .filter(
                         OrderItem.indent_item_id == indent_item_id,
-                        OrderMaster.workflow_status != "Rejected"
+                        OrderMaster.workflow_status.notin_(("Rejected", "Cancelled"))
                     )
                     .scalar()
                 )
@@ -504,7 +504,7 @@ def get_indent_pending_qty_list(
                     IndentItem.location,
                     func.coalesce(
                         func.sum(
-                            case((OrderMaster.workflow_status != "Rejected", OrderItem.qty), else_=0)
+                            case((OrderMaster.workflow_status.notin_(("Rejected", "Cancelled")), OrderItem.qty), else_=0)
                         ), 0
                     ).label("used_qty")
                 )
@@ -560,7 +560,7 @@ def get_indent_pending_qty_list(
                     IndentItem.location,
                     func.coalesce(
                         func.sum(
-                            case((OrderMaster.workflow_status != "Rejected", OrderItem.qty), else_=0)
+                            case((OrderMaster.workflow_status.notin_(("Rejected", "Cancelled")), OrderItem.qty), else_=0)
                         ), 0
                     ).label("used_qty")
                 )
@@ -2242,7 +2242,7 @@ def edit_order(order_id, data, user_id, files=None):
                     .join(OrderMaster, OrderMaster.id == OrderItem.order_id)
                     .filter(
                         OrderItem.indent_item_id == indent_item_id,
-                        OrderMaster.workflow_status != "Rejected"
+                        OrderMaster.workflow_status.notin_(("Rejected", "Cancelled"))
                     )
                     .scalar()
                 )

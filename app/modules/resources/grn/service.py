@@ -68,7 +68,7 @@ def _pre_received_qty(order_item_id):
         )
         .filter(
             GrnItem.order_item_id == order_item_id,
-            GrnMaster.workflow_status != "Rejected"
+            GrnMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )
@@ -90,7 +90,7 @@ def _pre_received_qty_bulk(order_item_ids):
         .join(GrnMaster, GrnMaster.id == GrnItem.grn_id)
         .filter(
             GrnItem.order_item_id.in_(order_item_ids),
-            GrnMaster.workflow_status != "Rejected",
+            GrnMaster.workflow_status.notin_(("Rejected", "Cancelled")),
         )
         .group_by(GrnItem.order_item_id)
         .all()

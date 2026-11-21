@@ -55,7 +55,7 @@ def _already_billed_grn(grn_item_id):
         .join(BrbMaster, BrbMaster.id == BrbItem.brb_id)
         .filter(
             BrbItem.grn_item_id == grn_item_id,
-            BrbMaster.workflow_status != "Rejected"
+            BrbMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )
@@ -68,7 +68,7 @@ def _already_billed_srn(srn_item_id):
         .join(BrbMaster, BrbMaster.id == BrbItem.brb_id)
         .filter(
             BrbItem.srn_item_id == srn_item_id,
-            BrbMaster.workflow_status != "Rejected"
+            BrbMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )
@@ -79,7 +79,7 @@ def _brr_billed_amount(brr_id, exclude_brb_id=None):
     """Total non-rejected BRB billing amount under a BRR."""
     q = (
         db.session.query(func.coalesce(func.sum(BrbMaster.total_amount), 0))
-        .filter(BrbMaster.brr_id == brr_id, BrbMaster.workflow_status != "Rejected")
+        .filter(BrbMaster.brr_id == brr_id, BrbMaster.workflow_status.notin_(("Rejected", "Cancelled")))
     )
     if exclude_brb_id:
         q = q.filter(BrbMaster.id != exclude_brb_id)
@@ -349,7 +349,7 @@ def create_brb(data, user_id):
         # 1 BRR → 1 BRB only. Block if a non-Rejected BRB already exists.
         existing_brb = BrbMaster.query.filter(
             BrbMaster.brr_id == int(brr_id),
-            BrbMaster.workflow_status != "Rejected",
+            BrbMaster.workflow_status.notin_(("Rejected", "Cancelled")),
         ).first()
         if existing_brb:
             return res(

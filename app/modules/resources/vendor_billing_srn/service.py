@@ -54,7 +54,7 @@ def _already_billed_qty(srn_item_id):
         .join(BssMaster, BssMaster.id == BssItem.bss_id)
         .filter(
             BssItem.srn_item_id == srn_item_id,
-            BssMaster.workflow_status != "Rejected"
+            BssMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )

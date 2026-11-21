@@ -272,20 +272,32 @@ def _check_children(module_code: str, record_id: int, config: dict) -> list[dict
             })
 
     # Run any special checks (indent→order via items, grn→brg via items, etc.)
-    blocking.extend(_run_special_checks(module_code, record_id, config))
+    # — a document found there that is Cancelled (kept for audit) never blocks.
+    for b in _run_special_checks(module_code, record_id, config):
+        model = (DEPENDENCY_MAP.get(b.get("module_code")) or {}).get("model_class")
+        if model is not None and b.get("record_id") and "workflow_status" in model.__table__.c:
+            obj = model.query.get(b["record_id"])
+            if obj is not None and (obj.workflow_status or "") == "Cancelled":
+                continue
+        blocking.append(b)
 
     return blocking
 
 
-def _all_blockers(module_code: str, record, config: dict) -> list[dict]:
+def _all_blockers(module_code: str, record, config: dict, hard_delete: bool = True) -> list[dict]:
     """
     EVERY document that stops this record being deleted / cancelled:
     the delete-manager map (children + special checks) plus the extra
     "used in" links the reback/cancel registry knows (docket lines in a Bulk
     Docket, credit notes on a sale bill, …). Used by raise, check AND
     auto-complete, so a pending request can never complete early.
+
+    hard_delete=False (record will be KEPT as Cancelled): a cancelled child
+    never blocks, even on a non-nullable link — nothing is removed.
     """
     blocking = _check_children(module_code, record.id, config)
+    if not hard_delete:
+        blocking = [b for b in blocking if not b["label"].endswith("(cancelled)")]
     from app.modules.finance.accounting.reversal_service import key_for_dep, extra_blocker_dicts
     key = key_for_dep(module_code)
     if key:
@@ -337,27 +349,78 @@ def _do_delete_record(module_code: str, record_id: int, config: dict):
             raise
 
 
+# Only these statuses are physically deleted. Anything past Draft (Pending_Lx,
+# Approved, …) is KEPT with status "Cancelled" so it stays visible in its list.
+HARD_DELETE_STATUSES = ("", "Draft", "Reback", "Rejected")
+
+
 def _accounting_route(module_code: str, record):
     """
-    How the delete button must treat this record, as far as accounting goes:
-      "delete" — not in the books: normal delete flow
-      "cancel" — has an active posting: cancel with a reversal entry instead
-      "kept"   — already Cancelled (posted earlier): never deleted
+    What the Delete button does with this record:
+      "delete" — Draft / Reback / Rejected and not in the books: removed
+      "cancel" — has an active posting: reversal entry + status Cancelled (kept)
+      "void"   — past Draft but not in the books (e.g. approved JB journal,
+                 Bulk Docket): status Cancelled (kept), its holds released
+      "kept"   — already Cancelled: never deleted
       "refuse" — posted, but the module has no cancellation support
     """
     from app.modules.finance.accounting.reversal_service import (
         has_active_posting, key_for_dep, source_type_for,
     )
-    from app.modules.finance.accounting.deletion_guard import posting_source_for, was_ever_posted
+    from app.modules.finance.accounting.deletion_guard import posting_source_for
+    has_wf = "workflow_status" in type(record).__table__.c
+    status = (getattr(record, "workflow_status", None) or "") if has_wf else ""
+    if has_wf and status == "Cancelled":
+        return "kept"
     key = key_for_dep(module_code)
     source = source_type_for(key, record) if key else posting_source_for(record)
-    if not source:
-        return "delete"
-    if (getattr(record, "workflow_status", None) or "") == "Cancelled" and was_ever_posted(source, record.id):
-        return "kept"
-    if has_active_posting(record, key):
+    if source and has_active_posting(record, key):
         return "cancel" if key else "refuse"
+    if has_wf and status not in HARD_DELETE_STATUSES:
+        return "void"
     return "delete"
+
+
+def _void_record(module_code: str, record_id: int, config: dict, user_id, reason=None):
+    """
+    Keep a not-posted document as "Cancelled" instead of deleting it, and
+    release what it holds so the documents it was built from are free again:
+      * release_first pointers → NULL (e.g. Bulk Dockets linked to a JB)
+      * void_delete rows removed (e.g. a Bulk Docket's lines, so its docket
+        lines can be grouped again — docket_detail_id is UNIQUE)
+    Commits. Returns the record.
+    """
+    record = config["model_class"].query.get(record_id)
+    if record is None:
+        return None
+    now = datetime.utcnow()
+    try:
+        for ref_model, fk_col in config.get("release_first", []):
+            ref_model.query.filter(getattr(ref_model, fk_col) == record_id) \
+                .update({fk_col: None}, synchronize_session=False)
+        for owned_model, fk_col in config.get("void_delete", []):
+            owned_model.query.filter(getattr(owned_model, fk_col) == record_id) \
+                .delete(synchronize_session=False)
+        level = getattr(record, "current_level", None)
+        record.workflow_status = "Cancelled"
+        for attr, value in (("locked", True), ("cancelled_by", user_id), ("cancelled_at", now),
+                            ("cancellation_reason", reason), ("updated_by", user_id), ("updated_at", now)):
+            if hasattr(record, attr):
+                setattr(record, attr, value)
+
+        from app.modules.finance.accounting.reversal_service import key_for_dep, write_cancel_history
+        key = key_for_dep(module_code)
+        if key:
+            from app.modules.workflow import unapprove as U
+            entry = U.UNAPPROVE_MODULES[key]
+            write_cancel_history(U._project(entry, record), U._value(entry["history"], record), record.id,
+                                 level, user_id,
+                                 f"[Cancelled via delete — kept for audit] {reason or ''}".strip())
+        db.session.commit()
+        return record
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 # ─── public API ───────────────────────────────────────────────────────────
@@ -419,7 +482,7 @@ def raise_delete_request(
     ).first()
 
     # Find blocking documents (map + registry extras)
-    blocking = _all_blockers(module_code, record, config)
+    blocking = _all_blockers(module_code, record, config, hard_delete=(accounting == "delete"))
 
     if existing and blocking:
         # Still blocked — return current status
@@ -441,6 +504,20 @@ def raise_delete_request(
                 db.session.commit()
             auto_complete_check(module_code, record_id)
         return payload, code
+
+    if not blocking and accounting == "void":
+        # Past Draft, not posted → keep as Cancelled (visible in its list)
+        _void_record(module_code, record_id, config, requested_by, reason)
+        if existing:
+            existing.status       = "COMPLETED"
+            existing.completed_at = datetime.utcnow()
+            db.session.commit()
+        auto_complete_check(module_code, record_id)
+        return {
+            "status":  "cancelled",
+            "message": (f"{display_name} {record_no} was past Draft, so it is kept with status "
+                        f"Cancelled instead of being removed."),
+        }, 200
 
     if not blocking:
         # No downstream records — delete immediately
@@ -513,9 +590,11 @@ def raise_delete_request(
             f"Waiting for {', '.join(get_display_name(m) for m in blocked_modules)} "
             f"to be deleted first."
             + (" It is posted to accounts, so it will then be cancelled automatically "
-               "with a reversal entry." if cancel_key else "")
+               "with a reversal entry." if cancel_key else
+               " It will then be kept with status Cancelled." if accounting == "void" else "")
         ),
         "will_cancel":        bool(cancel_key),
+        "accounting_action":  accounting,
         "blocked_by_modules": blocked_modules,
         "blocked_by_docs":    blocked_docs,
         "whatsapp_sent":      True,
@@ -547,13 +626,14 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
             continue
 
         record = config["model_class"].query.get(dr.record_id)
-        current_blocking = _all_blockers(dr.module_code, record, config) if record else []
+        accounting = _accounting_route(dr.module_code, record) if record else "delete"
+        current_blocking = (_all_blockers(dr.module_code, record, config,
+                                          hard_delete=(accounting == "delete")) if record else [])
 
         if not current_blocking:
-            # All blockers gone — perform the actual delete (or cancel) now
+            # All blockers gone — perform the actual delete / cancel / void now
             deleted_module = dr.module_code
             deleted_id     = dr.record_id
-            accounting = _accounting_route(dr.module_code, record) if record else "delete"
             if accounting == "cancel":
                 # posted → cancel with a reversal entry on behalf of the
                 # REQUESTER (re-checked: admin / final approver; FY lock etc.
@@ -583,6 +663,18 @@ def auto_complete_check(deleted_module_code: str, deleted_record_id: int):
                 continue
             elif accounting == "kept":
                 pass    # already cancelled elsewhere — the request's goal is met
+            elif accounting == "void":
+                # past Draft, not posted → keep as Cancelled, release its holds
+                dr_id = dr.id
+                try:
+                    _void_record(dr.module_code, dr.record_id, config, dr.requested_by, dr.reason)
+                except Exception as e:
+                    db.session.rollback()
+                    dr = DeleteRequest.query.get(dr_id)
+                    dr.blocked_by_docs = str(e).splitlines()[0][:250] if str(e) else type(e).__name__
+                    db.session.commit()
+                    continue
+                dr = DeleteRequest.query.get(dr_id)
             else:
                 try:
                     _do_delete_record(dr.module_code, dr.record_id, config)
@@ -704,13 +796,13 @@ def check_delete_status(module_code: str, record_id: int) -> tuple[dict, int]:
         status="PENDING",
     ).first()
 
-    # every blocker (map + registry extras) — blocked → user raises a request
-    blocking = _all_blockers(module_code, record, config)
-
     # Central accounting: a posted document is cancelled (reversal), not deleted.
     # cancel_problem = what a pending request can't wait out (permission, FY
     # lock …); downstream documents are in blocked_by, not here.
     accounting = _accounting_route(module_code, record)
+
+    # every blocker (map + registry extras) — blocked → user raises a request
+    blocking = _all_blockers(module_code, record, config, hard_delete=(accounting == "delete"))
     cancel_problem = None
     if accounting == "cancel":
         from flask import g
@@ -730,7 +822,7 @@ def check_delete_status(module_code: str, record_id: int) -> tuple[dict, int]:
         "module_code":     module_code,
         "record_id":       record_id,
         "record_no":       _get_record_no(record, config),
-        # "delete" | "cancel" (posted → reversal entry) | "kept" | "refuse"
+        # "delete" | "cancel" (posted → reversal) | "void" (kept as Cancelled) | "kept" | "refuse"
         "accounting_action": accounting,
         "will_cancel":     accounting == "cancel",
         "cancel_problem":  cancel_problem,

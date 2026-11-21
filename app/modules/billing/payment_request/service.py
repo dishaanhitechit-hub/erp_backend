@@ -133,7 +133,7 @@ def _sum_requested(filters, exclude_id=None, status=None):
     if status:
         q = q.filter(PaymentRequestMaster.workflow_status == status)
     else:
-        q = q.filter(PaymentRequestMaster.workflow_status != "Rejected")
+        q = q.filter(PaymentRequestMaster.workflow_status.notin_(("Rejected", "Cancelled")))
     if exclude_id:
         q = q.filter(PaymentRequestMaster.id != exclude_id)
     return _q(q.scalar())
@@ -224,7 +224,7 @@ def _linked_brb(brr_id):
     """The BRR's billing record (BRB) shown to the user: latest non-Rejected one."""
     return (
         BrbMaster.query
-        .filter(BrbMaster.brr_id == brr_id, BrbMaster.workflow_status != "Rejected")
+        .filter(BrbMaster.brr_id == brr_id, BrbMaster.workflow_status.notin_(("Rejected", "Cancelled")))
         .order_by(BrbMaster.id.desc())
         .first()
     )

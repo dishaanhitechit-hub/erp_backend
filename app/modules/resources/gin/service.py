@@ -66,7 +66,7 @@ def _pre_issued_qty(order_item_id):
         .join(GinMaster, GinMaster.id == GinItem.gin_id)
         .filter(
             GinItem.order_item_id == order_item_id,
-            GinMaster.workflow_status != "Rejected"
+            GinMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )

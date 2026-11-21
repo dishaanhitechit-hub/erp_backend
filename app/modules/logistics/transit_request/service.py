@@ -83,7 +83,7 @@ def _dispatched_qty_for_tr_item(tr_id, order_item_id):
         .filter(
             DcMaster.transit_request_id == tr_id,
             DcItem.order_item_id == order_item_id,
-            DcMaster.workflow_status != "Rejected",
+            DcMaster.workflow_status.notin_(("Rejected", "Cancelled")),
         )
         .scalar()
     )

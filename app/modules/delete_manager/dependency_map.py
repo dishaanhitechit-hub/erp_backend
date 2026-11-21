@@ -63,7 +63,7 @@ from app.models.batchingPlant      import BatchingPlantMaster
 from app.models.pettyCashBudget    import PettyCashBudget
 from app.models.pettyCashDocketVoucher import PettyCashDocketVoucher
 from app.models.journalEntry       import JournalEntryMaster
-from app.models.journalVoucher     import PettyCashJournalVoucher
+from app.models.journalVoucher     import PettyCashJournalVoucher, PettyCashJournalLine
 from app.models.contraEntry        import ContraEntryMaster
 from app.models.creditNote         import CreditNoteMaster
 from app.models.debitNote          import DebitNoteMaster
@@ -499,6 +499,9 @@ DEPENDENCY_MAP = {
         "project_field": "project_code",
         "children": [],
         "special_checks": ["jv_linked_journal"],
+        # when kept as Cancelled (approved BV): drop its lines so the docket
+        # lines it held can be grouped again (docket_detail_id is UNIQUE)
+        "void_delete": [(PettyCashJournalLine, "journal_voucher_id")],
     },
 
     "CONTRA_ENTRY": {

@@ -279,7 +279,7 @@ def get_brr_list(data):
             # 1 BRR → 1 BRB: return the latest BRB (non-rejected preferred; fallback to latest rejected)
             active_brb = (
                 BrbMaster.query
-                .filter(BrbMaster.brr_id == row.id, BrbMaster.workflow_status != "Rejected")
+                .filter(BrbMaster.brr_id == row.id, BrbMaster.workflow_status.notin_(("Rejected", "Cancelled")))
                 .order_by(BrbMaster.id.desc())
                 .first()
             )
@@ -384,7 +384,7 @@ def get_brr_details(brr_id):
         # Attach the single BRB (non-Rejected preferred)
         active_brb = (
             BrbMaster.query
-            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status != "Rejected")
+            .filter(BrbMaster.brr_id == brr.id, BrbMaster.workflow_status.notin_(("Rejected", "Cancelled")))
             .order_by(BrbMaster.id.desc())
             .first()
         )

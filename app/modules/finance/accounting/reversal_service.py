@@ -214,6 +214,23 @@ def _release_bank_line(record, user_id):
     release_for_docket(record, user_id, "Docket cancelled")
 
 
+def write_cancel_history(project_code, module_code, record_id, level_no, user_id, comments):
+    """
+    Approval-history row for a cancellation. Best effort, in a SAVEPOINT: a
+    history problem (e.g. module_code not in module_master) must never undo
+    the cancellation itself.
+    """
+    from app.modules.work_flow import create_history
+    sp = db.session.begin_nested()
+    try:
+        create_history(project_code=project_code, module_code=module_code, record_id=record_id,
+                       level_no=level_no, action="CANCELLED", action_by=user_id, comments=comments)
+        db.session.flush()
+        sp.commit()
+    except Exception:
+        sp.rollback()
+
+
 def _mark_cancelled(key, record, user_id, reason):
     U = _U()
     entry = U.UNAPPROVE_MODULES[key]
@@ -225,16 +242,8 @@ def _mark_cancelled(key, record, user_id, reason):
         if hasattr(record, attr):
             setattr(record, attr, value)
 
-    from app.modules.work_flow import create_history
-    create_history(
-        project_code=U._project(entry, record),
-        module_code=U._value(entry["history"], record),
-        record_id=record.id,
-        level_no=level,
-        action="CANCELLED",
-        action_by=user_id,
-        comments=f"[Cancelled — reversal posted] {reason}",
-    )
+    write_cancel_history(U._project(entry, record), U._value(entry["history"], record), record.id,
+                         level, user_id, f"[Cancelled — reversal posted] {reason}")
 
 
 def cancel_document(key, record_id, user_id, reason, check_permission=True):

@@ -74,7 +74,7 @@ def _already_billed_qty(grn_item_id):
         .join(BrgMaster, BrgMaster.id == BrgItem.brg_id)
         .filter(
             BrgItem.grn_item_id == grn_item_id,
-            BrgMaster.workflow_status != "Rejected"
+            BrgMaster.workflow_status.notin_(("Rejected", "Cancelled"))
         )
         .scalar()
     )
@@ -85,14 +85,14 @@ def _brr_billed_amount(brr_id, exclude_brg_id=None):
     """Total non-rejected BRG + BRS amount under a BRR (budget cap check)."""
     brg_q = (
         db.session.query(func.coalesce(func.sum(BrgMaster.total_amount), 0))
-        .filter(BrgMaster.brr_id == brr_id, BrgMaster.workflow_status != "Rejected")
+        .filter(BrgMaster.brr_id == brr_id, BrgMaster.workflow_status.notin_(("Rejected", "Cancelled")))
     )
     if exclude_brg_id:
         brg_q = brg_q.filter(BrgMaster.id != exclude_brg_id)
 
     brs_q = (
         db.session.query(func.coalesce(func.sum(BrsMaster.total_amount), 0))
-        .filter(BrsMaster.brr_id == brr_id, BrsMaster.workflow_status != "Rejected")
+        .filter(BrsMaster.brr_id == brr_id, BrsMaster.workflow_status.notin_(("Rejected", "Cancelled")))
     )
 
     return Decimal(str(brg_q.scalar() or 0)) + Decimal(str(brs_q.scalar() or 0))

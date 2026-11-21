@@ -247,7 +247,7 @@ def delete_sale_receipt(receipt_id, user_id):
         if not receipt:
             return res("Sale receipt not found", [], 404)
 
-        active = [b for b in receipt.billings if b.workflow_status not in ("Rejected",)]
+        active = [b for b in receipt.billings if b.workflow_status not in ("Rejected", "Cancelled")]
         if active:
             return res("Cannot delete: receipt has active child billings", [], 400)
 
