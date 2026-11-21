@@ -325,7 +325,10 @@ def check_record(key, record_id, lock=False):
         return None, f"Unknown module: {key}"
     model = _load(entry["model"])
     if lock:
-        record = model.query.filter_by(id=record_id).with_for_update().first()
+        # lock the bare row only: FOR UPDATE over a model with lazy="joined"
+        # relationships (e.g. OrderMaster) fails on Postgres (outer join)
+        db.session.query(model.id).filter(model.id == record_id).with_for_update().first()
+        record = model.query.populate_existing().get(record_id)
     else:
         record = model.query.get(record_id)
     if not record:
