@@ -106,8 +106,31 @@ def can_cancel(key, record, user_id):
         return False
 
 
-def cancel_problem(key, record, user_id, check_permission=True):
-    """None when the record can be cancelled now, else (message, http_status)."""
+def user_can_cancel(key, record, user_id):
+    """can_cancel for a given user id (no request context) — used when a
+    pending delete request auto-cancels later on behalf of its requester."""
+    from app.models.user import User
+    U = _U()
+    u = User.query.get(user_id) if user_id else None
+    if not u:
+        return False
+    if u.global_role and u.global_role.name in U.ADMIN_ROLES:
+        return True
+    from app.modules.workflow.reback_request import final_approvers, _approval_code
+    try:
+        project = U._project(U.UNAPPROVE_MODULES[key], record)
+        return user_id in final_approvers(project, _approval_code(key, record))
+    except Exception:
+        return False
+
+
+def cancel_hard_problem(key, record, user_id, check_permission=True):
+    """
+    Problems a delete REQUEST cannot wait out: not cancellable, already
+    cancelled, not posted, no permission, locked FY / later stock movement.
+    None, or (message, http_status). Downstream documents are NOT checked
+    here — those make the request PENDING (see delete manager).
+    """
     U = _U()
     entry = U.UNAPPROVE_MODULES.get(key)
     if not entry:
@@ -119,16 +142,51 @@ def cancel_problem(key, record, user_id, check_permission=True):
         return "Document is not posted to accounts — nothing to reverse", 400
     if check_permission and not can_cancel(key, record, user_id):
         return "Only the final approver or an admin can cancel a posted document", 403
-
-    blockers = U.find_blockers(key, record)
-    if blockers:
-        shown = ", ".join(blockers[:10]) + (f" and {len(blockers) - 10} more" if len(blockers) > 10 else "")
-        return f"Used in {shown}. Cancel or delete those first.", 400
-
     reasons = U._check_ledgers(entry, record)
     if reasons:
         return reasons[0], 400
     return None
+
+
+def cancel_problem(key, record, user_id, check_permission=True):
+    """None when the record can be cancelled now, else (message, http_status)."""
+    hard = cancel_hard_problem(key, record, user_id, check_permission)
+    if hard:
+        return hard
+    blockers = _U().find_blockers(key, record)
+    if blockers:
+        shown = ", ".join(blockers[:10]) + (f" and {len(blockers) - 10} more" if len(blockers) > 10 else "")
+        return f"Used in {shown}. Cancel or delete those first.", 400
+    return None
+
+
+def extra_blocker_dicts(key, record):
+    """
+    The registry's EXTRA "used in" links (beyond the delete-manager map) as
+    delete-manager blocker dicts — e.g. docket lines in a Bulk Docket, credit
+    notes against a sale bill. Cancelled documents never block.
+    """
+    U = _U()
+    entry = U.UNAPPROVE_MODULES.get(key) or {}
+    from app.modules.delete_manager.dependency_map import DEPENDENCY_MAP
+    out = []
+    for path, fk, doc_field, label in entry.get("extra", []):
+        model = U._load(path)
+        rows = model.query.filter(getattr(model, fk) == record.id).all()
+        if label == "Bulk Docket":
+            from app.models.journalVoucher import PettyCashJournalVoucher
+            ids = {getattr(r, doc_field) for r in rows}
+            for jv in (PettyCashJournalVoucher.query.filter(PettyCashJournalVoucher.id.in_(ids)).all() if ids else []):
+                out.append({"doc_no": jv.voucher_no or f"#{jv.id}", "module_code": "JOURNAL_VOUCHER",
+                            "label": label, "record_id": jv.id})
+            continue
+        mod = next((c for c, cfg in DEPENDENCY_MAP.items() if cfg["model_class"] is model), label)
+        for r in rows:
+            if (getattr(r, "workflow_status", None) or "") == "Cancelled":
+                continue
+            out.append({"doc_no": str(getattr(r, doc_field, None) or r.id), "module_code": mod,
+                        "label": label, "record_id": r.id})
+    return out
 
 
 # ==========================================

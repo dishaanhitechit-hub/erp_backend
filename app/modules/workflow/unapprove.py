@@ -259,6 +259,8 @@ def find_blockers(key, record):
     for path, fk, doc_field, label in entry.get("extra", []):
         model = _load(path)
         rows = model.query.filter(getattr(model, fk) == record.id).all()
+        # a cancelled document (kept for audit, reversed in accounts) never blocks
+        rows = [r for r in rows if (getattr(r, "workflow_status", None) or "") != "Cancelled"]
         nos = sorted({str(getattr(r, doc_field, None) or r.id) for r in rows})
         if label == "Bulk Docket" and nos:
             from app.models.journalVoucher import PettyCashJournalVoucher
