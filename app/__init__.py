@@ -263,6 +263,9 @@ def create_app():
     from .modules.finance.bank_statement.routes import bank_statement_bp
     app.register_blueprint(bank_statement_bp, url_prefix="/finance/bank-statement")
 
+    from .modules.issue_tracker.routes import issue_tracker_bp
+    app.register_blueprint(issue_tracker_bp, url_prefix="/issue-tracker")
+
     from .models import pettyCashBudget        # noqa — registers PettyCashBudget, PettyCashBudgetDetail, PettyCashBudgetRevision
     from .models import pettyCashDocketVoucher  # noqa — registers PettyCashDocketVoucher, PettyCashDocketVoucherDetail
 
