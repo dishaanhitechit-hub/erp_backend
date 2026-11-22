@@ -65,6 +65,7 @@ BULK_MODULES = {
     # ── Project management
     "project_billing":      {"label": "Customer Billing",           "prefix": "/project-mgmt/billing"},
     "og_sale_order":        {"label": "Sale Order",                 "prefix": "/project-mgmt/og-sale-order"},
+    "og_sale_order_amendment": {"label": "Sale Order Amendment",    "prefix": "/project-mgmt/og-sale-order/amendment"},
     "contract_budget":      {"label": "Contract Budget",            "prefix": "/project-mgmt/contract/budget"},
     "uncertain_allocation": {"label": "Uncertain Allocation",       "prefix": "/project-mgmt/uncertain-allocation"},
     "dpr":                  {"label": "Daily Progress Report",      "prefix": "/project-mgmt/dpr"},

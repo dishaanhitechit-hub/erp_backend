@@ -8,6 +8,7 @@ import json
 
 from app.models.billingMaster import BillingMaster, BillingItem, BillingBoqItem
 from app.models.ogSaleOrder import OgSaleOrderMaster
+from app.modules.project_mgmt.custom_billing.og_sale_order.amendment import tag_rows as _tag_amendment_rows
 from app.cloudinary_uploader import upload_file_to_bunny, delete_file_from_storage
 from app.response import res
 from app.models.user import User
@@ -473,6 +474,7 @@ def _build_detail_payload(bill):
     else:
         items_serialized     = _serialize_rows(bill.items)
         boq_items_serialized = _serialize_rows(boq_items)
+    _tag_amendment_rows(bill.og_sale_order_id, items_serialized, boq_items_serialized)
 
     return {
         "id":                   bill.id,
@@ -622,6 +624,7 @@ def get_order_lookup(data):
                 }
                 for bi in claim_boq
             ]
+            _tag_amendment_rows(claim_bill.og_sale_order_id, claim_items, claim_boq_items)
 
             pre_certified = _get_pre_certified(
                 claim_bill.og_sale_order_erp_no, project_code, mode
@@ -706,6 +709,7 @@ def get_order_lookup(data):
             for og_item in og_so.boq_items
         ]
 
+        _tag_amendment_rows(og_so.id, og_items, og_boq_items)
         pre_certified = _get_pre_certified(og_sale_order_no, project_code, mode)
 
         return res("OG Sale Order found", {

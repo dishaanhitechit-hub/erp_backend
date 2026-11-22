@@ -74,7 +74,16 @@ def _upload_attachment(file, so_no, slot):
     )
 
 
-def _build_rows(raw_rows, og_sale_order_id, model_class):
+def _amendment_id(row, allowed):
+    """A line keeps its AMD tag through an edit, but only for this order's approved amendments."""
+    try:
+        aid = int(row.get("amendmentId") or 0)
+    except (TypeError, ValueError):
+        return None
+    return aid if aid and aid in allowed else None
+
+
+def _build_rows(raw_rows, og_sale_order_id, model_class, allowed_amendment_ids=()):
     """
     Build ORM rows from raw frontend dicts.
     All fields are manual — amount and gstAmount are computed server-side.
@@ -104,6 +113,7 @@ def _build_rows(raw_rows, og_sale_order_id, model_class):
             amount           = amount,
             gst_percent      = gst_percent,
             gst_amount       = gst_amount,
+            amendment_id     = _amendment_id(row, allowed_amendment_ids),
         ))
 
         total_basic += amount
@@ -127,6 +137,8 @@ def _serialize_rows(rows):
             "amount":          float(row.amount       or 0),
             "gstPercent":      float(row.gst_percent  or 0),
             "gstAmount":       float(row.gst_amount   or 0),
+            "amendmentId":     row.amendment_id,
+            "amendmentNo":     f"AMD-{row.amendment.amendment_seq}" if row.amendment_id and row.amendment else None,
         }
         for row in rows
     ]
@@ -165,6 +177,13 @@ def _build_detail_payload(og_so):
         "rejectedAt":       _fmt_date(og_so.rejected_at),
         "items":            _serialize_rows(og_so.items),
         "boqItems":         _serialize_rows(og_so.boq_items),
+        "amendments": [
+            {"id": a.id, "label": f"AMD-{a.amendment_seq}", "amendmentNo": a.amendment_no,
+             "workflowStatus": a.workflow_status, "totalAmount": float(a.total_amount or 0),
+             "amendmentDate": _fmt_date(a.amendment_date)}
+            for a in og_so.amendments
+        ],
+        "amendmentCount":   sum(1 for a in og_so.amendments if a.workflow_status == "Approved"),
     }
 
 
@@ -288,6 +307,18 @@ def get_og_sale_order_list(data):
 
         rows = query.order_by(OgSaleOrderMaster.id.desc()).all()
 
+        from app.models.ogSaleOrder import OgSaleOrderAmendment
+        amd_count, amd_open = {}, {}
+        if rows:
+            for so_id, seq, st in (db.session.query(OgSaleOrderAmendment.og_sale_order_id,
+                                                    OgSaleOrderAmendment.amendment_seq,
+                                                    OgSaleOrderAmendment.workflow_status)
+                                   .filter(OgSaleOrderAmendment.og_sale_order_id.in_([r.id for r in rows]))):
+                if st == "Approved":
+                    amd_count[so_id] = amd_count.get(so_id, 0) + 1
+                elif st in ("Draft", "Reback") or (st or "").startswith("Pending"):
+                    amd_open[so_id] = f"AMD-{seq} {st}"
+
         result = [
             {
                 "id":              row.id,
@@ -304,6 +335,8 @@ def get_og_sale_order_list(data):
                 "debtorCorporateAddress": row.debtor.corporate_address if row.debtor else None,
                 "createdBy":       row.creator.username if row.creator else None,
                 "createdAt":       _fmt_date(row.created_at),
+                "amendmentCount":  amd_count.get(row.id, 0),
+                "openAmendment":   amd_open.get(row.id),
             }
             for row in rows
         ]
@@ -398,8 +431,9 @@ def edit_og_sale_order(so_id, request, user_id):
         OgSaleOrderBoqItem.query.filter_by(og_sale_order_id=og_so.id).delete()
         db.session.flush()
 
-        built_items,     basic_items, gst_items = _build_rows(items_raw, og_so.id, OgSaleOrderItem)
-        built_boq_items, basic_boq,  gst_boq   = _build_rows(boq_raw,   og_so.id, OgSaleOrderBoqItem)
+        approved_amd = {a.id for a in og_so.amendments if a.workflow_status == "Approved"}
+        built_items,     basic_items, gst_items = _build_rows(items_raw, og_so.id, OgSaleOrderItem, approved_amd)
+        built_boq_items, basic_boq,  gst_boq   = _build_rows(boq_raw,   og_so.id, OgSaleOrderBoqItem, approved_amd)
 
         for item in built_items:
             db.session.add(item)

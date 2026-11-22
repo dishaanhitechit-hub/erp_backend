@@ -145,7 +145,12 @@ UNAPPROVE_MODULES = {
     "project_billing": {"model": "app.models.billingMaster:BillingMaster", "dep": "BILLING",
                         "history": _billing_history, "posting": lambda r: r.mode, "wa": "billing"},
     "og_sale_order":   {"model": "app.models.ogSaleOrder:OgSaleOrderMaster", "dep": "OG_SALE_ORDER",
-                        "history": "sale_order", "wa": "og_sale_order"},
+                        "history": "sale_order", "wa": "og_sale_order", "checks": ["so_open_amendment"]},
+    # undo = take the added lines back out of the order (blocked while they are used)
+    "og_sale_order_amendment": {"model": "app.models.ogSaleOrder:OgSaleOrderAmendment",
+                        "history": "sale_order_amendment", "doc": "amendment_no",
+                        "checks": ["amendment_usage"],
+                        "undo": "app.modules.project_mgmt.custom_billing.og_sale_order.amendment:undo_from_order"},
     "contract_budget": {"model": "app.models.budget:BudgetMaster", "history": "budget_master",
                         "wa": "budget", "doc": "budget_no"},
     "uncertain_allocation": {"model": "app.models.uncertainAllocation:UncertainAllocationMaster",
@@ -237,7 +242,21 @@ def _check_jv_linked_journal(record):
     return []
 
 
-_CHECKS = {"jv_linked_journal": _check_jv_linked_journal}
+def _check_so_open_amendment(record):
+    from app.models.ogSaleOrder import OgSaleOrderAmendment
+    rows = OgSaleOrderAmendment.query.filter_by(og_sale_order_id=record.id).all()
+    return [f"Amendment {r.amendment_no} ({r.workflow_status})" for r in rows
+            if r.workflow_status in ("Draft", "Reback") or (r.workflow_status or "").startswith("Pending")]
+
+
+def _check_amendment_usage(record):
+    from app.modules.project_mgmt.custom_billing.og_sale_order.amendment import amendment_usage
+    return amendment_usage(record)
+
+
+_CHECKS = {"jv_linked_journal": _check_jv_linked_journal,
+           "so_open_amendment": _check_so_open_amendment,
+           "amendment_usage": _check_amendment_usage}
 
 
 def find_blockers(key, record):
@@ -406,6 +425,8 @@ def _apply(key, record, user_id, remarks):
         _unreconcile_bank_line(record, user_id)
     if key == "logistics_bill" and record.voucher_id and record.voucher_id < 0:
         record.voucher_id = None
+    if entry.get("undo"):
+        _load(entry["undo"])(record, user_id)
 
     level = record.current_level
     record.workflow_status = entry.get("status", "Reback")
