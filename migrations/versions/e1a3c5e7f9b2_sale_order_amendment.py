@@ -85,6 +85,15 @@ def upgrade():
         op.create_index(f'ix_{table}_amendment_id', table, ['amendment_id'])
 
     bind = op.get_bind()
+    # Some rows in these tables were inserted with explicit ids, so their id
+    # sequences can lag behind MAX(id) (seen on the server: duplicate key
+    # workflow_module_alias_pkey id=3). Move each sequence past MAX(id) first.
+    for table in ('module_master', 'workflow_module_alias'):
+        bind.execute(sa.text(
+            f"""SELECT setval(pg_get_serial_sequence('{table}', 'id'),
+                              COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)
+            WHERE pg_get_serial_sequence('{table}', 'id') IS NOT NULL"""
+        ))
     bind.execute(sa.text(
         """INSERT INTO module_master (module_code, module_name, status)
         SELECT 'sale_order_amendment', 'Sale Order Amendment', 'Active'
