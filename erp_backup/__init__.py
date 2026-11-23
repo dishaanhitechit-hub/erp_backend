@@ -8,4 +8,4 @@ See deploy/backup/README.md for setup and DB_BACKUP_PLAN.md for the design.
 Version history and the files of each release: erp_backup/CHANGELOG.md
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"

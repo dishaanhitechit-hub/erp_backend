@@ -22,13 +22,18 @@ from . import backupset, emails, notify
 from . import state as st
 from .remote import Remote
 from .runner import local_sets
-from .util import BackupError, log, parse_set_id, run, write_json_atomic
+from .naming import canonical_id
+from .util import BackupError, log, run, write_json_atomic
 
 
 # ── finding a set ───────────────────────────────────────────────────────────
 
 def locate_set(settings, name=None, from_remote=False):
-    """Path of a local copy of the set (downloaded from Drive if asked/needed)."""
+    """Path of a local copy of the set (downloaded from Drive if asked/needed).
+    `name` is a set id (PRAX-ERP_2026-11-24_0215); a Drive folder name
+    (PRAX-ERP_weekly_2026-W47_…) works too. None = the newest."""
+    if name:
+        name = canonical_id(name) or name
     local = dict(local_sets(settings))
     if not from_remote:
         if name is None and local:
@@ -38,18 +43,18 @@ def locate_set(settings, name=None, from_remote=False):
     if not settings.remote:
         raise BackupError(f"backup set {name or '(latest)'} not on the backup disk and no BACKUP_REMOTE set")
     remote = Remote(settings)
-    names = sorted((n for n in remote.list_sets() if parse_set_id(n)), key=parse_set_id)
-    if not names:
+    sets = remote.list_sets()
+    if not sets:
         raise BackupError("no backup sets on Google Drive")
-    name = name or names[-1]
-    if name not in names:
+    rs = remote.find(name, sets) if name else sets[-1]
+    if rs is None:
         raise BackupError(f"backup set {name} not found on Google Drive")
-    dest = os.path.join(settings.local_dir, "downloads", name)
+    dest = os.path.join(settings.local_dir, "downloads", rs.id)
     shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest)
-    log.info("downloading %s from Google Drive", name)
-    remote.download_set(name, dest)
-    return name, dest
+    log.info("downloading %s from Google Drive", rs.path)
+    remote.download_set(rs, dest)
+    return rs.id, dest
 
 
 # ── database helpers ────────────────────────────────────────────────────────
@@ -288,7 +293,10 @@ def _store_report(settings, report):
         write_json_atomic(out, report)
         if settings.remote and report["status"] == "PASSED":
             try:
-                Remote(settings).upload_file(out, report["backup_id"])
+                remote = Remote(settings)
+                rs = remote.find(report["backup_id"])
+                if rs:
+                    remote.upload_file(out, rs)
             except BackupError as e:
                 log.warning("could not upload verify report: %s", e)
 

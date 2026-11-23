@@ -318,6 +318,10 @@
       $("#target-db").value = `${(overviewData && overviewData.live_db) || "erp_db"}_r${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`.replace(/_r\d+_r/, "_r");
     }
   };
+  const TIER_LABELS = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", manual: "Manual", legacy: "Old name" };
+  function tierBadge(t) {
+    return t ? `<span class="badge ${t === "monthly" || t === "weekly" ? "b-ok" : "b-info"}">${esc(TIER_LABELS[t] || t)}</span>` : "";
+  }
   function renderSets() {
     const list = chosenSrc === "local" ? setsData.local : setsData.drive;
     $("#drive-note").textContent = chosenSrc === "drive"
@@ -328,7 +332,7 @@
         <span class="when">${esc(when(s.at))}</span>
         <span class="meta">${chosenSrc === "local"
           ? `${esc(bytes(s.size))} · ${esc(s.tables)} tables · ${esc(s.rows)} rows · ${esc(s.files)} files ${s.verified ? '<span class="badge b-ok">tested</span>' : ""} ${s.on_drive ? '<span class="badge b-info">on Drive</span>' : ""}`
-          : `${s.local ? '<span class="badge b-info">also on server</span>' : "Drive only"}`}</span></div>`).join("")
+          : `${tierBadge(s.tier)} <span class="mono tiny">${esc((s.path || s.id).split("/").pop())}</span> ${s.local ? '<span class="badge b-info">also on server</span>' : ""}`}</span></div>`).join("")
       || `<div class="empty">No backups here${chosenSrc === "drive" ? " (or the list was not loaded yet)" : ""}</div>`;
     $$(".set-item").forEach((el) => el.addEventListener("click", () => { chosenSet = el.dataset.id; renderSets(); }));
   }

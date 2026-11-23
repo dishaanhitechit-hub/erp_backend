@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import time
 from zoneinfo import ZoneInfo
 
+from .naming import LABEL_RE
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -117,6 +119,7 @@ class Settings:
     summary_hour: int
 
     pg_bin_dir: str = ""
+    label: str = "PRAX-ERP"     # start of every backup name, e.g. PRAX-ERP_daily_2026-11-24_0215
     extra: dict = field(default_factory=dict)
 
     def pg(self, tool):
@@ -170,8 +173,13 @@ def load():
     media_mode = (os.getenv("BACKUP_MEDIA_MODE") or "full").strip().lower()
     if media_mode not in ("full", "sync"):
         raise ValueError("BACKUP_MEDIA_MODE must be 'full' or 'sync'")
+    env_name = os.getenv("BACKUP_ENV") or "prod"
+    label = (os.getenv("BACKUP_LABEL") or ("PRAX-ERP" if env_name == "prod" else f"PRAX-ERP-{env_name}")).strip()
+    if not LABEL_RE.match(label):
+        raise ValueError("BACKUP_LABEL: letters, digits and '-' only, starting with a letter (no spaces or _)")
     return Settings(
-        env_name=os.getenv("BACKUP_ENV") or "prod",
+        env_name=env_name,
+        label=label,
         tz=tz,
         local_dir=os.path.abspath(os.getenv("BACKUP_LOCAL_DIR") or "/backup/erp"),
         local_keep=_int("BACKUP_LOCAL_KEEP", 2),

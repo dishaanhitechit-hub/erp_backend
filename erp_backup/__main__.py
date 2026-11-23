@@ -8,6 +8,9 @@
                             restore test into a throw-away DB (weekly timer)
   restore --set ID --target-db NEW_DB [--media-dir DIR] [--from-remote]
                             emergency restore into a NEW database
+  migrate-names --from OLD_REMOTE [--dry-run] [--delete-old]
+                            one-time: copy pre-1.2.0 sets (scrambled names) into
+                            BACKUP_REMOTE with readable names and Daily/Weekly/Monthly folders
   idle                      show whether the server counts as idle now
   test-email                send a test alert e-mail
 """
@@ -23,7 +26,7 @@ from datetime import datetime
 from . import __version__, config, emails, idle, notify, recovery, runner, schedule
 from . import state as st
 from .remote import Remote
-from .util import BackupError, log, parse_set_id
+from .util import BackupError, log
 
 
 def _setup_logging(settings, verbose):
@@ -63,9 +66,8 @@ def cmd_list(settings, remote):
     if remote:
         if not settings.remote:
             raise BackupError("BACKUP_REMOTE not set")
-        names = sorted((n for n in Remote(settings).list_sets() if parse_set_id(n)), key=parse_set_id)
-        for n in names:
-            print(n)
+        for rs in Remote(settings).list_sets():
+            print(f"{rs.id:<28} {rs.tier:<8} {rs.path}")
         return
     for name, path in runner.local_sets(settings):
         uploaded = os.path.exists(os.path.join(path, runner.UPLOADED_MARK))
@@ -95,6 +97,12 @@ def main(argv=None):
     pr.add_argument("--media-dir")
     pr.add_argument("--from-remote", action="store_true")
     pr.add_argument("--jobs", type=int, default=4)
+    pm = sub.add_parser("migrate-names")
+    pm.add_argument("--from", dest="from_remote", required=True,
+                    help="the old rclone remote, e.g. erpcrypt:prod")
+    pm.add_argument("--dry-run", action="store_true", help="only show what would happen")
+    pm.add_argument("--delete-old", action="store_true",
+                    help="delete each old set after its copy was compared and matches")
     sub.add_parser("idle")
     pt = sub.add_parser("test-email")
     pt.add_argument("--category", default="backup_failure")
@@ -132,6 +140,14 @@ def main(argv=None):
             print(json.dumps(out, indent=2, ensure_ascii=False))
             print("\nNext: check the data, then set DB_NAME to the new database in .env, "
                   "move the media folders into place, and restart the app.")
+        elif args.cmd == "migrate-names":
+            from . import migrate
+            with runner.lock_for(settings) as got:
+                if not got:
+                    raise BackupError("a backup is running — try later")
+                out = migrate.migrate(settings, args.from_remote, datetime.now(settings.tz),
+                                      delete_old=args.delete_old, dry_run=args.dry_run)
+            return 1 if out["failed"] else 0
         elif args.cmd == "idle":
             ok, details = idle.probe(settings)
             print(json.dumps({"idle": ok, **details}, indent=2))

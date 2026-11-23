@@ -37,7 +37,7 @@ def sets_dir(settings):
 def create(settings, trigger, now=None, want_plain_sql=False):
     """Make a new set. Returns (set_path, manifest). Raises BackupError."""
     now = (now or datetime.now(settings.tz)).replace(microsecond=0)
-    backup_id = set_id_for(settings.env_name, now)
+    backup_id = set_id_for(settings.label, now.astimezone(settings.tz))
     final = os.path.join(sets_dir(settings), backup_id)
     work = final + ".partial"
     if os.path.exists(final):
@@ -51,6 +51,7 @@ def create(settings, trigger, now=None, want_plain_sql=False):
         "tool_version": __version__,
         "backup_id": backup_id,
         "environment": settings.env_name,
+        "label": settings.label,
         "trigger": trigger,
         "host": socket.gethostname(),
         "started_at": now.isoformat(),

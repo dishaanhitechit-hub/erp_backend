@@ -121,10 +121,10 @@ def refresh_remote(cfg, settings, params, user, job_dir):
     if not settings.remote:
         raise BackupError("Google Drive is not configured (BACKUP_REMOTE)")
     say("listing backups on Google Drive (can take a few minutes)…")
-    names = sorted((n for n in Remote(settings).list_sets() if parse_set_id(n)), key=parse_set_id)
-    runner.write_remote_cache(settings, names, datetime.now(settings.tz))
-    say(f"{len(names)} backups on Google Drive")
-    return {"count": len(names)}
+    sets = Remote(settings).list_sets()
+    runner.write_remote_cache(settings, sets, datetime.now(settings.tz))
+    say(f"{len(sets)} backups on Google Drive")
+    return {"count": len(sets)}
 
 
 def restore_db(cfg, settings, params, user, job_dir):

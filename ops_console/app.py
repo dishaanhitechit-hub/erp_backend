@@ -214,8 +214,14 @@ def create_app(cfg=None):
                           "verified": os.path.exists(os.path.join(path, "verified.json"))})
         remote = _remote_cache(s)
         local_ids = {x["id"] for x in local}
-        drive = [{"id": n, "at": parse_set_id(n).isoformat(), "local": n in local_ids}
-                 for n in reversed((remote or {}).get("sets", [])) if parse_set_id(n)]
+        drive = []
+        for item in reversed((remote or {}).get("sets", [])):
+            if isinstance(item, str):              # cache written before 1.2.0
+                item = {"id": item, "path": f"sets/{item}", "tier": "legacy"}
+            when = parse_set_id(item.get("id") or "")
+            if when:
+                drive.append({"id": item["id"], "at": when.isoformat(), "tier": item.get("tier"),
+                              "path": item.get("path"), "local": item["id"] in local_ids})
         return jsonify(local=local, drive=drive, drive_listed_at=(remote or {}).get("at"))
 
     @app.get("/api/sets/<set_id>/files")

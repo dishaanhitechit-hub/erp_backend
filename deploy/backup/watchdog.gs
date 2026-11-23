@@ -13,7 +13,7 @@
  *   4. Triggers (clock icon) → Add trigger → checkBackup → Time-driven → Every hour.
  */
 var CONFIG = {
-  HEARTBEAT_PATH: ['ERP-Backups', 'heartbeat.json'],   // must match BACKUP_HEARTBEAT_REMOTE
+  HEARTBEAT_PATH: ['ERP-Backups', '_status', 'heartbeat.json'],   // must match BACKUP_HEARTBEAT_REMOTE
   MAX_AGE_HOURS: 13,
   ALERT_EMAILS: 'it-admin@example.com,manager@example.com',
   REPEAT_EVERY_HOURS: 6,

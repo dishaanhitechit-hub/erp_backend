@@ -3,30 +3,17 @@ import hashlib
 import json
 import logging
 import os
-import re
 import shutil
 import subprocess
-from datetime import datetime
 
 log = logging.getLogger("erp_backup")
 
-SET_RE = re.compile(r"^erp_(?P<env>[A-Za-z0-9-]+)_(?P<ts>\d{8}T\d{6}[+-]\d{4})$")
+# set names live in naming.py; kept here for older imports
+from .naming import parse_set_id, set_id_for  # noqa: E402,F401
 
 
 class BackupError(Exception):
     """A step failed; the message is safe to put in an alert e-mail."""
-
-
-def set_id_for(env_name, when):
-    return f"erp_{env_name}_{when:%Y%m%dT%H%M%S%z}"
-
-
-def parse_set_id(name):
-    """datetime of a backup set name, or None if the name is not a backup set."""
-    m = SET_RE.match(name)
-    if not m:
-        return None
-    return datetime.strptime(m.group("ts"), "%Y%m%dT%H%M%S%z")
 
 
 def low_priority_prefix():
