@@ -315,10 +315,14 @@ def _linked_bill_cc_rows(pr):
 
 
 def _advance_cc_rows(bpr):
-    """An advance takes the linked bill's CC rows in turn: earlier approved
+    """An advance with a saved CC breakdown posts by those rows. One without
+    (paid before the link) takes the linked bill's CC rows in turn: earlier approved
     advance payments of the same request use the first rows, this one
     continues from there. Unlinked advance → no rows (untagged)."""
     from app.models.billPaymentReceipt import BillPaymentReceiptMaster
+    # Saved CC breakdown → exactly like a normal payment
+    if bpr.items or bpr.gst_lines:
+        return _receipt_cc_rows(bpr)
     pr = bpr.payment_request
     if not pr or not pr.link_type:
         return []
@@ -329,7 +333,7 @@ def _advance_cc_rows(bpr):
             BillPaymentReceiptMaster.payment_type == "advance",
             BillPaymentReceiptMaster.workflow_status == "Approved",
             BillPaymentReceiptMaster.id < bpr.id,
-        ).all()),
+        ).all() if not (r.items or r.gst_lines)),
         Decimal("0"),
     )
     need = _d(bpr.total_invoice_amount)

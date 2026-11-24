@@ -1573,6 +1573,11 @@ def unlink_advance(pr_id, user_id):
             return res("You are not allowed to unlink this advance", [], 403)
         if pr.link_type == SRC_JOURNAL:
             _require_journal(pr.project_code, user_id, "EDIT")
+        split = next((r for r in BillPaymentReceiptMaster.query.filter(
+            BillPaymentReceiptMaster.payment_request_id == pr.id,
+            BillPaymentReceiptMaster.workflow_status.notin_(_DEAD)).all() if r.items or r.gst_lines), None)
+        if split:
+            return res(f"Advance payment {split.receipt_no} is split by the bill's CCs — unlink is blocked", [], 400)
         blocker = _bill_paid_after_link(pr)
         if blocker:
             return res(
