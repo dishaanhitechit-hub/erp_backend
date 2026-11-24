@@ -100,13 +100,15 @@ def _cc_line(cc_code_str, dr_cr, amount, project_code=None, gst_type=None, gst_r
     }
 
 
-def _vendor_line(vendor_id, dr_cr, amount, project_code=None, source_line_id=None, narration=None):
+def _vendor_line(vendor_id, dr_cr, amount, project_code=None, source_line_id=None, narration=None,
+                 cost_centre_code=None):
     return {
         "account_type": "Vendor",
         "vendor_id": vendor_id,
         "dr_cr": dr_cr,
         "amount": amount,
         "project_code": project_code,
+        "cost_centre_code": cost_centre_code,   # CC tag (dimension) — payments only
         "source_line_id": source_line_id,
         "narration": narration,
     }
@@ -266,6 +268,104 @@ def _post_payment_voucher(source_id):
 # 3. Bill Payment Receipt (bill mode) — settles PB vendor liability
 # ---------------------------------------------------------------------------
 
+# ── CC tagging of the payment's Dr Vendor line ──────────────────────────────
+# The expense already hit each CC when the bill was booked (Dr CC / Cr Vendor).
+# A payment only settles the vendor, so it must NOT debit CCs again. Instead
+# its Dr Vendor line is split per CC row and each part carries that CC in
+# cost_centre_code. Totals are unchanged (Dr Vendor total / Cr Bank total).
+
+def _gst_tag(gst_type, fallback):
+    key = (gst_type or "").split(":", 1)[-1]
+    return (_resolve_gst_cc("Input", key) if key else None) or fallback
+
+
+def _receipt_cc_rows(bpr):
+    """[(cc_code, amount)] from a bill / voucher payment's own rows."""
+    rows = [(i.cc_code, _d(i.current_amount)) for i in bpr.items if _d(i.current_amount) > 0]
+    for g in bpr.gst_lines:
+        if g.is_selected and _d(g.current_amount) > 0:
+            rows.append((_gst_tag(g.gst_type, g.cc_code) or g.cc_code, _d(g.current_amount)))
+    return rows
+
+
+def _linked_bill_cc_rows(pr):
+    """Booked CC rows of the bill an advance request is linked to, in the same
+    order the payment screen fills them (basic items first, then GST)."""
+    if pr.link_type == "BRR" and pr.brr_id:
+        from app.models.purchaseBill import PurchaseBillMaster
+        bills = (PurchaseBillMaster.query
+                 .filter(PurchaseBillMaster.brr_id == pr.brr_id,
+                         PurchaseBillMaster.workflow_status == "Approved")
+                 .order_by(PurchaseBillMaster.id.asc()).all())
+        rows = []
+        for b in bills:
+            rows += [(i.cc_code, _d(i.basic_amount)) for i in b.items if _d(i.basic_amount) > 0]
+            rows += [(_gst_tag(g.gst_type, g.cc_code) or g.cc_code, _d(g.gst_amount))
+                     for g in b.gst_lines if g.is_selected and _d(g.gst_amount) > 0]
+        return rows
+    if pr.link_type == "JOURNAL" and pr.journal_id:
+        from app.models.journalEntry import JournalEntryLine
+        lines = (JournalEntryLine.query
+                 .filter(JournalEntryLine.journal_id == pr.journal_id,
+                         JournalEntryLine.dr_cr == "Dr",
+                         JournalEntryLine.account_type == "CC")
+                 .order_by(JournalEntryLine.id.asc()).all())
+        return [(l.cc.cc_code if l.cc else None, _d(l.debit_amount)) for l in lines if _d(l.debit_amount) > 0]
+    return []
+
+
+def _advance_cc_rows(bpr):
+    """An advance takes the linked bill's CC rows in turn: earlier approved
+    advance payments of the same request use the first rows, this one
+    continues from there. Unlinked advance → no rows (untagged)."""
+    from app.models.billPaymentReceipt import BillPaymentReceiptMaster
+    pr = bpr.payment_request
+    if not pr or not pr.link_type:
+        return []
+    capacity = _linked_bill_cc_rows(pr)
+    earlier = sum(
+        (_d(r.total_invoice_amount) for r in BillPaymentReceiptMaster.query.filter(
+            BillPaymentReceiptMaster.payment_request_id == pr.id,
+            BillPaymentReceiptMaster.payment_type == "advance",
+            BillPaymentReceiptMaster.workflow_status == "Approved",
+            BillPaymentReceiptMaster.id < bpr.id,
+        ).all()),
+        Decimal("0"),
+    )
+    need = _d(bpr.total_invoice_amount)
+    out = []
+    for cc, cap in capacity:
+        skip = min(earlier, cap)
+        earlier -= skip
+        room = cap - skip
+        if room <= 0 or need <= 0:
+            continue
+        take = min(room, need)
+        out.append((cc, take))
+        need -= take
+    return out
+
+
+def _fit_cc_parts(rows, total):
+    """Merge rows by CC and make them add up to `total` exactly. A shortfall
+    (discount / round-off / unallocated advance) goes on an untagged part; an
+    excess is taken off the last parts."""
+    merged = {}
+    for cc, amt in rows:
+        merged[cc] = merged.get(cc, Decimal("0")) + amt
+    parts = [[cc, amt] for cc, amt in merged.items() if amt > 0]
+    diff = total - sum((a for _, a in parts), Decimal("0"))
+    if diff > 0:
+        parts.append([None, diff])
+    while diff < 0 and parts:
+        cut = min(parts[-1][1], -diff)
+        parts[-1][1] -= cut
+        diff += cut
+        if parts[-1][1] <= 0:
+            parts.pop()
+    return [(cc, amt) for cc, amt in parts if amt > 0] or [(None, total)]
+
+
 def _post_bill_payment_bill(source_id):
     from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 
@@ -275,24 +375,35 @@ def _post_bill_payment_bill(source_id):
         raise PostingError(f"BillPaymentReceipt {source_id} not found")
 
     lines = []
-    total = _d(bpr.total_invoice_amount)
+    total     = _d(bpr.total_invoice_amount)      # what leaves the bank / cash
+    discount  = _d(bpr.discount)
+    round_off = _d(bpr.round_off)
+    # The vendor is settled for the full bill amount paid off (basic + GST):
+    # total = gross - discount + round_off  →  gross = total + discount - round_off
+    #   Dr Vendor   gross   (split per CC, tagged)
+    #   Cr DISC     discount (discount received)
+    #   Dr/Cr ROFF  round off (Dr when we paid more, Cr when less)
+    #   Cr Bank     total
+    gross = total + discount - round_off
 
-    if total > 0 and bpr.vendor_id:
-        lines.append(_vendor_line(
-            bpr.vendor_id, "Dr", total,
-            project_code=bpr.project_code,
-            narration=f"BPR bill payment: {bpr.receipt_no}",
-        ))
+    if gross > 0 and bpr.vendor_id:
+        kind = "advance" if bpr.payment_type == "advance" else "bill"
+        cc_rows = _advance_cc_rows(bpr) if kind == "advance" else _receipt_cc_rows(bpr)
+        for cc, amt in _fit_cc_parts(cc_rows, gross):
+            lines.append(_vendor_line(
+                bpr.vendor_id, "Dr", amt,
+                project_code=bpr.project_code,
+                cost_centre_code=cc,
+                narration=f"BPR {kind} payment: {bpr.receipt_no}" + (f" | CC {cc}" if cc else ""),
+            ))
 
-    discount = _d(bpr.discount)
     if discount > 0:
         lines.append(_cc_line(
-            "DISC", "Dr", discount,
+            "DISC", "Cr", discount,
             project_code=bpr.project_code,
-            narration=f"BPR discount: {bpr.receipt_no}",
+            narration=f"BPR discount received: {bpr.receipt_no}",
         ))
 
-    round_off = _d(bpr.round_off)
     if round_off != 0:
         lines.append(_cc_line(
             "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),

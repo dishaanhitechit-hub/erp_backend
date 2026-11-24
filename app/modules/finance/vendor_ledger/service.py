@@ -71,7 +71,8 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             "particular":  ("Advance Payment " if r.payment_type == "advance" else "Bill Payment ") + r.receipt_no
                            + (f" | PR: {r.payment_request.pr_no}" if r.payment_type == "advance" and r.payment_request else "")
                            + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
-            "debit":       float(r.total_invoice_amount or 0),
+            # vendor is settled for the gross amount (paid + discount - round off)
+            "debit":       float((r.total_invoice_amount or 0) + (r.discount or 0) - (r.round_off or 0)),
             "credit":      0.0,
         })
 

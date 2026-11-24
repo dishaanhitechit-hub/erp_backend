@@ -1460,6 +1460,40 @@ def _bill_paid_after_link(pr):
     return None
 
 
+def _repost_advance_payments(pr, user_id, note):
+    """Approved advance payments of this request are re-posted so their Dr
+    Vendor line is tagged with the linked bill's CCs (or untagged again after
+    unlink): reverse the active entry (-REV, never deleted), then post fresh.
+    Refused when a posting sits in a locked financial year."""
+    from app.modules.finance.accounting.posting_engine import (
+        active_posting, reverse_posting, post_document, PostingError,
+    )
+    rows = (
+        BillPaymentReceiptMaster.query
+        .filter(BillPaymentReceiptMaster.payment_request_id == pr.id,
+                BillPaymentReceiptMaster.payment_type == "advance",
+                BillPaymentReceiptMaster.workflow_status == "Approved")
+        .order_by(BillPaymentReceiptMaster.id.asc())
+        .all()
+    )
+    for r in rows:
+        led = active_posting("bill_payment", r.id)
+        fy = getattr(led, "financial_year", None) if led else None
+        if fy is not None and fy.is_locked:
+            raise ValueError(f"Advance payment {r.receipt_no} is in locked financial year {fy.fy_code}")
+    db.session.flush()
+    for r in rows:
+        if active_posting("bill_payment", r.id, for_update=True):
+            reverse_posting("bill_payment", r.id, user_id, remarks=note[:1000])
+            db.session.flush()
+        try:
+            post_document("bill_payment", r.id, user_id)
+        except PostingError as e:
+            raise ValueError(f"Could not re-post advance payment {r.receipt_no}: {e}")
+        db.session.flush()
+    return len(rows)
+
+
 def link_advance(pr_id, data, user_id):
     """Link an Approved ADVANCE request to an Approved BRR or journal of the
     same vendor. The advance then counts in that source's requested total
@@ -1516,6 +1550,7 @@ def link_advance(pr_id, data, user_id):
         pr.previously_requested = previous
         pr.updated_by           = user_id
         pr.updated_at           = datetime.utcnow()
+        _repost_advance_payments(pr, user_id, f"Advance {pr.pr_no} linked to {link_type} {_linked_no(pr)} — re-posted by CC")
         db.session.commit()
         return res(f"Advance linked to {link_type} {_linked_no(pr)}", _payload(pr), 200)
 
@@ -1552,9 +1587,12 @@ def unlink_advance(pr_id, user_id):
         pr.bill_amount = pr.previously_requested = Decimal("0.00")
         pr.updated_by = user_id
         pr.updated_at = datetime.utcnow()
+        _repost_advance_payments(pr, user_id, f"Advance {pr.pr_no} unlinked — re-posted without CC")
         db.session.commit()
         return res("Advance unlinked", _payload(pr), 200)
     except _Forbidden as e:
         return _rollback_res(e, 403)
+    except ValueError as e:
+        return _rollback_res(e, 400)
     except Exception as e:
         return _rollback_res(e, 500)
