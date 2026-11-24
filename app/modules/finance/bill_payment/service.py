@@ -252,6 +252,25 @@ def _check_bill_advance_limit(bill_ids, items, gst_lines, exclude_id=None):
     return None
 
 
+def _spread_advance(rows, advance, only_selected_gst=True):
+    """Put a bill's adjusted advance into its bill-wise rows, in row order
+    (basic items first, then GST): each row gets `advanceAmount` and its
+    `balanceAmount` goes down by it. Rows are dicts as sent to the UI."""
+    left = round(float(advance or 0), 2)
+    for row in rows:
+        row.setdefault("advanceAmount", 0.0)
+        if left <= 0:
+            continue
+        if only_selected_gst and "isSelected" in row and not row["isSelected"]:
+            continue
+        take = round(min(left, max(float(row.get("balanceAmount") or 0), 0)), 2)
+        if take > 0:
+            row["advanceAmount"] = take
+            row["balanceAmount"] = round(float(row["balanceAmount"]) - take, 2)
+            left = round(left - take, 2)
+    return rows
+
+
 def _journal_advance_adjusted(je_ids):
     return _advance_paid_by("journal_id", je_ids)
 
@@ -447,6 +466,17 @@ def _build_detail_payload(r):
             "currentAmount":  current,
             "isSelected":     g.is_selected,
         })
+
+    # Linked advance (excluding this receipt) shown in the rows, bill by bill
+    for bid in unique_bill_ids:
+        b = bills_by_id.get(bid) or (r.purchase_bill if r.purchase_bill_id == bid else None)
+        if not b:
+            continue
+        adv_adj = _bill_open_after_advance(b, exclude_id=r.id)[0]
+        _spread_advance([i for i in items if i["purchaseBillId"] == bid]
+                        + [g for g in gst_lines if g["purchaseBillId"] == bid], adv_adj)
+    for row in items + gst_lines:
+        row.setdefault("advanceAmount", 0.0)
 
     # Per-bill summary (for multi-bill display)
     bills_summary = []
@@ -784,6 +814,8 @@ def get_purchase_bill_payment_items(bill_id):
                 "isSelected":     g.is_selected,
             })
 
+        _spread_advance(items + gst_lines, adv_adj)
+
         return res("Purchase bill payment items fetched", {
             "purchaseBillId":      bill.id,
             "purchaseBillNo":      bill.purchase_bill_no,
@@ -840,6 +872,7 @@ def get_purchase_bills_payment_items_multi(bill_ids):
         for bill in bills:
             paid_basic = _paid_item_map(bill.id)
             paid_gst   = _paid_gst_map(bill.id)
+            item_start, gst_start = len(all_items), len(all_gst)
 
             order_no = (
                 (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
@@ -902,6 +935,7 @@ def get_purchase_bills_payment_items_multi(bill_ids):
                 "advanceAdjusted":     adv_adj,
                 "balanceAfterAdvance": bal_after_adv,
             })
+            _spread_advance(all_items[item_start:] + all_gst[gst_start:], adv_adj)
 
         return res("Multi-bill payment items fetched", {
             "bills":    bills_meta,
