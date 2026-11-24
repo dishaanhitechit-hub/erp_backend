@@ -13,7 +13,15 @@ class BillPaymentReceiptMaster(db.Model):
 
     payment_date = db.Column(db.Date, nullable=False)
 
-    payment_type = db.Column(db.String(20), nullable=False, default="bill")  # bill | voucher
+    payment_type = db.Column(db.String(20), nullable=False, default="bill")  # bill | voucher | advance
+
+    # advance only — the Approved ADVANCE Payment Request being paid
+    payment_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("payment_request_master.id"),
+        nullable=True,
+        index=True,
+    )
 
     purchase_bill_id = db.Column(
         db.Integer,
@@ -77,6 +85,7 @@ class BillPaymentReceiptMaster(db.Model):
     project        = db.relationship("Project",             backref="bill_payment_receipts")
     purchase_bill  = db.relationship("PurchaseBillMaster",  backref="bill_payment_receipts")
     journal_entry  = db.relationship("JournalEntryMaster",  backref="bill_payment_receipts", foreign_keys=[journal_entry_id])
+    payment_request = db.relationship("PaymentRequestMaster", backref="advance_payments", foreign_keys=[payment_request_id])
     vendor        = db.relationship("Vendor",            backref="bill_payment_receipts")
     cash_account  = db.relationship("BankCash", foreign_keys=[cash_ac_id])
     bank_account  = db.relationship("BankCash", foreign_keys=[bank_ac_id])

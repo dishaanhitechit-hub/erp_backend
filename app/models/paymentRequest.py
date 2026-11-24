@@ -1,6 +1,8 @@
 # app/models/paymentRequest.py
-# Payment Request — raised against an Approved BRR (Bill Receive Register)
-# or an Approved Journal Entry (one vendor of that journal per request).
+# Payment Request — raised against an Approved BRR (Bill Receive Register),
+# an Approved Journal Entry (one vendor of that journal per request), or as an
+# ADVANCE to a vendor with no bill yet. An advance is linked to a BRR or a
+# journal later (link_type), and from then on counts against that bill.
 # Multiple (partial) requests are allowed per source; the sum of non-rejected
 # requested amounts can never exceed the source's bill amount.
 # Journal-sourced requests are visible only to users holding the
@@ -17,7 +19,8 @@ class PaymentRequestMaster(db.Model):
     __table_args__ = (
         db.CheckConstraint(
             "(source_type = 'BRR' AND brr_id IS NOT NULL AND journal_id IS NULL) OR "
-            "(source_type = 'JOURNAL' AND journal_id IS NOT NULL AND brr_id IS NULL AND vendor_id IS NOT NULL)",
+            "(source_type = 'JOURNAL' AND journal_id IS NOT NULL AND brr_id IS NULL AND vendor_id IS NOT NULL) OR "
+            "(source_type = 'ADVANCE' AND vendor_id IS NOT NULL AND (brr_id IS NULL OR journal_id IS NULL))",
             name="ck_payment_request_source",
         ),
     )
@@ -36,7 +39,8 @@ class PaymentRequestMaster(db.Model):
         nullable=False
     )
 
-    # "BRR" → brr_id is set ; "JOURNAL" → journal_id + vendor_id are set
+    # "BRR" → brr_id is set ; "JOURNAL" → journal_id + vendor_id are set ;
+    # "ADVANCE" → vendor_id only, until linked to a BRR or a journal (link_type)
     source_type = db.Column(db.String(20), nullable=False, default="BRR", server_default="BRR")
 
     brr_id = db.Column(
@@ -76,6 +80,11 @@ class PaymentRequestMaster(db.Model):
 
     attached_doc = db.Column(db.String(500), nullable=True)
 
+    # ADVANCE only — set when the advance is linked to a bill later
+    link_type = db.Column(db.String(20), nullable=True)   # BRR | JOURNAL
+    linked_at = db.Column(db.DateTime, nullable=True)
+    linked_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
     # Workflow
     workflow_status = db.Column(db.String(30), default="Draft")
     status          = db.Column(db.String(30), default="Active")
@@ -108,3 +117,4 @@ class PaymentRequestMaster(db.Model):
     approver  = db.relationship("User", foreign_keys=[approved_by])
     rejector  = db.relationship("User", foreign_keys=[rejected_by])
     updater   = db.relationship("User", foreign_keys=[updated_by])
+    linker    = db.relationship("User", foreign_keys=[linked_by])

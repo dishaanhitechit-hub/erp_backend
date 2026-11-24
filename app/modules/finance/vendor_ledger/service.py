@@ -64,11 +64,13 @@ def _build_ledger(vendor_id, project_code=None, from_date=None, to_date=None):
             "date":        _fmt(r.payment_date),
             "_sort_dt":    r.payment_date,
             "_sort_id":    r.id,
-            "docType":     "Bill Payment",
+            "docType":     "Advance Payment" if r.payment_type == "advance" else "Bill Payment",
             "docNo":       r.receipt_no,
             "docId":       r.id,
             "projectCode": r.project_code,
-            "particular":  "Bill Payment " + r.receipt_no + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
+            "particular":  ("Advance Payment " if r.payment_type == "advance" else "Bill Payment ") + r.receipt_no
+                           + (f" | PR: {r.payment_request.pr_no}" if r.payment_type == "advance" and r.payment_request else "")
+                           + (f" | UTR: {r.utr_voucher_no}" if r.utr_voucher_no else ""),
             "debit":       float(r.total_invoice_amount or 0),
             "credit":      0.0,
         })

@@ -325,7 +325,16 @@ DEPENDENCY_MAP = {
         "model_class":  PaymentRequestMaster,
         "doc_no_field": "pr_no",
         "project_field": "project_code",
-        "children": [],  # leaf
+        "children": [
+            # advance requests: payments made from Account › Payment
+            {
+                "child_model":  BillPaymentReceiptMaster,
+                "fk_column":    "payment_request_id",
+                "doc_no_field": "receipt_no",
+                "module_code":  "BILL_PAYMENT",
+                "label":        "Advance Payment",
+            },
+        ],
         # journal-sourced requests: only payment_request_journal.EDIT holders may delete
         "access_check": lambda record, user_id: (
             record.source_type != "JOURNAL"

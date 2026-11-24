@@ -240,6 +240,30 @@ def _all_bank_balances(project_code=None, from_date=None, to_date=None):
     ]
 
 
+def _unlinked_vendor_advances(project_code=None, from_date=None, to_date=None):
+    """Approved advance payments (Account › Payment › Advance) whose advance
+    request is not yet linked to a bill. Shown under "Advance to vendors"
+    (CAAV); once linked to a BRR / journal the amount leaves CAAV."""
+    from app.models.paymentRequest import PaymentRequestMaster
+    q = (
+        db.session.query(db.func.coalesce(db.func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0))
+        .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
+        .filter(
+            BillPaymentReceiptMaster.payment_type    == "advance",
+            BillPaymentReceiptMaster.workflow_status == "Approved",
+            BillPaymentReceiptMaster.status          == "Active",
+            PaymentRequestMaster.link_type.is_(None),
+        )
+    )
+    if project_code:
+        q = q.filter(BillPaymentReceiptMaster.project_code == project_code)
+    if from_date:
+        q = q.filter(BillPaymentReceiptMaster.payment_date >= from_date)
+    if to_date:
+        q = q.filter(BillPaymentReceiptMaster.payment_date <= to_date)
+    return float(q.scalar() or 0)
+
+
 def _cash_balance(project_code=None, from_date=None, to_date=None):
     """
     Cash in hand = sum of approved petty cash docket voucher totals (Cash mode).
@@ -546,7 +570,7 @@ def get_balance_sheet(args):
 
         cart = jd["CART"]
 
-        caav = jd["CAAV"]
+        caav = jd["CAAV"] + _unlinked_vendor_advances(**kw)
         caae = jd["CAAE"]
         caop = jd["CAOP"]
         cala_total = caav + caae + caop

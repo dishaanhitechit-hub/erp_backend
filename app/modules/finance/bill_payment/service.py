@@ -13,6 +13,7 @@ from app.models.billPaymentReceipt import (
 from app.models.purchaseBill import PurchaseBillMaster, PurchaseBillItem
 from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.models.journalVoucher import PettyCashJournalVoucher
+from app.models.paymentRequest import PaymentRequestMaster
 from app.response import res
 from app.modules.work_flow import (
     is_creator,
@@ -126,9 +127,241 @@ def _paid_gst_map(purchase_bill_id, exclude_id=None):
     return result
 
 
+# ══════════════════════════════════════════════════════════════════
+# ADVANCE HELPERS
+#   An advance payment pays an Approved ADVANCE Payment Request. When that
+#   request is later linked to a BRR (or a journal), its APPROVED advance
+#   payments are adjusted against the bill: the bill's balance in this
+#   screen goes down by that amount. Bills with no linked advance behave
+#   exactly as before.
+# ══════════════════════════════════════════════════════════════════
+
+_DEAD = ("Rejected", "Cancelled")
+
+
+def _D(v):
+    return Decimal(str(v or 0)).quantize(Decimal("0.01"))
+
+
+def _advance_paid_by(link_col, ids):
+    """{source id: approved advance paid} for advances linked to BRRs
+    (link_col = brr_id) or journals (link_col = journal_id)."""
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    col = getattr(PaymentRequestMaster, link_col)
+    rows = (
+        db.session.query(col, func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0))
+        .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
+        .filter(
+            BillPaymentReceiptMaster.payment_type    == "advance",
+            BillPaymentReceiptMaster.workflow_status == "Approved",
+            PaymentRequestMaster.source_type         == "ADVANCE",
+            PaymentRequestMaster.link_type.isnot(None),
+            col.in_(ids),
+        )
+        .group_by(col)
+        .all()
+    )
+    return {k: float(v or 0) for k, v in rows}
+
+
+def _bill_paid_totals(bill_ids, exclude_id=None):
+    """(approved, in_progress) per purchase bill — same rule as the bill picker."""
+    if not bill_ids:
+        return {}, {}
+    base = db.session.query(
+        BillPaymentReceiptMaster.purchase_bill_id,
+        func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0),
+    ).filter(BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids))
+    if exclude_id:
+        base = base.filter(BillPaymentReceiptMaster.id != exclude_id)
+    paid = dict(base.filter(BillPaymentReceiptMaster.workflow_status == "Approved")
+                .group_by(BillPaymentReceiptMaster.purchase_bill_id).all())
+    inprog = dict(base.filter(BillPaymentReceiptMaster.workflow_status.notin_(["Approved", "Rejected", "Cancelled"]))
+                  .group_by(BillPaymentReceiptMaster.purchase_bill_id).all())
+    return ({k: float(v) for k, v in paid.items()}, {k: float(v) for k, v in inprog.items()})
+
+
+def _advance_adjusted_for_bills(bills, paid_map, inprog_map):
+    """{bill id: advance adjusted}. A BRR's linked advance is spread over the
+    purchase bills of that BRR, oldest first, up to each bill's open balance."""
+    by_brr = {}
+    for b in sorted(bills, key=lambda x: x.id):
+        if b.brr_id:
+            by_brr.setdefault(b.brr_id, []).append(b)
+    adv = _advance_paid_by("brr_id", list(by_brr.keys()))
+    out = {}
+    for brr_id, brr_bills in by_brr.items():
+        left = adv.get(brr_id, 0.0)
+        for b in brr_bills:
+            if left <= 0:
+                break
+            open_bal = max(float(b.total_invoice_amount or 0) - paid_map.get(b.id, 0) - inprog_map.get(b.id, 0), 0)
+            take = min(left, open_bal)
+            if take > 0:
+                out[b.id] = take
+                left -= take
+    return out
+
+
+def _bill_open_after_advance(bill, exclude_id=None):
+    """(advance adjusted, balance) for one purchase bill, excluding receipt exclude_id."""
+    siblings = PurchaseBillMaster.query.filter(
+        PurchaseBillMaster.brr_id == bill.brr_id,
+        PurchaseBillMaster.workflow_status == "Approved",
+    ).all() if bill.brr_id else [bill]
+    ids = [b.id for b in siblings]
+    paid, inprog = _bill_paid_totals(ids, exclude_id)
+    adjusted = _advance_adjusted_for_bills(siblings, paid, inprog).get(bill.id, 0.0)
+    balance = max(float(bill.total_invoice_amount or 0) - paid.get(bill.id, 0) - inprog.get(bill.id, 0) - adjusted, 0)
+    return adjusted, balance
+
+
+def _check_bill_advance_limit(bill_ids, items, gst_lines, exclude_id=None):
+    """Only for bills that carry a linked advance: what this payment puts on a
+    bill can't go over the bill's balance after the advance. Bills without an
+    advance are not checked here (unchanged behaviour)."""
+    bills = PurchaseBillMaster.query.filter(PurchaseBillMaster.id.in_(bill_ids)).all()
+    if not bills:
+        return None
+    item_bill = {
+        p.id: p.purchase_bill_id
+        for p in PurchaseBillItem.query.filter(
+            PurchaseBillItem.id.in_([int(i.get("pbItemId")) for i in items if i.get("pbItemId")] or [0])
+        ).all()
+    }
+    single = len(bill_ids) == 1
+    for b in bills:
+        adjusted, balance = _bill_open_after_advance(b, exclude_id)
+        if adjusted <= 0:
+            continue
+        amount = sum(
+            float(i.get("currentAmount") or 0) for i in items
+            if (single and not i.get("pbItemId")) or item_bill.get(int(i.get("pbItemId") or 0)) == b.id
+        )
+        for g in gst_lines:
+            if not g.get("isSelected"):
+                continue
+            gt = g.get("gstType") or ""
+            if (":" in gt and gt.split(":", 1)[0] == str(b.id)) or (":" not in gt and single):
+                amount += float(g.get("currentAmount") or 0)
+        if round(amount, 2) > round(balance, 2):
+            return (f"Bill {b.purchase_bill_no}: amount {amount:.2f} exceeds balance {balance:.2f} "
+                    f"(advance {adjusted:.2f} already adjusted)")
+    return None
+
+
+def _journal_advance_adjusted(je_ids):
+    return _advance_paid_by("journal_id", je_ids)
+
+
+def _check_journal_advance_limit(je_ids, items, exclude_id=None):
+    adv = _journal_advance_adjusted(je_ids)
+    if not adv:
+        return None
+    line_je = {
+        l.id: l.journal_id
+        for l in JournalEntryLine.query.filter(
+            JournalEntryLine.id.in_([int(i.get("jeLineId")) for i in items if i.get("jeLineId")] or [0])
+        ).all()
+    }
+    for jid, adjusted in adv.items():
+        je = JournalEntryMaster.query.get(jid)
+        paid = sum(_paid_je_line_map(jid, exclude_id=exclude_id, include_active=True).values())
+        balance = max(float(je.total_debit or 0) - paid - adjusted, 0)
+        amount = sum(float(i.get("currentAmount") or 0) for i in items
+                     if line_je.get(int(i.get("jeLineId") or 0)) == jid)
+        if round(amount, 2) > round(balance, 2):
+            return (f"Journal {je.voucher_no}: amount {amount:.2f} exceeds balance {balance:.2f} "
+                    f"(advance {adjusted:.2f} already adjusted)")
+    return None
+
+
+def _lock_advance_request(pr_id):
+    return PaymentRequestMaster.query.filter(PaymentRequestMaster.id == pr_id).with_for_update().first()
+
+
+def _validate_advance_payment(pr, project_code, amount, exclude_id=None):
+    """Raises ValueError when the advance request can't take this amount."""
+    from app.modules.billing.payment_request.service import advance_paid
+    if not pr:
+        raise ValueError("Advance Payment Request not found")
+    if pr.source_type != "ADVANCE":
+        raise ValueError(f"Payment Request {pr.pr_no} is not an advance request")
+    if pr.project_code != project_code:
+        raise ValueError("Advance Payment Request does not belong to this project")
+    if pr.workflow_status != "Approved":
+        raise ValueError(f"Advance Payment Request {pr.pr_no} is not Approved")
+    if amount <= 0:
+        raise ValueError("Advance amount must be greater than 0")
+    approved, in_progress = advance_paid(pr.id, exclude_receipt_id=exclude_id)
+    balance = _D(pr.net_payable) - approved - in_progress
+    if amount > balance:
+        raise ValueError(
+            f"Amount {amount} exceeds balance {balance} of advance request {pr.pr_no} "
+            f"(net payable {_D(pr.net_payable)}, already paid / in progress {approved + in_progress})"
+        )
+
+
+def _build_advance_detail_payload(r):
+    from app.modules.billing.payment_request.service import advance_paid
+    pr = r.payment_request
+    approved, in_progress = advance_paid(pr.id, exclude_receipt_id=r.id) if pr else (Decimal("0"), Decimal("0"))
+    net = _D(pr.net_payable) if pr else Decimal("0")
+    return {
+        "id":                  r.id,
+        "receiptNo":           r.receipt_no,
+        "receiptUuid":         r.receipt_uuid,
+        "paymentType":         "advance",
+        "paymentDate":         _fmt_date(r.payment_date),
+        "paymentRequestId":    r.payment_request_id,
+        "paymentRequestNo":    pr.pr_no if pr else None,
+        "paymentRequestDate":  _fmt_date(pr.pr_date) if pr else None,
+        "requestNetPayable":   float(net),
+        "requestPaidOther":    float(approved + in_progress),   # other payments on the request
+        "requestBalance":      float(max(net - approved - in_progress, Decimal("0"))),
+        "linkType":            pr.link_type if pr else None,
+        "linkedNo":            (pr.brr_no if pr and pr.link_type == "BRR"
+                                else pr.journal_voucher_no if pr and pr.link_type == "JOURNAL" else None),
+        "projectCode":         r.project_code,
+        "vendorId":            r.vendor_id,
+        "vendorName":          r.vendor.ledger_name if r.vendor else None,
+        "paymentMode":         r.payment_mode,
+        "cashAcId":            r.cash_ac_id,
+        "cashAcName":          r.cash_account.bank_holder_name    if r.cash_account else None,
+        "cashAcNo":            r.cash_account.bank_account_number if r.cash_account else None,
+        "bankAcId":            r.bank_ac_id,
+        "bankAcName":          r.bank_account.bank_holder_name    if r.bank_account else None,
+        "bankAcNo":            r.bank_account.bank_account_number if r.bank_account else None,
+        "utrVoucherNo":        r.utr_voucher_no,
+        "paymentRemarks":      r.payment_remarks,
+        "basicAmount":         float(r.basic_amount         or 0),
+        "gstAmount":           0,
+        "discount":            0,
+        "roundOff":            0,
+        "totalInvoiceAmount":  float(r.total_invoice_amount or 0),
+        "workflowStatus":      r.workflow_status,
+        "currentLevel":        r.current_level,
+        "locked":              r.locked,
+        "createdBy":           r.creator.username   if r.creator   else None,
+        "createdAt":           _fmt_date(r.created_at),
+        "submittedBy":         r.submitter.username if r.submitter else None,
+        "submittedAt":         _fmt_date(r.submitted_at),
+        "approvedBy":          r.approver.username  if r.approver  else None,
+        "finalApprovedAt":     _fmt_date(r.final_approved_at),
+        "rejectedBy":          r.rejector.username  if r.rejector  else None,
+        "rejectedAt":          _fmt_date(r.rejected_at),
+        "items":               [],
+        "gstLines":            [],
+    }
+
+
 def _build_detail_payload(r):
     is_voucher = (r.payment_type or "bill") == "voucher"
 
+    if (r.payment_type or "bill") == "advance":
+        return _build_advance_detail_payload(r)
     if is_voucher:
         return _build_voucher_detail_payload(r)
 
@@ -451,13 +684,17 @@ def get_approved_purchase_bills(data):
                 if row.purchase_bill_id not in locked_map:
                     locked_map[row.purchase_bill_id] = row.workflow_status
 
+        # Linked advances (approved advance payments) reduce the bill balance
+        adv_map = _advance_adjusted_for_bills(rows, paid_map, in_progress_map)
+
         result = []
         for r in rows:
             booked     = float(r.total_invoice_amount or 0)
             paid       = paid_map.get(r.id, 0)
             in_prog    = in_progress_map.get(r.id, 0)
-            # True balance = booked - approved - in-progress drafts
-            balance    = max(booked - paid - in_prog, 0)
+            adv_adj    = adv_map.get(r.id, 0)
+            # True balance = booked - approved - in-progress drafts - linked advance
+            balance    = max(booked - paid - in_prog - adv_adj, 0)
             is_locked  = r.id in locked_map
             result.append({
                 "id":            r.id,
@@ -475,6 +712,7 @@ def get_approved_purchase_bills(data):
                 "bookedAmount":      booked,
                 "approvedPaidAmount": paid,
                 "inProgressAmount":   in_prog,
+                "advanceAdjusted":    adv_adj,
                 "balanceAmount":      balance,
                 "isLocked":           is_locked,
                 "paymentStatus":      locked_map.get(r.id),
@@ -522,6 +760,7 @@ def get_purchase_bill_payment_items(bill_id):
             (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
             (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
         )
+        adv_adj, bal_after_adv = _bill_open_after_advance(bill)
 
         gst_lines = []
         for g in bill.gst_lines:
@@ -559,6 +798,8 @@ def get_purchase_bill_payment_items(bill_id):
             "totalBookedBasic":    float(bill.basic_amount         or 0),
             "totalBookedGst":      float(bill.gst_amount           or 0),
             "totalBookedInvoice":  float(bill.total_invoice_amount or 0),
+            "advanceAdjusted":     adv_adj,
+            "balanceAfterAdvance": bal_after_adv,
             "items":               items,
             "gstLines":            gst_lines,
         }, 200)
@@ -604,6 +845,7 @@ def get_purchase_bills_payment_items_multi(bill_ids):
                 (bill.brr.order.order_no    if bill.brr and bill.brr.order    else None) or
                 (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None)
             )
+            adv_adj, bal_after_adv = _bill_open_after_advance(bill)
 
             for i in bill.items:
                 booked  = float(i.basic_amount or 0)
@@ -657,6 +899,8 @@ def get_purchase_bills_payment_items_multi(bill_ids):
                 "orderNo":        order_no,
                 "vendorId":       bill.vendor_id,
                 "vendorName":     bill.vendor.ledger_name if bill.vendor else None,
+                "advanceAdjusted":     adv_adj,
+                "balanceAfterAdvance": bal_after_adv,
             })
 
         return res("Multi-bill payment items fetched", {
@@ -743,6 +987,7 @@ def get_approved_journal_vouchers(data):
             )
 
         rows = query.order_by(JournalEntryMaster.id.desc()).all()
+        je_adv = _journal_advance_adjusted([je.id for je in rows])
 
         result = []
         for je in rows:
@@ -750,7 +995,8 @@ def get_approved_journal_vouchers(data):
             paid_map = _paid_je_line_map(je.id, include_active=True)
             total_booked  = float(je.total_debit or 0)
             total_paid    = sum(paid_map.values())
-            total_balance = max(total_booked - total_paid, 0)
+            adv_adj       = min(je_adv.get(je.id, 0), max(total_booked - total_paid, 0))
+            total_balance = max(total_booked - total_paid - adv_adj, 0)
 
             # Skip fully-paid JEs
             if total_balance == 0 and total_booked > 0:
@@ -791,6 +1037,7 @@ def get_approved_journal_vouchers(data):
                 "entryMode":     je.entry_mode,
                 "totalDebit":    total_booked,
                 "totalPaid":     total_paid,
+                "advanceAdjusted": adv_adj,
                 "balanceAmount": total_balance,
                 "isLocked":      active_receipt is not None,
                 "paymentStatus": active_receipt.workflow_status if active_receipt else None,
@@ -1000,6 +1247,10 @@ def _create_voucher_payment(data, user_id, project_code):
     if not items:
         return res("At least one item required", [], 400)
 
+    limit_err = _check_journal_advance_limit(je_ids, items)
+    if limit_err:
+        return res(limit_err, [], 400)
+
     basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
     discount    = Decimal(str(data.get("discount")  or 0))
     round_off   = Decimal(str(data.get("roundOff")  or 0))
@@ -1057,6 +1308,68 @@ def _create_voucher_payment(data, user_id, project_code):
         return res(str(e), [], 500)
 
 
+def _create_advance_payment(data, user_id, project_code):
+    """Advance payment — pays an Approved ADVANCE Payment Request (in parts allowed).
+    Posts like any payment: Dr Vendor, Cr Bank / Cash."""
+    payment_mode = data.get("paymentMode")
+    if payment_mode not in ("Bank", "Cash"):
+        return res("paymentMode must be Bank or Cash", [], 400)
+    if payment_mode == "Bank" and not data.get("bankAcId"):
+        return res("Bank account is required for Bank payment mode", [], 400)
+    if payment_mode == "Cash" and not data.get("cashAcId"):
+        return res("Cash account is required for Cash payment mode", [], 400)
+    if not data.get("paymentRequestId"):
+        return res("paymentRequestId required for advance payment", [], 400)
+
+    try:
+        amount = _D(data.get("amount"))
+        pr = _lock_advance_request(int(data["paymentRequestId"]))
+        _validate_advance_payment(pr, project_code, amount)
+
+        r = BillPaymentReceiptMaster(
+            receipt_no         = _generate_receipt_no(),
+            receipt_uuid       = str(_uuid.uuid4()),
+            payment_type       = "advance",
+            payment_date       = _parse_date(data.get("paymentDate")) or date.today(),
+            payment_request_id = pr.id,
+            project_code       = project_code,
+            vendor_id          = pr.vendor_id,
+            payment_mode       = payment_mode,
+            cash_ac_id         = data.get("cashAcId") if payment_mode == "Cash" else None,
+            bank_ac_id         = data.get("bankAcId") if payment_mode == "Bank" else None,
+            utr_voucher_no     = data.get("utrVoucherNo"),
+            payment_remarks    = data.get("paymentRemarks"),
+            basic_amount         = amount,
+            gst_amount           = Decimal("0"),
+            discount             = Decimal("0"),
+            round_off            = Decimal("0"),
+            total_invoice_amount = amount,
+            workflow_status = "Draft",
+            current_level   = 0,
+            locked          = False,
+            created_by      = user_id,
+        )
+        db.session.add(r)
+        db.session.commit()
+        return res("Advance payment created", {
+            "id":          r.id,
+            "receiptNo":   r.receipt_no,
+            "receiptUuid": r.receipt_uuid,
+        }, 201)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+def _revalidate_advance(r):
+    """Lock the request and re-check this advance payment's amount."""
+    pr = _lock_advance_request(r.payment_request_id)
+    _validate_advance_payment(pr, r.project_code, _D(r.total_invoice_amount), exclude_id=r.id)
+
+
 def create_bill_payment_receipt(data, user_id):
     try:
         project_code = (data.get("projectCode") or "").strip()
@@ -1071,6 +1384,8 @@ def create_bill_payment_receipt(data, user_id):
 
         if payment_type == "voucher":
             return _create_voucher_payment(data, user_id, project_code)
+        if payment_type == "advance":
+            return _create_advance_payment(data, user_id, project_code)
 
         # ── BILL PAYMENT ─────────────────────────────────────────────
         # Support multi-bill: purchaseBillIds (array) or single purchaseBillId
@@ -1108,6 +1423,10 @@ def create_bill_payment_receipt(data, user_id):
             return res("At least one BASIC item required", [], 400)
 
         gst_lines = data.get("gstLines", [])
+
+        limit_err = _check_bill_advance_limit(purchase_bill_ids, items, gst_lines)
+        if limit_err:
+            return res(limit_err, [], 400)
 
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
         gst_total = sum(
@@ -1226,6 +1545,10 @@ def get_bill_payment_list(data):
             {
                 "id":                 r.id,
                 "receiptNo":          r.receipt_no,
+                "paymentType":        r.payment_type or "bill",
+                "paymentRequestId":   r.payment_request_id,
+                "paymentRequestNo":   r.payment_request.pr_no if r.payment_request else None,
+                "voucherNo":          r.journal_entry.voucher_no if r.journal_entry else None,
                 "paymentDate":        _fmt_date(r.payment_date),
                 "purchaseBillId":     r.purchase_bill_id,
                 "purchaseBillNo":     r.purchase_bill.purchase_bill_no if r.purchase_bill else None,
@@ -1298,6 +1621,9 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         if not allowed:
             return res("You are not authorized to edit bill payment receipts", [], 403)
 
+        if (r.payment_type or "bill") == "advance":
+            return _edit_advance_payment(r, data, user_id)
+
         payment_mode = data.get("paymentMode") or r.payment_mode
         if payment_mode == "Bank" and not (data.get("bankAcId") or r.bank_ac_id):
             return res("Bank account is required for Bank payment mode", [], 400)
@@ -1320,11 +1646,25 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
                 val = _parse_date(data[key]) if attr == "payment_date" else (data[key] or None)
                 setattr(r, attr, val)
 
+        is_voucher = (r.payment_type or "bill") == "voucher"
+        if is_voucher:
+            je_ids = sorted({l.journal_id for l in JournalEntryLine.query.filter(
+                JournalEntryLine.id.in_([int(i.get("jeLineId")) for i in items if i.get("jeLineId")] or [0])
+            ).all()} | ({r.journal_entry_id} if r.journal_entry_id else set()))
+            limit_err = _check_journal_advance_limit(je_ids, items, exclude_id=r.id)
+        else:
+            bill_ids = sorted({p.purchase_bill_id for p in PurchaseBillItem.query.filter(
+                PurchaseBillItem.id.in_([int(i.get("pbItemId")) for i in items if i.get("pbItemId")] or [0])
+            ).all()} | ({r.purchase_bill_id} if r.purchase_bill_id else set()))
+            limit_err = _check_bill_advance_limit(bill_ids, items, data.get("gstLines", []), exclude_id=r.id)
+        if limit_err:
+            db.session.rollback()
+            return res(limit_err, [], 400)
+
         BillPaymentReceiptItem.query.filter_by(receipt_id=r.id).delete()
         BillPaymentReceiptGst.query.filter_by(receipt_id=r.id).delete()
         db.session.flush()
 
-        is_voucher = (r.payment_type or "bill") == "voucher"
         basic_total = sum(Decimal(str(i.get("currentAmount") or 0)) for i in items)
 
         if is_voucher:
@@ -1394,6 +1734,49 @@ def edit_bill_payment_receipt(receipt_id, data, user_id):
         return res(str(e), [], 500)
 
 
+def _edit_advance_payment(r, data, user_id):
+    try:
+        payment_mode = data.get("paymentMode") or r.payment_mode
+        if payment_mode not in ("Bank", "Cash"):
+            return res("paymentMode must be Bank or Cash", [], 400)
+        bank_ac = data.get("bankAcId") if "bankAcId" in data else r.bank_ac_id
+        cash_ac = data.get("cashAcId") if "cashAcId" in data else r.cash_ac_id
+        if payment_mode == "Bank" and not bank_ac:
+            return res("Bank account is required for Bank payment mode", [], 400)
+        if payment_mode == "Cash" and not cash_ac:
+            return res("Cash account is required for Cash payment mode", [], 400)
+        if data.get("paymentRequestId") and int(data["paymentRequestId"]) != r.payment_request_id:
+            return res("Advance Payment Request cannot be changed. Create a new payment.", [], 400)
+
+        amount = _D(data.get("amount")) if data.get("amount") not in (None, "") else _D(r.total_invoice_amount)
+        pr = _lock_advance_request(r.payment_request_id)
+        _validate_advance_payment(pr, r.project_code, amount, exclude_id=r.id)
+
+        if data.get("paymentDate"):
+            r.payment_date = _parse_date(data["paymentDate"]) or r.payment_date
+        r.payment_mode = payment_mode
+        r.bank_ac_id   = bank_ac if payment_mode == "Bank" else None
+        r.cash_ac_id   = cash_ac if payment_mode == "Cash" else None
+        if "utrVoucherNo" in data:
+            r.utr_voucher_no = data.get("utrVoucherNo")
+        if "paymentRemarks" in data:
+            r.payment_remarks = data.get("paymentRemarks")
+        r.basic_amount = r.total_invoice_amount = amount
+        r.gst_amount = r.discount = r.round_off = Decimal("0")
+        if r.workflow_status == "Reback":
+            r.correction_sent_at = None
+        r.updated_by = user_id
+        r.updated_at = datetime.utcnow()
+        db.session.commit()
+        return res("Advance payment updated", {"id": r.id, "receiptNo": r.receipt_no}, 200)
+    except ValueError as e:
+        db.session.rollback()
+        return res(str(e), [], 400)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
 # ══════════════════════════════════════════════════════════════════
 # 6. SUBMIT
 # ══════════════════════════════════════════════════════════════════
@@ -1405,7 +1788,14 @@ def submit_bill_payment(receipt_id, user_id):
             return res("Bill payment receipt not found", [], 404)
         if r.workflow_status not in ("Draft", "Reback"):
             return res("Bill payment receipt already submitted", [], 400)
-        if not r.items:
+        is_advance = (r.payment_type or "bill") == "advance"
+        if is_advance:
+            try:
+                _revalidate_advance(r)
+            except ValueError as e:
+                db.session.rollback()
+                return res(str(e), [], 400)
+        elif not r.items:
             return res("Bill payment receipt has no items", [], 400)
 
         if r.workflow_status == "Reback":
@@ -1488,6 +1878,13 @@ def approve_bill_payment(receipt_id, approved_by, comments=None):
             return res(f"L{gap} is not assigned. Please assign it before approving.", [], 400)
 
         next_level = get_next_approver(r.project_code, _MODULE, r.current_level)
+
+        if not next_level and (r.payment_type or "bill") == "advance":
+            try:
+                _revalidate_advance(r)
+            except ValueError as e:
+                db.session.rollback()
+                return res(str(e), [], 400)
 
         if next_level:
             create_history(
@@ -1754,6 +2151,182 @@ def delete_bill_payment(receipt_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return res(str(e), [], 500)
+    except Exception as e:
+        db.session.rollback()
+        return res(str(e), [], 500)
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# 13. PAYMENT HISTORY OF A BILL (popup) — bill / voucher / advance rows
+# ══════════════════════════════════════════════════════════════════
+
+def _row(r, amount, pr=None):
+    acct = r.bank_account if r.payment_mode == "Bank" else r.cash_account
+    return {
+        "id":               r.id,
+        "receiptNo":        r.receipt_no,
+        "paymentDate":      _fmt_date(r.payment_date),
+        "paymentType":      r.payment_type or "bill",
+        "typeLabel":        {"bill": "Bill Payment", "voucher": "Voucher Payment",
+                             "advance": "Advance Payment"}.get(r.payment_type or "bill", "Payment"),
+        "paymentRequestNo": pr.pr_no if pr else None,
+        "paymentMode":      r.payment_mode,
+        "accountName":      acct.bank_holder_name if acct else None,
+        "utrVoucherNo":     r.utr_voucher_no,
+        "amount":           round(float(amount or 0), 2),
+        "workflowStatus":   r.workflow_status,
+    }
+
+
+def _receipt_amount_on_bills(r, bill_ids):
+    """Part of receipt r that belongs to the given purchase bills."""
+    item_ids = {p.id for p in PurchaseBillItem.query.filter(PurchaseBillItem.purchase_bill_id.in_(bill_ids)).all()}
+    on_items = [i for i in r.items if i.pb_item_id]
+    if on_items and all(i.pb_item_id in item_ids for i in on_items):
+        return float(r.total_invoice_amount or 0)       # whole receipt is on these bills
+    amt = sum(float(i.current_amount or 0) for i in on_items if i.pb_item_id in item_ids)
+    for g in r.gst_lines:
+        if not g.is_selected:
+            continue
+        gt = g.gst_type or ""
+        if ":" in gt:
+            if gt.split(":", 1)[0] in {str(b) for b in bill_ids}:
+                amt += float(g.current_amount or 0)
+        elif r.purchase_bill_id in bill_ids:
+            amt += float(g.current_amount or 0)
+    if not on_items and r.purchase_bill_id in bill_ids:
+        amt = float(r.total_invoice_amount or 0)
+    return amt
+
+
+def get_bill_payments_on_bill(data):
+    """Payments made against a bill — for the popup table.
+    One of: purchaseBillId | brrId | journalEntryId (+ vendorId).
+    Totals: bill amount, paid (approved), advance adjusted (approved advance
+    payments of linked advance requests), in progress, balance."""
+    try:
+        rows, in_prog = [], 0.0
+        paid = adv_total = bill_amount = 0.0
+        title = ""
+
+        if data.get("purchaseBillId") or data.get("brrId"):
+            if data.get("purchaseBillId"):
+                bill = PurchaseBillMaster.query.get(int(data["purchaseBillId"]))
+                if not bill:
+                    return res("Purchase bill not found", [], 404)
+                bills = [bill]
+                brr_id = bill.brr_id
+                title = f"Purchase Bill {bill.purchase_bill_no}"
+            else:
+                brr_id = int(data["brrId"])
+                bills = PurchaseBillMaster.query.filter(
+                    PurchaseBillMaster.brr_id == brr_id,
+                    PurchaseBillMaster.workflow_status == "Approved",
+                ).all()
+                from app.models.brrMaster import BrrMaster
+                brr = BrrMaster.query.get(brr_id)
+                title = f"BRR {brr.brr_no if brr else brr_id}"
+            bill_ids = [b.id for b in bills]
+            bill_amount = sum(float(b.total_invoice_amount or 0) for b in bills)
+
+            if bill_ids:
+                item_receipts = db.session.query(BillPaymentReceiptItem.receipt_id).join(
+                    PurchaseBillItem, PurchaseBillItem.id == BillPaymentReceiptItem.pb_item_id
+                ).filter(PurchaseBillItem.purchase_bill_id.in_(bill_ids))
+                receipts = (
+                    BillPaymentReceiptMaster.query
+                    .filter(BillPaymentReceiptMaster.payment_type != "advance",
+                            db.or_(BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
+                                   BillPaymentReceiptMaster.id.in_(item_receipts)))
+                    .order_by(BillPaymentReceiptMaster.payment_date.asc(), BillPaymentReceiptMaster.id.asc())
+                    .all()
+                )
+                for r in receipts:
+                    amt = _receipt_amount_on_bills(r, bill_ids)
+                    rows.append(_row(r, amt))
+                    if r.workflow_status == "Approved":
+                        paid += amt
+                    elif r.workflow_status not in _DEAD:
+                        in_prog += amt
+
+            # advance payments of advances linked to this BRR
+            if brr_id:
+                advs = (
+                    BillPaymentReceiptMaster.query
+                    .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
+                    .filter(BillPaymentReceiptMaster.payment_type == "advance",
+                            PaymentRequestMaster.link_type == "BRR",
+                            PaymentRequestMaster.brr_id == brr_id)
+                    .order_by(BillPaymentReceiptMaster.payment_date.asc(), BillPaymentReceiptMaster.id.asc())
+                    .all()
+                )
+                for r in advs:
+                    rows.append(_row(r, r.total_invoice_amount, r.payment_request))
+                if data.get("purchaseBillId"):
+                    siblings = PurchaseBillMaster.query.filter(
+                        PurchaseBillMaster.brr_id == brr_id,
+                        PurchaseBillMaster.workflow_status == "Approved",
+                    ).all()
+                    p_map, i_map = _bill_paid_totals([b.id for b in siblings])
+                    adv_total = _advance_adjusted_for_bills(siblings, p_map, i_map).get(bills[0].id, 0.0)
+                else:
+                    adv_total = min(_advance_paid_by("brr_id", [brr_id]).get(brr_id, 0.0),
+                                    max(bill_amount - paid - in_prog, 0))
+
+        elif data.get("journalEntryId"):
+            je = JournalEntryMaster.query.get(int(data["journalEntryId"]))
+            if not je:
+                return res("Journal entry not found", [], 404)
+            title = f"Journal {je.voucher_no}"
+            vendor_id = int(data["vendorId"]) if data.get("vendorId") else None
+            line_ids = [l.id for l in je.lines]
+            bill_amount = float(je.total_debit or 0)
+            item_receipts = db.session.query(BillPaymentReceiptItem.receipt_id).filter(
+                BillPaymentReceiptItem.je_line_id.in_(line_ids or [0]))
+            receipts = (
+                BillPaymentReceiptMaster.query
+                .filter(BillPaymentReceiptMaster.payment_type == "voucher",
+                        db.or_(BillPaymentReceiptMaster.journal_entry_id == je.id,
+                               BillPaymentReceiptMaster.id.in_(item_receipts)))
+                .order_by(BillPaymentReceiptMaster.payment_date.asc(), BillPaymentReceiptMaster.id.asc())
+                .all()
+            )
+            for r in receipts:
+                amt = sum(float(i.current_amount or 0) for i in r.items if i.je_line_id in line_ids) \
+                    or float(r.total_invoice_amount or 0)
+                rows.append(_row(r, amt))
+                if r.workflow_status == "Approved":
+                    paid += amt
+                elif r.workflow_status not in _DEAD:
+                    in_prog += amt
+            adv_q = (
+                BillPaymentReceiptMaster.query
+                .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
+                .filter(BillPaymentReceiptMaster.payment_type == "advance",
+                        PaymentRequestMaster.link_type == "JOURNAL",
+                        PaymentRequestMaster.journal_id == je.id)
+            )
+            if vendor_id:
+                adv_q = adv_q.filter(PaymentRequestMaster.vendor_id == vendor_id)
+            for r in adv_q.order_by(BillPaymentReceiptMaster.id.asc()).all():
+                rows.append(_row(r, r.total_invoice_amount, r.payment_request))
+                if r.workflow_status == "Approved":
+                    adv_total += float(r.total_invoice_amount or 0)
+            adv_total = min(adv_total, max(bill_amount - paid - in_prog, 0))
+        else:
+            return res("purchaseBillId, brrId or journalEntryId required", [], 400)
+
+        rows.sort(key=lambda x: (x["paymentDate"] or "", x["id"]))
+        return res("Bill payment history fetched", {
+            "title":           title,
+            "billAmount":      round(bill_amount, 2),
+            "paidAmount":      round(paid, 2),
+            "advanceAdjusted": round(adv_total, 2),
+            "inProgress":      round(in_prog, 2),
+            "balanceAmount":   round(max(bill_amount - paid - adv_total - in_prog, 0), 2),
+            "payments":        rows,
+        }, 200)
     except Exception as e:
         db.session.rollback()
         return res(str(e), [], 500)

@@ -18,6 +18,7 @@ from app.modules.finance.bill_payment.service import (
     reject_bill_payment,
     get_bill_payment_history,
     get_bill_payment_my_approval_status,
+    get_bill_payments_on_bill,
 )
 
 bill_payment_bp = Blueprint("bill_payment", __name__)
@@ -28,6 +29,14 @@ bill_payment_bp = Blueprint("bill_payment", __name__)
 @login_required
 def api_approved_purchase_bills():
     return get_approved_purchase_bills(request.args.to_dict())
+
+
+# ── POPUP: payments made on a bill (bill / voucher / advance rows) ─
+#    ?purchaseBillId= | ?brrId= | ?journalEntryId=&vendorId=
+@bill_payment_bp.route("/bill-payments", methods=["GET"])
+@login_required
+def api_bill_payments_on_bill():
+    return get_bill_payments_on_bill(request.args.to_dict())
 
 
 # ── LOOKUP: Items + GST of a purchase bill with paid/balance ──────

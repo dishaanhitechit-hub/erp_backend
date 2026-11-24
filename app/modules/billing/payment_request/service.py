@@ -20,6 +20,14 @@ Rules
   `payment_request_journal` page permission (granted by super admin in
   Settings › Roles & User Assignment) can see them — VIEW to see / approve,
   EDIT to raise / edit / submit / delete. Approvers need it too.
+* Source ADVANCE: money asked for a vendor before any bill exists. Only a
+  vendor (sundry creditor of the project) is chosen — no bill ceiling. It
+  follows the BRR approval path (`payment_request`). Once Approved it is paid
+  from Account › Payment (payment type "advance"), in one or more parts.
+  Later the advance is LINKED to an Approved BRR or journal of the same vendor
+  (link_type). From then on it counts in that source's requested total, the
+  same way a BRR / journal request does, and its approved payments reduce the
+  balance of the bill in Account › Payment.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -35,6 +43,7 @@ from app.models.brrMaster import BrrMaster
 from app.models.brbMaster import BrbMaster
 from app.models.journalEntry import JournalEntryMaster, JournalEntryLine
 from app.models.paymentRequest import PaymentRequestMaster
+from app.models.billPaymentReceipt import BillPaymentReceiptMaster
 from app.models.project import Project
 from app.models.vendor import Vendor
 from app.models.user import User
@@ -64,10 +73,14 @@ _PAYMENT_MODES = {"Bank", "Cash"}
 
 SRC_BRR     = "BRR"
 SRC_JOURNAL = "JOURNAL"
+SRC_ADVANCE = "ADVANCE"
+_SOURCES    = (SRC_BRR, SRC_JOURNAL, SRC_ADVANCE)
+_DEAD       = ("Rejected", "Cancelled")   # statuses that free a balance
 
 
 def _wf(pr_or_source):
-    """Approval-path module code for a request (or a source type string)."""
+    """Approval-path module code for a request (or a source type string).
+    ADVANCE requests use the BRR path."""
     src = pr_or_source if isinstance(pr_or_source, str) else (pr_or_source.source_type or SRC_BRR)
     return _MODULE_JOURNAL if src == SRC_JOURNAL else _MODULE_BRR
 
@@ -237,7 +250,8 @@ def _brr_bill_amount(brr):
 
 
 def _brr_filters(brr_id):
-    return [PaymentRequestMaster.source_type == SRC_BRR, PaymentRequestMaster.brr_id == brr_id]
+    """BRR requests + advances linked to this BRR."""
+    return [PaymentRequestMaster.source_type.in_((SRC_BRR, SRC_ADVANCE)), PaymentRequestMaster.brr_id == brr_id]
 
 
 def _brr_summary(brr, exclude_id=None):
@@ -301,8 +315,9 @@ def _journal_vendor_bill(journal_id, vendor_id):
 
 
 def _journal_filters(journal_id, vendor_id):
+    """Journal requests + advances linked to this journal, for one vendor."""
     return [
-        PaymentRequestMaster.source_type == SRC_JOURNAL,
+        PaymentRequestMaster.source_type.in_((SRC_JOURNAL, SRC_ADVANCE)),
         PaymentRequestMaster.journal_id  == journal_id,
         PaymentRequestMaster.vendor_id   == vendor_id,
     ]
@@ -343,15 +358,150 @@ def _validate_journal(je, vendor_id, requested, deduction, exclude_id=None):
 
 
 # ══════════════════════════════════════════════════════════════════
+# HELPERS — ADVANCE source (vendor only; linked to BRR / journal later)
+# ══════════════════════════════════════════════════════════════════
+
+def _project_vendor_ids(project_code):
+    """Sundry creditors connected with the project: linked to it in the vendor
+    master, or already used on one of its orders / BRRs / purchase bills /
+    journal Cr lines."""
+    from app.models.vendor import VendorProject
+    from app.models.orderMaster import OrderMaster
+    from app.models.purchaseBill import PurchaseBillMaster
+
+    ids = set()
+    project = Project.query.filter_by(project_code=project_code).first()
+    if project:
+        ids |= {r[0] for r in db.session.query(VendorProject.vendor_id)
+                .filter(VendorProject.project_id == project.id).all()}
+    for model in (OrderMaster, BrrMaster, PurchaseBillMaster):
+        ids |= {r[0] for r in db.session.query(model.vendor_id)
+                .filter(model.project_code == project_code, model.vendor_id.isnot(None)).distinct().all()}
+    ids |= {r[0] for r in db.session.query(JournalEntryLine.vendor_id)
+            .join(JournalEntryMaster, JournalEntryLine.journal_id == JournalEntryMaster.id)
+            .filter(JournalEntryMaster.project_code == project_code,
+                    JournalEntryLine.dr_cr == "Cr",
+                    JournalEntryLine.vendor_id.isnot(None)).distinct().all()}
+    return ids
+
+
+def _project_creditors(project_code):
+    ids = _project_vendor_ids(project_code)
+    if not ids:
+        return []
+    return (
+        Vendor.query
+        .filter(Vendor.id.in_(ids), Vendor.is_debtor.isnot(True))
+        .order_by(Vendor.ledger_name.asc())
+        .all()
+    )
+
+
+def _validate_advance(project_code, vendor_id, requested, deduction):
+    vendor = Vendor.query.get(vendor_id) if vendor_id else None
+    if not vendor:
+        raise ValueError("Vendor not found")
+    if vendor.is_debtor:
+        raise ValueError("Advance can be raised only for a sundry creditor")
+    if vendor.id not in _project_vendor_ids(project_code):
+        raise ValueError(f"{vendor.ledger_name} is not connected with this project")
+    # no bill yet → no ceiling; only the amount rules apply
+    _check_amounts("advance", requested, Decimal("0.00"), requested, deduction)
+    return vendor
+
+
+def advance_paid(pr_id, exclude_receipt_id=None):
+    """(approved, in_progress) amounts paid from Account › Payment against an
+    ADVANCE request. Rejected / Cancelled payments are ignored."""
+    q = db.session.query(
+        BillPaymentReceiptMaster.workflow_status,
+        func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0),
+    ).filter(
+        BillPaymentReceiptMaster.payment_type       == "advance",
+        BillPaymentReceiptMaster.payment_request_id == pr_id,
+        BillPaymentReceiptMaster.workflow_status.notin_(_DEAD),
+    )
+    if exclude_receipt_id:
+        q = q.filter(BillPaymentReceiptMaster.id != exclude_receipt_id)
+    approved = in_progress = Decimal("0.00")
+    for status, amt in q.group_by(BillPaymentReceiptMaster.workflow_status).all():
+        if status == "Approved":
+            approved += _q(amt)
+        else:
+            in_progress += _q(amt)
+    return approved, in_progress
+
+
+def _advance_payments(pr):
+    rows = (
+        BillPaymentReceiptMaster.query
+        .filter(BillPaymentReceiptMaster.payment_type == "advance",
+                BillPaymentReceiptMaster.payment_request_id == pr.id)
+        .order_by(BillPaymentReceiptMaster.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id":             r.id,
+            "receiptNo":      r.receipt_no,
+            "paymentDate":    _fmt_date(r.payment_date),
+            "paymentMode":    r.payment_mode,
+            "utrVoucherNo":   r.utr_voucher_no,
+            "amount":         _f(r.total_invoice_amount),
+            "workflowStatus": r.workflow_status,
+        }
+        for r in rows
+    ]
+
+
+def _advance_summary(pr):
+    approved, in_progress = advance_paid(pr.id)
+    net = _q(pr.net_payable)
+    return {
+        "sourceType":        SRC_ADVANCE,
+        "vendorId":          pr.vendor_id,
+        "partyName":         pr.vendor.ledger_name if pr.vendor else None,
+        "netPayable":        float(net),
+        "paidAmount":        float(approved),
+        "inProgressAmount":  float(in_progress),
+        "balanceToPay":      float(max(net - approved - in_progress, Decimal("0.00"))),
+    }
+
+
+def _is_linked(pr):
+    return pr.source_type == SRC_ADVANCE and bool(pr.link_type)
+
+
+def _linked_no(pr):
+    if pr.link_type == SRC_JOURNAL:
+        return pr.journal_voucher_no
+    if pr.link_type == SRC_BRR:
+        return pr.brr_no
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════
 # HELPERS — dispatch by source
 # ══════════════════════════════════════════════════════════════════
+
+def _effective_source(pr):
+    """Where the balance lives: BRR / JOURNAL, a linked advance's link_type,
+    or ADVANCE (unlinked — no bill)."""
+    if pr.source_type == SRC_ADVANCE:
+        return pr.link_type or SRC_ADVANCE
+    return pr.source_type or SRC_BRR
+
 
 def _revalidate(pr, requested=None, deduction=None):
     """Lock the source row and re-check this request against its balance.
     Returns (bill, previous)."""
     requested = _q(pr.requested_amount) if requested is None else requested
     deduction = _q(pr.deduction_amount) if deduction is None else deduction
-    if pr.source_type == SRC_JOURNAL:
+    src = _effective_source(pr)
+    if src == SRC_ADVANCE:
+        _check_amounts("advance", requested, Decimal("0.00"), requested, deduction)
+        return Decimal("0.00"), Decimal("0.00")
+    if src == SRC_JOURNAL:
         je = _lock_journal(pr.journal_id)
         if not je:
             raise ValueError("Journal entry not found")
@@ -363,13 +513,19 @@ def _revalidate(pr, requested=None, deduction=None):
 
 
 def _source_summary(pr):
-    if pr.source_type == SRC_JOURNAL:
+    src = _effective_source(pr)
+    if src == SRC_ADVANCE:
+        return _advance_summary(pr)
+    if src == SRC_JOURNAL:
         return _journal_summary(pr.journal, pr.vendor_id, exclude_id=pr.id) if pr.journal else None
     return _brr_summary(pr.brr, exclude_id=pr.id) if pr.brr else None
 
 
 def _source_filters(pr):
-    if pr.source_type == SRC_JOURNAL:
+    src = _effective_source(pr)
+    if src == SRC_ADVANCE:
+        return None
+    if src == SRC_JOURNAL:
         return _journal_filters(pr.journal_id, pr.vendor_id)
     return _brr_filters(pr.brr_id)
 
@@ -387,7 +543,13 @@ def _payload(pr, with_summary=True):
         "journalId":           pr.journal_id,
         "journalVoucherNo":    pr.journal_voucher_no,
         "journalDate":         _fmt_date(pr.journal_date),
-        "sourceNo":            pr.journal_voucher_no if pr.source_type == SRC_JOURNAL else pr.brr_no,
+        "sourceNo":            (_linked_no(pr) if pr.source_type == SRC_ADVANCE
+                                else pr.journal_voucher_no if pr.source_type == SRC_JOURNAL else pr.brr_no),
+        "isAdvance":           pr.source_type == SRC_ADVANCE,
+        "linkType":            pr.link_type,
+        "linkedNo":            _linked_no(pr),
+        "linkedAt":            _fmt_date(pr.linked_at),
+        "linkedBy":            pr.linker.username if pr.linker else None,
         "vendorId":            pr.vendor_id,
         "partyName":           pr.vendor.ledger_name if pr.vendor else None,
         "orderCategory":       pr.order_category,
@@ -411,23 +573,33 @@ def _payload(pr, with_summary=True):
         "approvedBy":          pr.approver.username if pr.approver else None,
         "finalApprovedAt":     _fmt_date(pr.final_approved_at),
     }
+    if pr.source_type == SRC_ADVANCE:
+        approved, in_progress = advance_paid(pr.id)
+        data["advancePaid"]       = float(approved)
+        data["advanceInProgress"] = float(in_progress)
+        data["advanceBalance"]    = float(max(_q(pr.net_payable) - approved - in_progress, Decimal("0.00")))
     if with_summary:
         summary = _source_summary(pr)
+        filters = _source_filters(pr)
         # keep the old key for BRR so existing UI keeps working
         data["sourceSummary"] = summary
-        data["brrSummary"]    = summary if pr.source_type != SRC_JOURNAL else None
-        data["siblingRequests"] = [
+        data["brrSummary"]    = summary if _effective_source(pr) == SRC_BRR else None
+        if pr.source_type == SRC_ADVANCE:
+            data["advanceSummary"]  = _advance_summary(pr)
+            data["advancePayments"] = _advance_payments(pr)
+        data["siblingRequests"] = [] if filters is None else [
             {
                 "id":              s.id,
                 "prNo":            s.pr_no,
                 "prDate":          _fmt_date(s.pr_date),
+                "sourceType":      s.source_type,
                 "requestedAmount": _f(s.requested_amount),
                 "netPayable":      _f(s.net_payable),
                 "workflowStatus":  s.workflow_status,
             }
             for s in (
                 PaymentRequestMaster.query
-                .filter(*_source_filters(pr), PaymentRequestMaster.id != pr.id)
+                .filter(*filters, PaymentRequestMaster.id != pr.id)
                 .order_by(PaymentRequestMaster.id.asc())
                 .all()
             )
@@ -556,8 +728,8 @@ def create_payment_request(data, user_id, files=None):
             return res("projectCode required", [], 400)
 
         source_type = (data.get("sourceType") or SRC_BRR).upper()
-        if source_type not in (SRC_BRR, SRC_JOURNAL):
-            return res("sourceType must be BRR or JOURNAL", [], 400)
+        if source_type not in _SOURCES:
+            return res("sourceType must be BRR, JOURNAL or ADVANCE", [], 400)
 
         if source_type == SRC_JOURNAL:
             _require_journal(project_code, user_id, "EDIT")
@@ -599,6 +771,13 @@ def create_payment_request(data, user_id, files=None):
             pr.order_category = brr.order_category
             pr.party_bill_no  = brr.party_bill_no
             pr.party_date     = brr.party_date
+        elif source_type == SRC_ADVANCE:
+            vendor_id = data.get("vendorId")
+            if not vendor_id:
+                return res("vendorId required", [], 400)
+            vendor = _validate_advance(project_code, int(vendor_id), requested, deduction)
+            pr.vendor_id = vendor.id
+            bill, previous = Decimal("0.00"), Decimal("0.00")
         else:
             journal_id = data.get("journalId")
             vendor_id  = data.get("vendorId")
@@ -756,11 +935,11 @@ def edit_payment_request(pr_id, data, user_id, files=None):
             (data.get("sourceType") and data.get("sourceType").upper() != (pr.source_type or SRC_BRR))
             or (data.get("brrId") and str(data.get("brrId")) != str(pr.brr_id))
             or (data.get("journalId") and str(data.get("journalId")) != str(pr.journal_id))
-            or (pr.source_type == SRC_JOURNAL and data.get("vendorId")
+            or (pr.source_type in (SRC_JOURNAL, SRC_ADVANCE) and data.get("vendorId")
                 and str(data.get("vendorId")) != str(pr.vendor_id))
         )
         if changed_source:
-            return res("Source (BRR / Journal / Vendor) cannot be changed. Raise a new Payment Request.", [], 400)
+            return res("Source (BRR / Journal / Advance / Vendor) cannot be changed. Raise a new Payment Request.", [], 400)
 
         requested = (_dec(data.get("requestedAmount"), "requestedAmount")
                      if data.get("requestedAmount") not in (None, "") else _q(pr.requested_amount))
@@ -1182,6 +1361,8 @@ def delete_payment_request(pr_id, user_id=None):
         _guard(pr, user_id, "EDIT")
         if pr.locked or pr.workflow_status not in ["Draft", "Reback"]:
             return res("Only Draft / Reback Payment Request can be deleted", [], 400)
+        if pr.source_type == SRC_ADVANCE and BillPaymentReceiptMaster.query.filter_by(payment_request_id=pr.id).first():
+            return res("Advance payments exist against this request — it cannot be deleted", [], 400)
         if pr.attached_doc:
             try:
                 delete_file_from_storage(pr.attached_doc)
@@ -1196,5 +1377,184 @@ def delete_payment_request(pr_id, user_id=None):
         return _rollback_res(e, 403)
     except SQLAlchemyError as e:
         return _rollback_res(e, 500)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# 12. ADVANCE — vendors, payable advances, link / unlink to a bill
+# ══════════════════════════════════════════════════════════════════
+
+def get_advance_vendors(data):
+    """Sundry creditors connected with the project (for an ADVANCE request)."""
+    try:
+        project_code = data.get("projectCode")
+        if not project_code:
+            return res("projectCode required", [], 400)
+        rows = [
+            {"vendorId": v.id, "ledgerCode": v.ledger_code, "ledgerName": v.ledger_name, "gstin": v.gstin}
+            for v in _project_creditors(project_code)
+        ]
+        return res("Project creditors fetched", rows, 200)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
+def get_payable_advances(data):
+    """Approved ADVANCE requests that still have something left to pay —
+    the picker of Account › Payment › Advance."""
+    try:
+        project_code = data.get("projectCode")
+        if not project_code:
+            return res("projectCode required", [], 400)
+        query = PaymentRequestMaster.query.filter(
+            PaymentRequestMaster.project_code    == project_code,
+            PaymentRequestMaster.source_type     == SRC_ADVANCE,
+            PaymentRequestMaster.workflow_status == "Approved",
+        )
+        if data.get("vendorId"):
+            query = query.filter(PaymentRequestMaster.vendor_id == int(data.get("vendorId")))
+        include_id = int(data.get("includeId")) if data.get("includeId") else None
+
+        result = []
+        for pr in query.order_by(PaymentRequestMaster.id.desc()).all():
+            row = _payload(pr, with_summary=False)
+            if row["advanceBalance"] > 0 or pr.id == include_id:
+                result.append(row)
+        return res("Payable advance requests fetched", result, 200)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
+def _can_link(pr, user_id):
+    return _is_super_admin(user_id) or is_creator(pr.project_code, _wf(pr), user_id) \
+        or is_current_approver(pr.project_code, _wf(pr), pr.current_level, user_id)
+
+
+def _bill_paid_after_link(pr):
+    """Payments already made on the linked bill — unlinking would hand that
+    balance back, so it is blocked."""
+    from app.models.purchaseBill import PurchaseBillMaster
+    if pr.link_type == SRC_BRR and pr.brr_id:
+        bill_ids = [b.id for b in PurchaseBillMaster.query.filter_by(brr_id=pr.brr_id).all()]
+        if not bill_ids:
+            return None
+        return (
+            BillPaymentReceiptMaster.query
+            .filter(BillPaymentReceiptMaster.payment_type == "bill",
+                    BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
+                    BillPaymentReceiptMaster.workflow_status.notin_(_DEAD),
+                    BillPaymentReceiptMaster.created_at >= pr.linked_at)
+            .first()
+        )
+    if pr.link_type == SRC_JOURNAL and pr.journal_id:
+        return (
+            BillPaymentReceiptMaster.query
+            .filter(BillPaymentReceiptMaster.payment_type == "voucher",
+                    BillPaymentReceiptMaster.journal_entry_id == pr.journal_id,
+                    BillPaymentReceiptMaster.workflow_status.notin_(_DEAD),
+                    BillPaymentReceiptMaster.created_at >= pr.linked_at)
+            .first()
+        )
+    return None
+
+
+def link_advance(pr_id, data, user_id):
+    """Link an Approved ADVANCE request to an Approved BRR or journal of the
+    same vendor. The advance then counts in that source's requested total
+    (same balance rule as a BRR / journal request)."""
+    try:
+        pr = PaymentRequestMaster.query.filter(PaymentRequestMaster.id == pr_id).with_for_update().first()
+        if not pr:
+            return res("Payment Request not found", [], 404)
+        if pr.source_type != SRC_ADVANCE:
+            return res("Only an Advance Payment Request can be linked", [], 400)
+        if pr.workflow_status != "Approved":
+            return res("Only an Approved advance can be linked to a bill", [], 400)
+        if pr.link_type:
+            return res(f"Advance is already linked to {pr.link_type} {_linked_no(pr)}", [], 400)
+        if not _can_link(pr, user_id):
+            return res("You are not allowed to link this advance", [], 403)
+
+        link_type = (data.get("linkType") or "").upper()
+        requested = _q(pr.requested_amount)
+        deduction = _q(pr.deduction_amount)
+
+        if link_type == SRC_BRR:
+            brr = _lock_brr(data.get("brrId")) if data.get("brrId") else None
+            if not brr:
+                return res("BRR not found", [], 404)
+            if brr.project_code != pr.project_code:
+                return res("BRR does not belong to this project", [], 400)
+            if brr.vendor_id != pr.vendor_id:
+                return res("BRR vendor does not match the advance vendor", [], 400)
+            bill, previous = _validate_brr(brr, requested, deduction, exclude_id=pr.id)
+            pr.brr_id         = brr.id
+            pr.brr_no         = brr.brr_no
+            pr.order_category = brr.order_category
+            pr.party_bill_no  = brr.party_bill_no
+            pr.party_date     = brr.party_date
+        elif link_type == SRC_JOURNAL:
+            _require_journal(pr.project_code, user_id, "EDIT")
+            je = _lock_journal(data.get("journalId")) if data.get("journalId") else None
+            if not je:
+                return res("Journal entry not found", [], 404)
+            if je.project_code != pr.project_code:
+                return res("Journal entry does not belong to this project", [], 400)
+            bill, previous = _validate_journal(je, pr.vendor_id, requested, deduction, exclude_id=pr.id)
+            pr.journal_id         = je.id
+            pr.journal_voucher_no = je.voucher_no
+            pr.journal_date       = je.entry_date
+        else:
+            return res("linkType must be BRR or JOURNAL", [], 400)
+
+        pr.link_type            = link_type
+        pr.linked_at            = datetime.utcnow()
+        pr.linked_by            = user_id
+        pr.bill_amount          = bill
+        pr.previously_requested = previous
+        pr.updated_by           = user_id
+        pr.updated_at           = datetime.utcnow()
+        db.session.commit()
+        return res(f"Advance linked to {link_type} {_linked_no(pr)}", _payload(pr), 200)
+
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
+    except ValueError as e:
+        return _rollback_res(e, 400)
+    except Exception as e:
+        return _rollback_res(e, 500)
+
+
+def unlink_advance(pr_id, user_id):
+    try:
+        pr = PaymentRequestMaster.query.filter(PaymentRequestMaster.id == pr_id).with_for_update().first()
+        if not pr:
+            return res("Payment Request not found", [], 404)
+        if pr.source_type != SRC_ADVANCE or not pr.link_type:
+            return res("This advance is not linked", [], 400)
+        if not _can_link(pr, user_id):
+            return res("You are not allowed to unlink this advance", [], 403)
+        if pr.link_type == SRC_JOURNAL:
+            _require_journal(pr.project_code, user_id, "EDIT")
+        blocker = _bill_paid_after_link(pr)
+        if blocker:
+            return res(
+                f"Payment {blocker.receipt_no} was made on the linked bill after this link — unlink is blocked",
+                [], 400,
+            )
+        pr.brr_id = pr.journal_id = None
+        pr.brr_no = pr.journal_voucher_no = None
+        pr.journal_date = pr.party_date = None
+        pr.order_category = pr.party_bill_no = None
+        pr.link_type = pr.linked_at = pr.linked_by = None
+        pr.bill_amount = pr.previously_requested = Decimal("0.00")
+        pr.updated_by = user_id
+        pr.updated_at = datetime.utcnow()
+        db.session.commit()
+        return res("Advance unlinked", _payload(pr), 200)
+    except _Forbidden as e:
+        return _rollback_res(e, 403)
     except Exception as e:
         return _rollback_res(e, 500)

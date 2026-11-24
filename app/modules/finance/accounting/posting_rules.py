@@ -339,6 +339,8 @@ def _post_bill_payment_receipt(source_id):
 
     if bpr.payment_type == "voucher":
         return _post_bill_payment_voucher(source_id)
+    # "bill" and "advance" post the same way: Dr Vendor, Cr Bank / Cash.
+    # An advance leaves a debit balance on the vendor until the bill is booked.
     return _post_bill_payment_bill(source_id)
 
 

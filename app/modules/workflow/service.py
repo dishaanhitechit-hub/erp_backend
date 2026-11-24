@@ -76,11 +76,11 @@ MODULE_MAP = {
         "no_field": "brr_no",
     },
 
-    # Payment Request — BRR-sourced requests use this approval path
+    # Payment Request — BRR-sourced and ADVANCE requests use this approval path
     "payment_request": {
         "model":    PaymentRequestMaster,
         "no_field": "pr_no",
-        "filter":   lambda M: M.source_type == "BRR",
+        "filter":   lambda M: M.source_type.in_(("BRR", "ADVANCE")),
     },
 
     # Payment Request — journal-sourced requests: own approval path, and only
