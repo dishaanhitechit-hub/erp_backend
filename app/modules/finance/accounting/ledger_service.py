@@ -89,7 +89,36 @@ SOURCE_TYPE_LABELS = {
     "opening_balance": "Opening Balance",
     "grn": "Goods Received Note",
     "gin": "Goods Issue Note",
+    "sale_claim_bill": "Sale Claim Bill",
+    "sale_certified_bill": "Sale Certified Bill",
+    "uncertified_statement": "Uncertified Statement",
 }
+
+
+# Source type → document view page, opened as /<route>/<source_id>. Types
+# with no view page of their own (bill_payment, advance_adjustment,
+# opening_balance) get no link rather than a wrong one.
+SOURCE_DOC_ROUTES = {
+    "purchase_bill": "/finance-management/account/purchases/bill",
+    "payment_voucher": "/finance-management/account/payment",
+    "sale_bill": "/finance-management/account/sale",
+    "sale_receipt_billing": "/finance-management/account/receipt-billing",
+    "journal_entry": "/finance-management/account/journal",
+    "contra_entry": "/finance-management/account/contra",
+    "debit_note": "/finance-management/account/debit-note",
+    "credit_note": "/finance-management/account/credit-note",
+    "petty_cash_docket": "/finance-management/account/petty-cash/expenses-docket",
+    "grn": "/resource-management/material/grn",
+    "gin": "/resource-management/material/gin",
+    "sale_claim_bill": "/project-management/customer-billing/sale-bill-claim",
+    "sale_certified_bill": "/project-management/customer-billing/sale-bill-certified",
+    "uncertified_statement": "/project-management/customer-billing/uncertified-statement",
+}
+
+
+def _doc_link(source_type, source_id):
+    route = SOURCE_DOC_ROUTES.get(source_type)
+    return f"{route}/{source_id}" if route and source_id else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1145,6 +1174,8 @@ def get_reconciliation(params):
         AccountingLedger.source_id,
         AccountingLedger.project_code,
         AccountingLedger.remarks,
+        AccountingLedger.is_reversal,
+        AccountingLedger.is_reversed,
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
 
     if account_type == "CC":
@@ -1165,36 +1196,20 @@ def get_reconciliation(params):
 
     q = q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
 
-    # Source type → frontend route mapping
-    source_routes = {
-        "purchase_bill": "/finance-management/account/purchases",
-        "payment_voucher": "/finance-management/account/payment",
-        "bill_payment": "/finance-management/account/payment",
-        "advance_adjustment": "/finance-management/account/payment/advance-register",
-        "sale_bill": "/finance-management/account/sale",
-        "sale_receipt_billing": "/finance-management/account/receipt",
-        "journal_entry": "/finance-management/account/journal",
-        "contra_entry": "/finance-management/account/contra",
-        "debit_note": "/finance-management/account/debit-note",
-        "credit_note": "/finance-management/account/credit-note",
-        "petty_cash_docket": "/finance-management/account/petty-cash/expenses-docket",
-        "grn": "/resource/material-management/grn",
-        "gin": "/resource/material-management/gin",
-    }
-
     # Group by source type
     by_source = {}
     total_dr = Decimal("0")
     total_cr = Decimal("0")
 
-    for line, post_date, voucher_no, src_type, src_id, proj, remark in q.all():
+    for line, post_date, voucher_no, src_type, src_id, proj, remark, is_rev, is_revd in q.all():
         dr = float(line.amount) if line.dr_cr == "Dr" else 0.0
         cr = float(line.amount) if line.dr_cr == "Cr" else 0.0
         total_dr += _d(dr)
         total_cr += _d(cr)
 
-        base_route = source_routes.get(src_type, "")
-        link = f"{base_route}/{src_id}" if base_route and src_id else None
+        link = _doc_link(src_type, src_id)
+        # counted like every report (the pair nets to zero); the UI marks them
+        is_cancelled, cancel_label = _cancel_flags(is_rev, is_revd)
 
         entry = {
             "date": _fmt_date(post_date),
@@ -1206,6 +1221,8 @@ def get_reconciliation(params):
             "debit": dr,
             "credit": cr,
             "link": link,
+            "isCancelled": is_cancelled,
+            "cancelLabel": cancel_label,
         }
 
         label = SOURCE_TYPE_LABELS.get(src_type, src_type or "Other")
@@ -1649,22 +1666,6 @@ def get_gst_reconciliation(params):
 
     q = q.order_by(AccountingLedger.posting_date, AccountingLedger.id, AccountingLedgerLine.sl_no)
 
-    source_routes = {
-        "purchase_bill": "/finance-management/account/purchases",
-        "payment_voucher": "/finance-management/account/payment",
-        "bill_payment": "/finance-management/account/payment",
-        "advance_adjustment": "/finance-management/account/payment/advance-register",
-        "sale_bill": "/finance-management/account/sale",
-        "sale_receipt_billing": "/finance-management/account/receipt",
-        "journal_entry": "/finance-management/account/journal",
-        "contra_entry": "/finance-management/account/contra",
-        "debit_note": "/finance-management/account/debit-note",
-        "credit_note": "/finance-management/account/credit-note",
-        "petty_cash_docket": "/finance-management/account/petty-cash/expenses-docket",
-        "grn": "/resource/material-management/grn",
-        "gin": "/resource/material-management/gin",
-    }
-
     by_source = {}
     total_dr = Decimal("0")
     total_cr = Decimal("0")
@@ -1675,8 +1676,7 @@ def get_gst_reconciliation(params):
         total_dr += _d(dr)
         total_cr += _d(cr)
 
-        base_route = source_routes.get(src_type, "")
-        link = f"{base_route}/{src_id}" if base_route and src_id else None
+        link = _doc_link(src_type, src_id)
 
         entry = {
             "date": _fmt_date(post_date),
@@ -1910,12 +1910,14 @@ def get_group_ledger(params):
         })
 
     # Vendor rows always appear as dedicated Balance Sheet entries
-    for key, label in [("creditor", "Sundry Creditors"), ("debtor", "Sundry Debtors")]:
+    for key, label, group_key in [("creditor", "Sundry Creditors", "SUNDRY_CREDITORS"),
+                                  ("debtor", "Sundry Debtors", "SUNDRY_DEBTORS")]:
         totals = vendor_rows.get(key, {"dr": Decimal("0"), "cr": Decimal("0")})
         dr = totals["dr"]
         cr = totals["cr"]
         rows.append({
             "groupId": None,
+            "groupKey": group_key,  # breakdown API key for these vendor rows
             "groupName": label,
             "headUnder": "Balance Sheet",
             "debit": float(dr),

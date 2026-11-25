@@ -23,6 +23,7 @@ from .ledger_service import (
     list_financial_years,
     create_financial_year,
 )
+from .breakdown_service import get_group_breakdown
 from .historical_posting import run_historical_posting, get_posting_status
 from .opening_balance_service import list_opening_balances, save_opening_balance, delete_opening_balance
 from .cancellation_service import cancel_posted_document, get_cancellation_info
@@ -163,6 +164,14 @@ def project_summary():
 @jwt_required()
 def group_ledger():
     return get_group_ledger(request.args)
+
+
+# ── Group Ledger breakdown: accounts + document types in a group ──────
+
+@accounting_bp.route("/group-ledger/breakdown", methods=["GET"])
+@jwt_required()
+def group_ledger_breakdown():
+    return get_group_breakdown(request.args)
 
 
 # ── Financial Year ────────────────────────────────────────────────────────
