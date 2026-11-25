@@ -690,6 +690,10 @@ def get_profit_loss(params):
             grp_id = cc.group_id
             sg_id = cc.sub_group_id
 
+        # Determine side by group membership, not by value sign
+        grp = pl_groups_map.get(grp_id)
+        is_income_group = grp and "revenue" in (grp.group_name or "").lower()
+
         row = {
             "type": "account",
             "ccId": cc.id,
@@ -701,20 +705,12 @@ def get_profit_loss(params):
             "net": float(abs(net)),
         }
 
-        if net > 0:
+        if is_income_group:
             bucket = income_by_group
             total_income += net
-        elif net < 0:
-            bucket = expense_by_group
-            total_expense += abs(net)
         else:
-            # Zero balance — place under expense tree by default (most CCs are expense)
-            # Revenue CCs (pl_group "Revenue") go to income tree
-            grp = pl_groups_map.get(grp_id)
-            if grp and "revenue" in (grp.group_name or "").lower():
-                bucket = income_by_group
-            else:
-                bucket = expense_by_group
+            bucket = expense_by_group
+            total_expense -= net
 
         bucket.setdefault(grp_id, {}).setdefault(sg_id, []).append(row)
 
