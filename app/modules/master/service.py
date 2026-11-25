@@ -698,6 +698,7 @@ def _cc_row(cc):
         "ccCategoryName": cc.category.category_name if cc.category else None,
         "headUnder": cc.group.head_under if cc.group else None,
         "isNonLedger": cc.is_non_ledger,
+        "isSystem": bool(cc.is_system),
         "gstAccountType": cc.gst_account_type,
         **_sub_group_fields(cc),
         **_pl_fields(cc),
@@ -763,6 +764,9 @@ def get_all_cc_codes(data):
     subGroupId = data.get("subGroupId")
 
     query = CCCode.query
+
+    if str(data.get("includeSystem", "")).lower() not in ("true", "1", "yes"):
+        query = query.filter(CCCode.is_system.isnot(True))
 
     # optional group / sub group filters
     if groupId:

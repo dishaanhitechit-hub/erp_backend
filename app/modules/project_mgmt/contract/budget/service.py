@@ -234,6 +234,7 @@ def get_cc_codes_list(args):
             CCCode.query
             .join(GroupMaster, CCCode.group_id == GroupMaster.id)
             .filter(CCCode.status == "Active")
+            .filter(CCCode.is_system.isnot(True))
         )
 
         if group_name:

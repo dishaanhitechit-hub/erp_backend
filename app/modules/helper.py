@@ -39,7 +39,7 @@ def get_cc_code_list(data):
 
     query = CCCode.query.filter_by(
         category_id=categoryId
-    )
+    ).filter(CCCode.is_system.isnot(True))
 
     if search:
         query = query.filter(

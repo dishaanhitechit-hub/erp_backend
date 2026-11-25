@@ -120,6 +120,13 @@ class CCCode(db.Model):
     gst_account_type = db.Column(db.String(20), nullable=True)
 
     # =====================================
+    # SYSTEM-ONLY FLAG
+    # True → auto-posted by the engine only (hidden from manual entry dropdowns)
+    # =====================================
+
+    is_system = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+
+    # =====================================
     # STATUS + AUDIT
     # =====================================
 
