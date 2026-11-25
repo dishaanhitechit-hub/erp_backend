@@ -24,10 +24,13 @@ Rules
   vendor (sundry creditor of the project) is chosen — no bill ceiling. It
   follows the BRR approval path (`payment_request`). Once Approved it is paid
   from Account › Payment (payment type "advance"), in one or more parts.
-  Later the advance is LINKED to an Approved BRR or journal of the same vendor
-  (link_type). From then on it counts in that source's requested total, the
-  same way a BRR / journal request does, and its approved payments reduce the
-  balance of the bill in Account › Payment.
+  Its approved payments sit in the Vendor Advance Register as the vendor's
+  outstanding advance until they are settled against bills by Advance
+  Adjustments (app/modules/finance/advance_adjustment): one advance → many
+  bills, in parts, all BRR or all journal. An adjusted amount counts in that
+  BRR's / journal's requested total, the same way a request does, and lowers
+  the bill's balance in Account › Payment. (link_type / linked_* columns are
+  legacy — see scripts/convert_advance_links.py.)
 """
 
 from decimal import Decimal, InvalidOperation
@@ -250,13 +253,28 @@ def _brr_bill_amount(brr):
 
 
 def _brr_filters(brr_id):
-    """BRR requests + advances linked to this BRR."""
-    return [PaymentRequestMaster.source_type.in_((SRC_BRR, SRC_ADVANCE)), PaymentRequestMaster.brr_id == brr_id]
+    """BRR requests of this BRR."""
+    return [PaymentRequestMaster.source_type == SRC_BRR, PaymentRequestMaster.brr_id == brr_id]
+
+
+def _brr_adjusted(brr_id):
+    """Advance adjusted against this BRR's purchase bills — counts as requested."""
+    from app.modules.finance.advance_adjustment.service import adjusted_on_brr
+    return adjusted_on_brr(brr_id)
+
+
+def brr_request_balance(brr_id):
+    """BRR bill amount not yet requested (requests + advance adjustments)."""
+    brr = BrrMaster.query.get(brr_id)
+    if not brr:
+        return Decimal("0.00")
+    return _brr_bill_amount(brr) - _sum_requested(_brr_filters(brr_id)) - _brr_adjusted(brr_id)
 
 
 def _brr_summary(brr, exclude_id=None):
     bill      = _brr_bill_amount(brr)
-    requested = _sum_requested(_brr_filters(brr.id), exclude_id)
+    adjusted  = _brr_adjusted(brr.id)
+    requested = _sum_requested(_brr_filters(brr.id), exclude_id) + adjusted
     brb       = _linked_brb(brr.id)
     return {
         "sourceType":      SRC_BRR,
@@ -277,8 +295,9 @@ def _brr_summary(brr, exclude_id=None):
         "brrTotalAmount":  _f(brr.total_amount),
         "billAmount":      float(bill),
         "billSource":      "BRB" if _approved_brb(brr.id) else "BRR",
-        "requestedAmount": float(requested),   # other active requests
-        "approvedAmount":  float(_sum_requested(_brr_filters(brr.id), exclude_id, status="Approved")),
+        "requestedAmount": float(requested),   # other active requests + advance adjusted
+        "advanceAdjusted": float(adjusted),
+        "approvedAmount":  float(_sum_requested(_brr_filters(brr.id), exclude_id, status="Approved") + adjusted),
         "balanceAmount":   float(bill - requested),
     }
 
@@ -287,7 +306,7 @@ def _validate_brr(brr, requested, deduction, exclude_id=None):
     if brr.workflow_status != "Approved":
         raise ValueError(f"BRR {brr.brr_no} is not Approved")
     bill     = _brr_bill_amount(brr)
-    previous = _sum_requested(_brr_filters(brr.id), exclude_id)
+    previous = _sum_requested(_brr_filters(brr.id), exclude_id) + _brr_adjusted(brr.id)
     _check_amounts(f"BRR {brr.brr_no}", bill, previous, requested, deduction)
     return bill, previous
 
@@ -315,19 +334,32 @@ def _journal_vendor_bill(journal_id, vendor_id):
 
 
 def _journal_filters(journal_id, vendor_id):
-    """Journal requests + advances linked to this journal, for one vendor."""
+    """Journal requests of this journal, for one vendor."""
     return [
-        PaymentRequestMaster.source_type.in_((SRC_JOURNAL, SRC_ADVANCE)),
+        PaymentRequestMaster.source_type == SRC_JOURNAL,
         PaymentRequestMaster.journal_id  == journal_id,
         PaymentRequestMaster.vendor_id   == vendor_id,
     ]
+
+
+def _journal_adjusted(journal_id, vendor_id):
+    from app.modules.finance.advance_adjustment.service import adjusted_on_journal_vendor
+    return adjusted_on_journal_vendor(journal_id, vendor_id)
+
+
+def journal_request_balance(journal_id, vendor_id):
+    """Vendor's journal amount not yet requested (requests + advance adjustments)."""
+    return (_journal_vendor_bill(journal_id, vendor_id)
+            - _sum_requested(_journal_filters(journal_id, vendor_id))
+            - _journal_adjusted(journal_id, vendor_id))
 
 
 def _journal_summary(je, vendor_id, exclude_id=None):
     vendor    = Vendor.query.get(vendor_id) if vendor_id else None
     bill      = _journal_vendor_bill(je.id, vendor_id)
     filters   = _journal_filters(je.id, vendor_id)
-    requested = _sum_requested(filters, exclude_id)
+    adjusted  = _journal_adjusted(je.id, vendor_id)
+    requested = _sum_requested(filters, exclude_id) + adjusted
     return {
         "sourceType":      SRC_JOURNAL,
         "journalId":       je.id,
@@ -340,8 +372,9 @@ def _journal_summary(je, vendor_id, exclude_id=None):
         "partyName":       vendor.ledger_name if vendor else None,
         "billAmount":      float(bill),
         "billSource":      "JOURNAL",
-        "requestedAmount": float(requested),   # other active requests for this journal + vendor
-        "approvedAmount":  float(_sum_requested(filters, exclude_id, status="Approved")),
+        "requestedAmount": float(requested),   # other active requests + advance adjusted
+        "advanceAdjusted": float(adjusted),
+        "approvedAmount":  float(_sum_requested(filters, exclude_id, status="Approved") + adjusted),
         "balanceAmount":   float(bill - requested),
     }
 
@@ -352,7 +385,7 @@ def _validate_journal(je, vendor_id, requested, deduction, exclude_id=None):
     bill = _journal_vendor_bill(je.id, vendor_id)
     if bill <= 0:
         raise ValueError(f"Selected vendor has no Cr entry in journal {je.voucher_no}")
-    previous = _sum_requested(_journal_filters(je.id, vendor_id), exclude_id)
+    previous = _sum_requested(_journal_filters(je.id, vendor_id), exclude_id) + _journal_adjusted(je.id, vendor_id)
     _check_amounts(f"Journal {je.voucher_no}", bill, previous, requested, deduction)
     return bill, previous
 
@@ -468,27 +501,13 @@ def _advance_summary(pr):
     }
 
 
-def _is_linked(pr):
-    return pr.source_type == SRC_ADVANCE and bool(pr.link_type)
-
-
-def _linked_no(pr):
-    if pr.link_type == SRC_JOURNAL:
-        return pr.journal_voucher_no
-    if pr.link_type == SRC_BRR:
-        return pr.brr_no
-    return None
-
-
 # ══════════════════════════════════════════════════════════════════
 # HELPERS — dispatch by source
 # ══════════════════════════════════════════════════════════════════
 
 def _effective_source(pr):
-    """Where the balance lives: BRR / JOURNAL, a linked advance's link_type,
-    or ADVANCE (unlinked — no bill)."""
-    if pr.source_type == SRC_ADVANCE:
-        return pr.link_type or SRC_ADVANCE
+    """Where the balance lives: BRR / JOURNAL, or ADVANCE (no bill — it is
+    settled against bills by Advance Adjustments)."""
     return pr.source_type or SRC_BRR
 
 
@@ -543,13 +562,9 @@ def _payload(pr, with_summary=True):
         "journalId":           pr.journal_id,
         "journalVoucherNo":    pr.journal_voucher_no,
         "journalDate":         _fmt_date(pr.journal_date),
-        "sourceNo":            (_linked_no(pr) if pr.source_type == SRC_ADVANCE
+        "sourceNo":            (None if pr.source_type == SRC_ADVANCE
                                 else pr.journal_voucher_no if pr.source_type == SRC_JOURNAL else pr.brr_no),
         "isAdvance":           pr.source_type == SRC_ADVANCE,
-        "linkType":            pr.link_type,
-        "linkedNo":            _linked_no(pr),
-        "linkedAt":            _fmt_date(pr.linked_at),
-        "linkedBy":            pr.linker.username if pr.linker else None,
         "vendorId":            pr.vendor_id,
         "partyName":           pr.vendor.ledger_name if pr.vendor else None,
         "orderCategory":       pr.order_category,
@@ -578,6 +593,15 @@ def _payload(pr, with_summary=True):
         data["advancePaid"]       = float(approved)
         data["advanceInProgress"] = float(in_progress)
         data["advanceBalance"]    = float(max(_q(pr.net_payable) - approved - in_progress, Decimal("0.00")))
+        from app.modules.finance.advance_adjustment.service import advance_status
+        status = advance_status(pr)
+        data["advanceAdjusted"]    = status["advanceAdjusted"]
+        data["advanceOutstanding"] = status["advanceOutstanding"]
+        data["adjustType"]         = status["adjustType"]
+        data["adjustedBills"]      = sorted({a["billNo"] for a in status["adjustments"]
+                                             if a["workflowStatus"] == "Approved" and a["billNo"]})
+        if with_summary:
+            data["adjustments"] = status["adjustments"]
     if with_summary:
         summary = _source_summary(pr)
         filters = _source_filters(pr)
@@ -1383,7 +1407,8 @@ def delete_payment_request(pr_id, user_id=None):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 12. ADVANCE — vendors, payable advances, link / unlink to a bill
+# 12. ADVANCE — vendors, payable advances (settled against bills by
+#     Advance Adjustments — app/modules/finance/advance_adjustment)
 # ══════════════════════════════════════════════════════════════════
 
 def get_advance_vendors(data):
@@ -1423,181 +1448,5 @@ def get_payable_advances(data):
             if row["advanceBalance"] > 0 or pr.id == include_id:
                 result.append(row)
         return res("Payable advance requests fetched", result, 200)
-    except Exception as e:
-        return _rollback_res(e, 500)
-
-
-def _can_link(pr, user_id):
-    return _is_super_admin(user_id) or is_creator(pr.project_code, _wf(pr), user_id) \
-        or is_current_approver(pr.project_code, _wf(pr), pr.current_level, user_id)
-
-
-def _bill_paid_after_link(pr):
-    """Payments already made on the linked bill — unlinking would hand that
-    balance back, so it is blocked."""
-    from app.models.purchaseBill import PurchaseBillMaster
-    if pr.link_type == SRC_BRR and pr.brr_id:
-        bill_ids = [b.id for b in PurchaseBillMaster.query.filter_by(brr_id=pr.brr_id).all()]
-        if not bill_ids:
-            return None
-        return (
-            BillPaymentReceiptMaster.query
-            .filter(BillPaymentReceiptMaster.payment_type == "bill",
-                    BillPaymentReceiptMaster.purchase_bill_id.in_(bill_ids),
-                    BillPaymentReceiptMaster.workflow_status.notin_(_DEAD),
-                    BillPaymentReceiptMaster.created_at >= pr.linked_at)
-            .first()
-        )
-    if pr.link_type == SRC_JOURNAL and pr.journal_id:
-        return (
-            BillPaymentReceiptMaster.query
-            .filter(BillPaymentReceiptMaster.payment_type == "voucher",
-                    BillPaymentReceiptMaster.journal_entry_id == pr.journal_id,
-                    BillPaymentReceiptMaster.workflow_status.notin_(_DEAD),
-                    BillPaymentReceiptMaster.created_at >= pr.linked_at)
-            .first()
-        )
-    return None
-
-
-def _repost_advance_payments(pr, user_id, note):
-    """Approved advance payments of this request are re-posted so their Dr
-    Vendor line is tagged with the linked bill's CCs (or untagged again after
-    unlink): reverse the active entry (-REV, never deleted), then post fresh.
-    Refused when a posting sits in a locked financial year."""
-    from app.modules.finance.accounting.posting_engine import (
-        active_posting, reverse_posting, post_document, PostingError,
-    )
-    rows = (
-        BillPaymentReceiptMaster.query
-        .filter(BillPaymentReceiptMaster.payment_request_id == pr.id,
-                BillPaymentReceiptMaster.payment_type == "advance",
-                BillPaymentReceiptMaster.workflow_status == "Approved")
-        .order_by(BillPaymentReceiptMaster.id.asc())
-        .all()
-    )
-    for r in rows:
-        led = active_posting("bill_payment", r.id)
-        fy = getattr(led, "financial_year", None) if led else None
-        if fy is not None and fy.is_locked:
-            raise ValueError(f"Advance payment {r.receipt_no} is in locked financial year {fy.fy_code}")
-    db.session.flush()
-    for r in rows:
-        if active_posting("bill_payment", r.id, for_update=True):
-            reverse_posting("bill_payment", r.id, user_id, remarks=note[:1000])
-            db.session.flush()
-        try:
-            post_document("bill_payment", r.id, user_id)
-        except PostingError as e:
-            raise ValueError(f"Could not re-post advance payment {r.receipt_no}: {e}")
-        db.session.flush()
-    return len(rows)
-
-
-def link_advance(pr_id, data, user_id):
-    """Link an Approved ADVANCE request to an Approved BRR or journal of the
-    same vendor. The advance then counts in that source's requested total
-    (same balance rule as a BRR / journal request)."""
-    try:
-        pr = PaymentRequestMaster.query.filter(PaymentRequestMaster.id == pr_id).with_for_update().first()
-        if not pr:
-            return res("Payment Request not found", [], 404)
-        if pr.source_type != SRC_ADVANCE:
-            return res("Only an Advance Payment Request can be linked", [], 400)
-        if pr.workflow_status != "Approved":
-            return res("Only an Approved advance can be linked to a bill", [], 400)
-        if pr.link_type:
-            return res(f"Advance is already linked to {pr.link_type} {_linked_no(pr)}", [], 400)
-        if not _can_link(pr, user_id):
-            return res("You are not allowed to link this advance", [], 403)
-
-        link_type = (data.get("linkType") or "").upper()
-        requested = _q(pr.requested_amount)
-        deduction = _q(pr.deduction_amount)
-
-        if link_type == SRC_BRR:
-            brr = _lock_brr(data.get("brrId")) if data.get("brrId") else None
-            if not brr:
-                return res("BRR not found", [], 404)
-            if brr.project_code != pr.project_code:
-                return res("BRR does not belong to this project", [], 400)
-            if brr.vendor_id != pr.vendor_id:
-                return res("BRR vendor does not match the advance vendor", [], 400)
-            bill, previous = _validate_brr(brr, requested, deduction, exclude_id=pr.id)
-            pr.brr_id         = brr.id
-            pr.brr_no         = brr.brr_no
-            pr.order_category = brr.order_category
-            pr.party_bill_no  = brr.party_bill_no
-            pr.party_date     = brr.party_date
-        elif link_type == SRC_JOURNAL:
-            _require_journal(pr.project_code, user_id, "EDIT")
-            je = _lock_journal(data.get("journalId")) if data.get("journalId") else None
-            if not je:
-                return res("Journal entry not found", [], 404)
-            if je.project_code != pr.project_code:
-                return res("Journal entry does not belong to this project", [], 400)
-            bill, previous = _validate_journal(je, pr.vendor_id, requested, deduction, exclude_id=pr.id)
-            pr.journal_id         = je.id
-            pr.journal_voucher_no = je.voucher_no
-            pr.journal_date       = je.entry_date
-        else:
-            return res("linkType must be BRR or JOURNAL", [], 400)
-
-        pr.link_type            = link_type
-        pr.linked_at            = datetime.utcnow()
-        pr.linked_by            = user_id
-        pr.bill_amount          = bill
-        pr.previously_requested = previous
-        pr.updated_by           = user_id
-        pr.updated_at           = datetime.utcnow()
-        _repost_advance_payments(pr, user_id, f"Advance {pr.pr_no} linked to {link_type} {_linked_no(pr)} — re-posted by CC")
-        db.session.commit()
-        return res(f"Advance linked to {link_type} {_linked_no(pr)}", _payload(pr), 200)
-
-    except _Forbidden as e:
-        return _rollback_res(e, 403)
-    except ValueError as e:
-        return _rollback_res(e, 400)
-    except Exception as e:
-        return _rollback_res(e, 500)
-
-
-def unlink_advance(pr_id, user_id):
-    try:
-        pr = PaymentRequestMaster.query.filter(PaymentRequestMaster.id == pr_id).with_for_update().first()
-        if not pr:
-            return res("Payment Request not found", [], 404)
-        if pr.source_type != SRC_ADVANCE or not pr.link_type:
-            return res("This advance is not linked", [], 400)
-        if not _can_link(pr, user_id):
-            return res("You are not allowed to unlink this advance", [], 403)
-        if pr.link_type == SRC_JOURNAL:
-            _require_journal(pr.project_code, user_id, "EDIT")
-        split = next((r for r in BillPaymentReceiptMaster.query.filter(
-            BillPaymentReceiptMaster.payment_request_id == pr.id,
-            BillPaymentReceiptMaster.workflow_status.notin_(_DEAD)).all() if r.items or r.gst_lines), None)
-        if split:
-            return res(f"Advance payment {split.receipt_no} is split by the bill's CCs — unlink is blocked", [], 400)
-        blocker = _bill_paid_after_link(pr)
-        if blocker:
-            return res(
-                f"Payment {blocker.receipt_no} was made on the linked bill after this link — unlink is blocked",
-                [], 400,
-            )
-        pr.brr_id = pr.journal_id = None
-        pr.brr_no = pr.journal_voucher_no = None
-        pr.journal_date = pr.party_date = None
-        pr.order_category = pr.party_bill_no = None
-        pr.link_type = pr.linked_at = pr.linked_by = None
-        pr.bill_amount = pr.previously_requested = Decimal("0.00")
-        pr.updated_by = user_id
-        pr.updated_at = datetime.utcnow()
-        _repost_advance_payments(pr, user_id, f"Advance {pr.pr_no} unlinked — re-posted without CC")
-        db.session.commit()
-        return res("Advance unlinked", _payload(pr), 200)
-    except _Forbidden as e:
-        return _rollback_res(e, 403)
-    except ValueError as e:
-        return _rollback_res(e, 400)
     except Exception as e:
         return _rollback_res(e, 500)

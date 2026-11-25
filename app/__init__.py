@@ -241,6 +241,8 @@ def create_app():
 
     from .modules.finance.bill_payment.routes import bill_payment_bp
     app.register_blueprint(bill_payment_bp, url_prefix="/finance/bill-payment")
+    from .modules.finance.advance_adjustment.routes import advance_adjustment_bp
+    app.register_blueprint(advance_adjustment_bp, url_prefix="/finance/advance-adjustment")
 
     from .models import billPaymentReceipt  # noqa — registers BillPaymentReceiptMaster, BillPaymentReceiptItem, BillPaymentReceiptGst with Alembic
 

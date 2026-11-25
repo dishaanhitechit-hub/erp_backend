@@ -19,7 +19,6 @@ from app.modules.finance.bill_payment.service import (
     get_bill_payment_history,
     get_bill_payment_my_approval_status,
     get_bill_payments_on_bill,
-    get_advance_cc_rows,
 )
 
 bill_payment_bp = Blueprint("bill_payment", __name__)
@@ -30,14 +29,6 @@ bill_payment_bp = Blueprint("bill_payment", __name__)
 @login_required
 def api_approved_purchase_bills():
     return get_approved_purchase_bills(request.args.to_dict())
-
-
-# ── ADVANCE: CC breakdown of the linked bill, auto-filled ─────────
-#    ?paymentRequestId=&excludeId=
-@bill_payment_bp.route("/advance-cc-rows", methods=["GET"])
-@login_required
-def api_advance_cc_rows():
-    return get_advance_cc_rows(request.args.to_dict())
 
 
 # ── POPUP: payments made on a bill (bill / voucher / advance rows) ─

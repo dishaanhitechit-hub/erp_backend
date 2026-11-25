@@ -288,68 +288,6 @@ def _receipt_cc_rows(bpr):
     return rows
 
 
-def _linked_bill_cc_rows(pr):
-    """Booked CC rows of the bill an advance request is linked to, in the same
-    order the payment screen fills them (basic items first, then GST)."""
-    if pr.link_type == "BRR" and pr.brr_id:
-        from app.models.purchaseBill import PurchaseBillMaster
-        bills = (PurchaseBillMaster.query
-                 .filter(PurchaseBillMaster.brr_id == pr.brr_id,
-                         PurchaseBillMaster.workflow_status == "Approved")
-                 .order_by(PurchaseBillMaster.id.asc()).all())
-        rows = []
-        for b in bills:
-            rows += [(i.cc_code, _d(i.basic_amount)) for i in b.items if _d(i.basic_amount) > 0]
-            rows += [(_gst_tag(g.gst_type, g.cc_code) or g.cc_code, _d(g.gst_amount))
-                     for g in b.gst_lines if g.is_selected and _d(g.gst_amount) > 0]
-        return rows
-    if pr.link_type == "JOURNAL" and pr.journal_id:
-        from app.models.journalEntry import JournalEntryLine
-        lines = (JournalEntryLine.query
-                 .filter(JournalEntryLine.journal_id == pr.journal_id,
-                         JournalEntryLine.dr_cr == "Dr",
-                         JournalEntryLine.account_type == "CC")
-                 .order_by(JournalEntryLine.id.asc()).all())
-        return [(l.cc.cc_code if l.cc else None, _d(l.debit_amount)) for l in lines if _d(l.debit_amount) > 0]
-    return []
-
-
-def _advance_cc_rows(bpr):
-    """An advance with a saved CC breakdown posts by those rows. One without
-    (paid before the link) takes the linked bill's CC rows in turn: earlier approved
-    advance payments of the same request use the first rows, this one
-    continues from there. Unlinked advance → no rows (untagged)."""
-    from app.models.billPaymentReceipt import BillPaymentReceiptMaster
-    # Saved CC breakdown → exactly like a normal payment
-    if bpr.items or bpr.gst_lines:
-        return _receipt_cc_rows(bpr)
-    pr = bpr.payment_request
-    if not pr or not pr.link_type:
-        return []
-    capacity = _linked_bill_cc_rows(pr)
-    earlier = sum(
-        (_d(r.total_invoice_amount) for r in BillPaymentReceiptMaster.query.filter(
-            BillPaymentReceiptMaster.payment_request_id == pr.id,
-            BillPaymentReceiptMaster.payment_type == "advance",
-            BillPaymentReceiptMaster.workflow_status == "Approved",
-            BillPaymentReceiptMaster.id < bpr.id,
-        ).all() if not (r.items or r.gst_lines)),
-        Decimal("0"),
-    )
-    need = _d(bpr.total_invoice_amount)
-    out = []
-    for cc, cap in capacity:
-        skip = min(earlier, cap)
-        earlier -= skip
-        room = cap - skip
-        if room <= 0 or need <= 0:
-            continue
-        take = min(room, need)
-        out.append((cc, take))
-        need -= take
-    return out
-
-
 def _fit_cc_parts(rows, total):
     """Merge rows by CC and make them add up to `total` exactly. A shortfall
     (discount / round-off / unallocated advance) goes on an untagged part; an
@@ -392,7 +330,9 @@ def _post_bill_payment_bill(source_id):
 
     if gross > 0 and bpr.vendor_id:
         kind = "advance" if bpr.payment_type == "advance" else "bill"
-        cc_rows = _advance_cc_rows(bpr) if kind == "advance" else _receipt_cc_rows(bpr)
+        # an advance has no bill yet → untagged; it reaches the bill's CCs
+        # through an Advance Adjustment (source_type "advance_adjustment")
+        cc_rows = [] if kind == "advance" else _receipt_cc_rows(bpr)
         for cc, amt in _fit_cc_parts(cc_rows, gross):
             lines.append(_vendor_line(
                 bpr.vendor_id, "Dr", amt,
@@ -457,6 +397,49 @@ def _post_bill_payment_receipt(source_id):
     # "bill" and "advance" post the same way: Dr Vendor, Cr Bank / Cash.
     # An advance leaves a debit balance on the vendor until the bill is booked.
     return _post_bill_payment_bill(source_id)
+
+
+# ---------------------------------------------------------------------------
+# 5b. Advance Adjustment — settles an outstanding advance against a bill
+#     Dr Vendor per bill row, tagged with the row's CC
+#     Cr Vendor total, untagged (the advance)
+#     The vendor's balance does not change; the advance moves onto the bill's CCs.
+# ---------------------------------------------------------------------------
+
+def _post_advance_adjustment(source_id):
+    from app.models.advanceAdjustment import AdvanceAdjustmentMaster
+    a = AdvanceAdjustmentMaster.query.get(source_id)
+    if not a:
+        from .posting_engine import PostingError
+        raise PostingError(f"AdvanceAdjustment {source_id} not found")
+    total = _d(a.amount)
+    if total <= 0 or a.workflow_status != "Approved":
+        return None, []
+    rows = []
+    for l in a.lines:
+        amt = _d(l.amount)
+        if amt <= 0:
+            continue
+        cc = _gst_tag(l.gst_type, l.cc_code) if l.line_type == "gst" else l.cc_code
+        rows.append((cc, amt))
+    lines = []
+    pr_no = a.payment_request.pr_no if a.payment_request else ""
+    for cc, amt in _fit_cc_parts(rows, total):
+        lines.append(_vendor_line(
+            a.vendor_id, "Dr", amt, project_code=a.project_code, cost_centre_code=cc,
+            narration=f"Advance adjusted: {a.adjustment_no} | {a.bill_no}" + (f" | CC {cc}" if cc else ""),
+        ))
+    lines.append(_vendor_line(
+        a.vendor_id, "Cr", total, project_code=a.project_code,
+        narration=f"Advance {pr_no} adjusted against {a.bill_no}: {a.adjustment_no}",
+    ))
+    header = {
+        "posting_date": a.adjustment_date,
+        "voucher_no": a.adjustment_no,
+        "project_code": a.project_code,
+        "remarks": a.remarks or f"Advance {pr_no} adjusted against {a.bill_no}",
+    }
+    return header, lines
 
 
 # ---------------------------------------------------------------------------
@@ -1030,6 +1013,7 @@ _POSTING_RULES = {
     "purchase_bill": _post_purchase_bill,
     "payment_voucher": _post_payment_voucher,
     "bill_payment": _post_bill_payment_receipt,
+    "advance_adjustment": _post_advance_adjustment,
     "sale_bill": _post_sale_bill,
     "sale_receipt_billing": _post_sale_receipt_billing,
     "journal_entry": _post_journal_entry,

@@ -24,6 +24,7 @@ _SOURCE_TYPE_MAP = {
     "PurchaseBillMaster": "purchase_bill",
     "PaymentVoucherMaster": "payment_voucher",
     "BillPaymentReceiptMaster": "bill_payment",
+    "AdvanceAdjustmentMaster": "advance_adjustment",
     "SaleBillMaster": "sale_bill",
     "SaleReceiptBillingMaster": "sale_receipt_billing",
     "JournalEntryMaster": "journal_entry",

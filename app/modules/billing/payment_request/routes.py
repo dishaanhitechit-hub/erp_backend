@@ -23,8 +23,6 @@ from app.modules.billing.payment_request.service import (
     delete_payment_request,
     get_advance_vendors,
     get_payable_advances,
-    link_advance,
-    unlink_advance,
 )
 
 payment_request_bp = Blueprint("payment_request", __name__)
@@ -166,7 +164,8 @@ def api_delete_pr(pr_id):
     return delete_payment_request(pr_id, get_jwt_identity())
 
 
-# ── ADVANCE: project creditors, payable advances, link / unlink ────
+# ── ADVANCE: project creditors, payable advances ───────────────────
+#    (adjusting an advance against bills: /finance/advance-adjustment)
 @payment_request_bp.route("/advance-vendors", methods=["GET"])
 @jwt_required()
 def api_pr_advance_vendors():
@@ -181,15 +180,3 @@ def api_pr_payable_advances():
         "vendorId":    request.args.get("vendorId"),
         "includeId":   request.args.get("includeId"),
     })
-
-
-@payment_request_bp.route("/link/<int:pr_id>", methods=["POST"])
-@jwt_required()
-def api_pr_link(pr_id):
-    return link_advance(pr_id, request.json or {}, get_jwt_identity())
-
-
-@payment_request_bp.route("/unlink/<int:pr_id>", methods=["POST"])
-@jwt_required()
-def api_pr_unlink(pr_id):
-    return unlink_advance(pr_id, get_jwt_identity())

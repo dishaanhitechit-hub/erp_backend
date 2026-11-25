@@ -30,6 +30,7 @@ _POSTING_ORDER = [
     ("payment_voucher", "PaymentVoucherMaster", "payment_voucher_master", "workflow_status", "payment_date", "payment_vouch_no"),
     ("petty_cash_docket", "PettyCashDocketVoucher", "petty_cash_docket_voucher", "workflow_status", "voucher_date", "voucher_no"),
     ("bill_payment", "BillPaymentReceiptMaster", "bill_payment_receipt_master", "workflow_status", "payment_date", "receipt_no"),
+    ("advance_adjustment", "AdvanceAdjustmentMaster", "advance_adjustment_master", "workflow_status", "adjustment_date", "adjustment_no"),
     ("sale_receipt_billing", "SaleReceiptBillingMaster", "sale_receipt_billing", "workflow_status", "srb_date", "srb_no"),
     ("debit_note", "DebitNoteMaster", "debit_note_master", "workflow_status", "entry_date", "debit_note_no"),
     ("credit_note", "CreditNoteMaster", "credit_note_master", "workflow_status", "entry_date", "credit_note_no"),
@@ -50,6 +51,9 @@ def _get_model_class(model_name):
     elif model_name == "BillPaymentReceiptMaster":
         from app.models.billPaymentReceipt import BillPaymentReceiptMaster
         return BillPaymentReceiptMaster
+    elif model_name == "AdvanceAdjustmentMaster":
+        from app.models.advanceAdjustment import AdvanceAdjustmentMaster
+        return AdvanceAdjustmentMaster
     elif model_name == "SaleBillMaster":
         from app.models.saleBill import SaleBillMaster
         return SaleBillMaster

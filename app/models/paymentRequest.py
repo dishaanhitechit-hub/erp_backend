@@ -1,8 +1,8 @@
 # app/models/paymentRequest.py
 # Payment Request — raised against an Approved BRR (Bill Receive Register),
 # an Approved Journal Entry (one vendor of that journal per request), or as an
-# ADVANCE to a vendor with no bill yet. An advance is linked to a BRR or a
-# journal later (link_type), and from then on counts against that bill.
+# ADVANCE to a vendor with no bill yet. An advance's paid money is settled
+# against bills later by Advance Adjustments (app/models/advanceAdjustment.py).
 # Multiple (partial) requests are allowed per source; the sum of non-rejected
 # requested amounts can never exceed the source's bill amount.
 # Journal-sourced requests are visible only to users holding the
@@ -40,7 +40,7 @@ class PaymentRequestMaster(db.Model):
     )
 
     # "BRR" → brr_id is set ; "JOURNAL" → journal_id + vendor_id are set ;
-    # "ADVANCE" → vendor_id only, until linked to a BRR or a journal (link_type)
+    # "ADVANCE" → vendor_id only (settled against bills by Advance Adjustments)
     source_type = db.Column(db.String(20), nullable=False, default="BRR", server_default="BRR")
 
     brr_id = db.Column(
@@ -81,6 +81,7 @@ class PaymentRequestMaster(db.Model):
     attached_doc = db.Column(db.String(500), nullable=True)
 
     # ADVANCE only — set when the advance is linked to a bill later
+    # legacy (old single-bill link) — converted by scripts/convert_advance_links.py
     link_type = db.Column(db.String(20), nullable=True)   # BRR | JOURNAL
     linked_at = db.Column(db.DateTime, nullable=True)
     linked_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)

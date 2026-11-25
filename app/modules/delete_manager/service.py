@@ -215,6 +215,24 @@ def _check_docket_in_bulk_docket(docket_id: int) -> list[dict]:
     return blocking
 
 
+def _check_advance_payment_adjusted(receipt_id: int) -> list[dict]:
+    """An approved advance payment whose money is already adjusted against
+    bills can't be taken out — cancel those Advance Adjustments first."""
+    from app.models.billPaymentReceipt import BillPaymentReceiptMaster
+    from app.models.advanceAdjustment import AdvanceAdjustmentMaster
+    from app.modules.finance.advance_adjustment.service import advance_payment_release_error
+    r = BillPaymentReceiptMaster.query.get(receipt_id)
+    if not r or not advance_payment_release_error(r):
+        return []
+    return [{
+        "doc_no":      a.adjustment_no,
+        "module_code": "ADVANCE_ADJUSTMENT",
+        "label":       "Advance Adjustment",
+        "record_id":   a.id,
+    } for a in AdvanceAdjustmentMaster.query.filter_by(
+        payment_request_id=r.payment_request_id, workflow_status="Approved").all()]
+
+
 def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[dict]:
     """Run any special FK checks that can't be expressed as simple column checks."""
     blocking = []
@@ -233,6 +251,8 @@ def _run_special_checks(module_code: str, record_id: int, config: dict) -> list[
             blocking.extend(_check_jv_linked_journal(record_id))
         elif check_name == "docket_in_bulk_docket":
             blocking.extend(_check_docket_in_bulk_docket(record_id))
+        elif check_name == "advance_payment_adjusted":
+            blocking.extend(_check_advance_payment_adjusted(record_id))
     return blocking
 
 

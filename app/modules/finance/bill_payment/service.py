@@ -131,11 +131,11 @@ def _paid_gst_map(purchase_bill_id, exclude_id=None):
 
 # ══════════════════════════════════════════════════════════════════
 # ADVANCE HELPERS
-#   An advance payment pays an Approved ADVANCE Payment Request. When that
-#   request is later linked to a BRR (or a journal), its APPROVED advance
-#   payments are adjusted against the bill: the bill's balance in this
-#   screen goes down by that amount. Bills with no linked advance behave
-#   exactly as before.
+#   An advance payment pays an Approved ADVANCE Payment Request with no
+#   bill. Its money is settled against bills by Advance Adjustments
+#   (app/modules/finance/advance_adjustment): each adjustment sits on exact
+#   bill rows (product / CC wise), lowers those rows' balance here and shows
+#   as `advanceAmount`. Bills with no adjustment behave exactly as before.
 # ══════════════════════════════════════════════════════════════════
 
 _DEAD = ("Rejected", "Cancelled")
@@ -143,29 +143,6 @@ _DEAD = ("Rejected", "Cancelled")
 
 def _D(v):
     return Decimal(str(v or 0)).quantize(Decimal("0.01"))
-
-
-def _advance_paid_by(link_col, ids):
-    """{source id: approved advance paid} for advances linked to BRRs
-    (link_col = brr_id) or journals (link_col = journal_id)."""
-    ids = [i for i in ids if i]
-    if not ids:
-        return {}
-    col = getattr(PaymentRequestMaster, link_col)
-    rows = (
-        db.session.query(col, func.coalesce(func.sum(BillPaymentReceiptMaster.total_invoice_amount), 0))
-        .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
-        .filter(
-            BillPaymentReceiptMaster.payment_type    == "advance",
-            BillPaymentReceiptMaster.workflow_status == "Approved",
-            PaymentRequestMaster.source_type         == "ADVANCE",
-            PaymentRequestMaster.link_type.isnot(None),
-            col.in_(ids),
-        )
-        .group_by(col)
-        .all()
-    )
-    return {k: float(v or 0) for k, v in rows}
 
 
 def _bill_paid_totals(bill_ids, exclude_id=None):
@@ -185,162 +162,68 @@ def _bill_paid_totals(bill_ids, exclude_id=None):
     return ({k: float(v) for k, v in paid.items()}, {k: float(v) for k, v in inprog.items()})
 
 
-def _linked_advance_receipts(link_col, ids, exclude_id=None):
-    """Approved advance payments of advance requests linked to these BRRs /
-    journals (link_col = brr_id | journal_id)."""
-    ids = [i for i in ids if i]
-    if not ids:
-        return []
-    col = getattr(PaymentRequestMaster, link_col)
-    q = (
-        BillPaymentReceiptMaster.query
-        .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
-        .filter(
-            BillPaymentReceiptMaster.payment_type    == "advance",
-            BillPaymentReceiptMaster.workflow_status == "Approved",
-            PaymentRequestMaster.source_type         == "ADVANCE",
-            PaymentRequestMaster.link_type.isnot(None),
-            col.in_(ids),
-        )
-    )
-    if exclude_id:
-        q = q.filter(BillPaymentReceiptMaster.id != exclude_id)
-    return q.order_by(BillPaymentReceiptMaster.id.asc()).all()
-
-
 def _gst_plain(gst_type):
     return (gst_type or "").split(":", 1)[-1]
 
 
-def _brr_advance_alloc(brr_id, bills, paid_map, inprog_map, exclude_id=None):
-    """How a BRR's approved advance lands on its purchase bills.
-    Advance payments saved WITH a CC breakdown sit exactly on those rows;
-    the rest (paid before the link, no rows) is spread over the bills,
-    oldest first, up to each bill's open balance.
-    Returns (adv_by_bill, adv_by_row, spread_by_bill); row keys are
-    ("i", pb_item_id) and ("g", bill_id, "IGST")."""
-    bill_ids = {b.id for b in bills}
-    item_bill = {p.id: p.purchase_bill_id for p in
-                 PurchaseBillItem.query.filter(PurchaseBillItem.purchase_bill_id.in_(bill_ids or [0])).all()}
-    adv_by_row, adv_by_bill, unalloc = {}, {}, 0.0
-    for r in _linked_advance_receipts("brr_id", [brr_id], exclude_id):
-        rows = [i for i in r.items if i.pb_item_id] + [g for g in r.gst_lines if g.is_selected]
-        if not rows:
-            unalloc += float(r.total_invoice_amount or 0)
-            continue
-        for i in r.items:
-            if i.pb_item_id and float(i.current_amount or 0) > 0:
-                key = ("i", i.pb_item_id)
-                adv_by_row[key] = adv_by_row.get(key, 0.0) + float(i.current_amount)
-                bid = item_bill.get(i.pb_item_id)
-                adv_by_bill[bid] = adv_by_bill.get(bid, 0.0) + float(i.current_amount)
-        for g in r.gst_lines:
-            if g.is_selected and float(g.current_amount or 0) > 0 and ":" in (g.gst_type or ""):
-                bid = int(g.gst_type.split(":", 1)[0])
-                key = ("g", bid, _gst_plain(g.gst_type))
-                adv_by_row[key] = adv_by_row.get(key, 0.0) + float(g.current_amount)
-                adv_by_bill[bid] = adv_by_bill.get(bid, 0.0) + float(g.current_amount)
-    spread = {}
-    for b in sorted(bills, key=lambda x: x.id):
-        if unalloc <= 0:
-            break
-        open_bal = max(float(b.total_invoice_amount or 0) - paid_map.get(b.id, 0)
-                       - inprog_map.get(b.id, 0) - adv_by_bill.get(b.id, 0), 0)
-        take = min(unalloc, open_bal)
-        if take > 0:
-            spread[b.id] = take
-            adv_by_bill[b.id] = adv_by_bill.get(b.id, 0.0) + take
-            unalloc -= take
-    return adv_by_bill, adv_by_row, spread
-
-
 def _advance_adjusted_for_bills(bills, paid_map=None, inprog_map=None, exclude_id=None):
-    """{bill id: advance adjusted} for bills whose BRR carries a linked advance.
-    (paid_map / inprog_map kept for callers; totals are re-read per BRR.)"""
-    by_brr = {}
-    for b in sorted(bills, key=lambda x: x.id):
-        if b.brr_id:
-            by_brr.setdefault(b.brr_id, []).append(b)
-    out = {}
-    for brr_id, brr_bills in by_brr.items():
-        siblings = PurchaseBillMaster.query.filter(
-            PurchaseBillMaster.brr_id == brr_id, PurchaseBillMaster.workflow_status == "Approved",
-        ).all()
-        p_map, i_map = _bill_paid_totals([b.id for b in siblings], exclude_id)
-        by_bill = _brr_advance_alloc(brr_id, siblings, p_map, i_map, exclude_id)[0]
-        for b in brr_bills:
-            if by_bill.get(b.id):
-                out[b.id] = by_bill[b.id]
-    return out
+    """{purchase bill id: advance adjusted against it}."""
+    from app.modules.finance.advance_adjustment.service import adjusted_by_bill
+    return adjusted_by_bill([b.id for b in bills])
+
+
+def _take_off(row, amount):
+    row["advanceAmount"] = round(float(row.get("advanceAmount") or 0) + amount, 2)
+    row["balanceAmount"] = round(max(float(row["balanceAmount"]) - amount, 0), 2)
 
 
 def _apply_bill_advance(bill, item_rows, gst_rows, exclude_id=None):
-    """Write each row's share of the linked advance into the UI rows:
-    `advanceAmount` up, `balanceAmount` down. Exact rows first, then the
-    spread part (basic items, then GST)."""
+    """Each row's adjusted advance into the UI rows: `advanceAmount` up,
+    `balanceAmount` down — exactly on the rows the adjustments chose."""
+    from app.modules.finance.advance_adjustment.service import adjusted_row_maps
     for row in item_rows + gst_rows:
         row.setdefault("advanceAmount", 0.0)
-    if not bill.brr_id:
-        return
-    siblings = PurchaseBillMaster.query.filter(
-        PurchaseBillMaster.brr_id == bill.brr_id, PurchaseBillMaster.workflow_status == "Approved",
-    ).all()
-    paid, inprog = _bill_paid_totals([b.id for b in siblings], exclude_id)
-    _, by_row, spread = _brr_advance_alloc(bill.brr_id, siblings, paid, inprog, exclude_id)
+    by_item, by_gst, _ = adjusted_row_maps(purchase_bill_ids=[bill.id])
     for row in item_rows:
-        a = by_row.get(("i", row.get("pbItemId")), 0.0)
+        a = by_item.get(row.get("pbItemId"), 0.0)
         if a:
-            row["advanceAmount"] = round(row["advanceAmount"] + a, 2)
-            row["balanceAmount"] = round(max(float(row["balanceAmount"]) - a, 0), 2)
+            _take_off(row, a)
     for row in gst_rows:
-        a = by_row.get(("g", bill.id, _gst_plain(row.get("gstType"))), 0.0)
+        a = by_gst.get((bill.id, _gst_plain(row.get("gstType"))), 0.0)
         if a:
-            row["advanceAmount"] = round(row["advanceAmount"] + a, 2)
-            row["balanceAmount"] = round(max(float(row["balanceAmount"]) - a, 0), 2)
-    _spread_advance(item_rows + gst_rows, spread.get(bill.id, 0.0))
+            _take_off(row, a)
 
 
 def _apply_journal_advance(je, item_rows, exclude_id=None):
     """Same for a journal's Dr CC rows (key: jeLineId)."""
+    from app.modules.finance.advance_adjustment.service import adjusted_row_maps
     for row in item_rows:
         row.setdefault("advanceAmount", 0.0)
-    unalloc = 0.0
-    for r in _linked_advance_receipts("journal_id", [je.id], exclude_id):
-        rows = [i for i in r.items if i.je_line_id]
-        if not rows:
-            unalloc += float(r.total_invoice_amount or 0)
-            continue
-        for i in rows:
-            for row in item_rows:
-                if row.get("jeLineId") == i.je_line_id:
-                    a = float(i.current_amount or 0)
-                    row["advanceAmount"] = round(row["advanceAmount"] + a, 2)
-                    row["balanceAmount"] = round(max(float(row["balanceAmount"]) - a, 0), 2)
-    _spread_advance(item_rows, unalloc)
+    _, _, by_line = adjusted_row_maps(je_ids=[je.id])
+    for row in item_rows:
+        a = by_line.get(row.get("jeLineId"), 0.0)
+        if a:
+            _take_off(row, a)
 
 
 def _bill_open_after_advance(bill, exclude_id=None):
     """(advance adjusted, balance) for one purchase bill, excluding receipt exclude_id."""
-    siblings = PurchaseBillMaster.query.filter(
-        PurchaseBillMaster.brr_id == bill.brr_id,
-        PurchaseBillMaster.workflow_status == "Approved",
-    ).all() if bill.brr_id else [bill]
-    ids = [b.id for b in siblings]
-    paid, inprog = _bill_paid_totals(ids, exclude_id)
-    adjusted = _advance_adjusted_for_bills(siblings, paid, inprog, exclude_id).get(bill.id, 0.0)
+    paid, inprog = _bill_paid_totals([bill.id], exclude_id)
+    adjusted = _advance_adjusted_for_bills([bill]).get(bill.id, 0.0)
     balance = max(float(bill.total_invoice_amount or 0) - paid.get(bill.id, 0) - inprog.get(bill.id, 0) - adjusted, 0)
     return adjusted, balance
 
 
 def _check_bill_advance_limit(bill_ids, items, gst_lines, exclude_id=None):
-    """Only for bills that carry a linked advance: what this payment puts on a
-    bill can't go over the bill's balance after the advance. Bills without an
-    advance are not checked here (unchanged behaviour)."""
+    """Only for bills that carry an advance adjustment: what this payment puts
+    on a bill (and on each of its rows) can't go over what is left after the
+    advance. Bills without an adjustment are not checked here (unchanged)."""
+    from app.modules.finance.advance_adjustment.service import adjusted_row_maps
     bills = PurchaseBillMaster.query.filter(PurchaseBillMaster.id.in_(bill_ids)).all()
     if not bills:
         return None
     item_bill = {
-        p.id: p.purchase_bill_id
+        p.id: p
         for p in PurchaseBillItem.query.filter(
             PurchaseBillItem.id.in_([int(i.get("pbItemId")) for i in items if i.get("pbItemId")] or [0])
         ).all()
@@ -350,61 +233,75 @@ def _check_bill_advance_limit(bill_ids, items, gst_lines, exclude_id=None):
         adjusted, balance = _bill_open_after_advance(b, exclude_id)
         if adjusted <= 0:
             continue
-        amount = sum(
-            float(i.get("currentAmount") or 0) for i in items
-            if (single and not i.get("pbItemId")) or item_bill.get(int(i.get("pbItemId") or 0)) == b.id
-        )
+        adj_items, adj_gst, _ = adjusted_row_maps(purchase_bill_ids=[b.id])
+        paid_items = _paid_item_map(b.id, exclude_id)
+        paid_gst = _paid_gst_map(b.id, exclude_id)
+        amount = 0.0
+        for i in items:
+            pbi = item_bill.get(int(i.get("pbItemId") or 0))
+            if not ((single and not pbi) or (pbi and pbi.purchase_bill_id == b.id)):
+                continue
+            cur = float(i.get("currentAmount") or 0)
+            amount += cur
+            if pbi and adj_items.get(pbi.id):
+                room = float(pbi.basic_amount or 0) - paid_items.get(pbi.id, 0) - adj_items[pbi.id]
+                if round(cur, 2) > round(max(room, 0), 2):
+                    return (f"Bill {b.purchase_bill_no} CC {pbi.cc_code}: amount {cur:.2f} exceeds row balance "
+                            f"{max(room, 0):.2f} (advance {adj_items[pbi.id]:.2f} adjusted on it)")
         for g in gst_lines:
             if not g.get("isSelected"):
                 continue
             gt = g.get("gstType") or ""
-            if (":" in gt and gt.split(":", 1)[0] == str(b.id)) or (":" not in gt and single):
-                amount += float(g.get("currentAmount") or 0)
+            if not ((":" in gt and gt.split(":", 1)[0] == str(b.id)) or (":" not in gt and single)):
+                continue
+            cur = float(g.get("currentAmount") or 0)
+            amount += cur
+            key = _gst_plain(gt)
+            if adj_gst.get((b.id, key)):
+                booked = sum(float(x.gst_amount or 0) for x in b.gst_lines if x.gst_type == key)
+                room = booked - paid_gst.get(key, 0) - adj_gst[(b.id, key)]
+                if round(cur, 2) > round(max(room, 0), 2):
+                    return (f"Bill {b.purchase_bill_no} {key}: amount {cur:.2f} exceeds row balance "
+                            f"{max(room, 0):.2f} (advance {adj_gst[(b.id, key)]:.2f} adjusted on it)")
         if round(amount, 2) > round(balance, 2):
             return (f"Bill {b.purchase_bill_no}: amount {amount:.2f} exceeds balance {balance:.2f} "
                     f"(advance {adjusted:.2f} already adjusted)")
     return None
 
 
-def _spread_advance(rows, advance, only_selected_gst=True):
-    """Put a bill's adjusted advance into its bill-wise rows, in row order
-    (basic items first, then GST): each row gets `advanceAmount` and its
-    `balanceAmount` goes down by it. Rows are dicts as sent to the UI."""
-    left = round(float(advance or 0), 2)
-    for row in rows:
-        row.setdefault("advanceAmount", 0.0)
-        if left <= 0:
-            continue
-        if only_selected_gst and "isSelected" in row and not row["isSelected"]:
-            continue
-        take = round(min(left, max(float(row.get("balanceAmount") or 0), 0)), 2)
-        if take > 0:
-            row["advanceAmount"] = round(float(row["advanceAmount"]) + take, 2)
-            row["balanceAmount"] = round(float(row["balanceAmount"]) - take, 2)
-            left = round(left - take, 2)
-    return rows
-
-
 def _journal_advance_adjusted(je_ids):
-    return _advance_paid_by("journal_id", je_ids)
+    from app.modules.finance.advance_adjustment.service import adjusted_by_journal
+    return adjusted_by_journal(je_ids)
 
 
 def _check_journal_advance_limit(je_ids, items, exclude_id=None):
+    from app.modules.finance.advance_adjustment.service import adjusted_row_maps
     adv = _journal_advance_adjusted(je_ids)
     if not adv:
         return None
-    line_je = {
-        l.id: l.journal_id
+    lines = {
+        l.id: l
         for l in JournalEntryLine.query.filter(
             JournalEntryLine.id.in_([int(i.get("jeLineId")) for i in items if i.get("jeLineId")] or [0])
         ).all()
     }
     for jid, adjusted in adv.items():
         je = JournalEntryMaster.query.get(jid)
-        paid = sum(_paid_je_line_map(jid, exclude_id=exclude_id, include_active=True).values())
-        balance = max(float(je.total_debit or 0) - paid - adjusted, 0)
-        amount = sum(float(i.get("currentAmount") or 0) for i in items
-                     if line_je.get(int(i.get("jeLineId") or 0)) == jid)
+        paid_map = _paid_je_line_map(jid, exclude_id=exclude_id, include_active=True)
+        _, _, adj_lines = adjusted_row_maps(je_ids=[jid])
+        balance = max(float(je.total_debit or 0) - sum(paid_map.values()) - adjusted, 0)
+        amount = 0.0
+        for i in items:
+            l = lines.get(int(i.get("jeLineId") or 0))
+            if not l or l.journal_id != jid:
+                continue
+            cur = float(i.get("currentAmount") or 0)
+            amount += cur
+            if adj_lines.get(l.id):
+                room = float(l.debit_amount or 0) - paid_map.get(l.id, 0) - adj_lines[l.id]
+                if round(cur, 2) > round(max(room, 0), 2):
+                    return (f"Journal {je.voucher_no} line {l.id}: amount {cur:.2f} exceeds row balance "
+                            f"{max(room, 0):.2f} (advance {adj_lines[l.id]:.2f} adjusted on it)")
         if round(amount, 2) > round(balance, 2):
             return (f"Journal {je.voucher_no}: amount {amount:.2f} exceeds balance {balance:.2f} "
                     f"(advance {adjusted:.2f} already adjusted)")
@@ -437,163 +334,19 @@ def _validate_advance_payment(pr, project_code, amount, exclude_id=None):
         )
 
 
-def _advance_rows(pr, exclude_id=None):
-    """CC rows an advance payment can be split over: the linked bill's rows
-    (BRR → its approved purchase bills' items + GST; JOURNAL → its Dr CC
-    lines) with booked / paid / advance already on them / balance — the same
-    shape the Bill and Voucher breakdown uses. Unlinked → no rows."""
-    items, gst_rows = [], []
-    if pr.link_type == "BRR" and pr.brr_id:
-        bills = (PurchaseBillMaster.query
-                 .filter(PurchaseBillMaster.brr_id == pr.brr_id, PurchaseBillMaster.workflow_status == "Approved")
-                 .order_by(PurchaseBillMaster.id.asc()).all())
-        for bill in bills:
-            paid_basic, paid_gst = _paid_item_map(bill.id), _paid_gst_map(bill.id)
-            order_no = ((bill.brr.order.order_no if bill.brr and bill.brr.order else None) or
-                        (bill.brr.pw_order.order_no if bill.brr and bill.brr.pw_order else None))
-            b_items, b_gst = [], []
-            for i in bill.items:
-                booked = float(i.basic_amount or 0)
-                paid = paid_basic.get(i.id, 0)
-                b_items.append({
-                    "pbItemId": i.id, "purchaseBillId": bill.id, "purchaseBillNo": bill.purchase_bill_no,
-                    "brrNo": bill.brr_no, "brrDate": _fmt_date(bill.brr_date), "orderNo": order_no,
-                    "slNo": i.sl_no, "ccCode": i.cc_code, "ccName": i.cc_name, "description": i.description,
-                    "bookedAmount": booked, "paidAmount": paid, "balanceAmount": max(booked - paid, 0),
-                    "currentAmount": 0,
-                })
-            for g in bill.gst_lines:
-                booked = float(g.gst_amount or 0)
-                paid = paid_gst.get(g.gst_type, 0)
-                b_gst.append({
-                    "gstType": f"{bill.id}:{g.gst_type}", "purchaseBillId": bill.id,
-                    "purchaseBillNo": bill.purchase_bill_no, "orderNo": order_no, "brrNo": bill.brr_no,
-                    "brrDate": _fmt_date(bill.brr_date), "ccCode": g.cc_code, "ccName": g.cc_name,
-                    "percent": float(g.percent or 0), "bookedAmount": booked, "paidAmount": paid,
-                    "balanceAmount": max(booked - paid, 0), "currentAmount": 0, "isSelected": g.is_selected,
-                })
-            _apply_bill_advance(bill, b_items, b_gst, exclude_id=exclude_id)
-            items += b_items
-            gst_rows += b_gst
-    elif pr.link_type == "JOURNAL" and pr.journal_id:
-        je = JournalEntryMaster.query.get(pr.journal_id)
-        if je:
-            paid_map = _paid_je_line_map(je.id)
-            dr_lines = [l for l in je.lines if l.dr_cr == "Dr" and l.account_type == "CC"]
-            for idx, line in enumerate(dr_lines, start=1):
-                booked = float(line.debit_amount or 0)
-                paid = paid_map.get(line.id, 0)
-                items.append({
-                    "jeLineId": line.id, "journalEntryId": je.id, "voucherNo": je.voucher_no,
-                    "entryDate": _fmt_date(je.entry_date), "slNo": idx,
-                    "ccCode": line.cc.cc_code if line.cc else "", "ccName": line.cc.cc_name if line.cc else "",
-                    "description": "", "bookedAmount": booked, "paidAmount": paid,
-                    "balanceAmount": max(booked - paid, 0), "currentAmount": 0,
-                })
-            _apply_journal_advance(je, items, exclude_id=exclude_id)
-    return items, gst_rows
-
-
-def _fill_rows(rows, amount):
-    """Auto-fill current amounts in row order up to each row's balance."""
-    left = round(float(amount or 0), 2)
-    for row in rows:
-        if "isSelected" in row and not row["isSelected"]:
-            continue
-        take = round(min(left, max(float(row.get("balanceAmount") or 0), 0)), 2)
-        row["currentAmount"] = take if take > 0 else 0
-        left = round(left - max(take, 0), 2)
-    return rows
-
-
-def get_advance_cc_rows(data):
-    """GET ?paymentRequestId=&excludeId= — the CC breakdown for an advance
-    payment, auto-filled with what is left to pay on the request."""
-    from app.modules.billing.payment_request.service import advance_paid
-    try:
-        pr = PaymentRequestMaster.query.get(int(data.get("paymentRequestId") or 0))
-        if not pr or pr.source_type != "ADVANCE":
-            return res("Advance Payment Request not found", [], 404)
-        exclude_id = int(data["excludeId"]) if data.get("excludeId") else None
-        items, gst_rows = _advance_rows(pr, exclude_id)
-        approved, in_progress = advance_paid(pr.id, exclude_receipt_id=exclude_id)
-        to_pay = float(max(_D(pr.net_payable) - approved - in_progress, Decimal("0")))
-        _fill_rows(items + gst_rows, to_pay)
-        return res("Advance CC rows fetched", {
-            "linkType":    pr.link_type,
-            "linkedNo":    (pr.brr_no if pr.link_type == "BRR" else pr.journal_voucher_no if pr.link_type else None),
-            "balanceToPay": to_pay,
-            "items":       items,
-            "gstLines":    gst_rows,
-        }, 200)
-    except Exception as e:
-        db.session.rollback()
-        return res(str(e), [], 500)
-
-
-def _advance_rows_from_payload(pr, data, exclude_id=None):
-    """Validate the CC breakdown sent for an advance payment against the
-    linked bill's rows. Returns (items, gst_rows, amount) — empty lists when
-    no breakdown was sent (then `amount` is used as before)."""
-    sent_items = [i for i in (data.get("items") or []) if float(i.get("currentAmount") or 0) > 0]
-    sent_gst = [g for g in (data.get("gstLines") or []) if g.get("isSelected") and float(g.get("currentAmount") or 0) > 0]
-    if not sent_items and not sent_gst:
-        return [], [], None
-    if not pr.link_type:
-        raise ValueError("Link the advance request to a bill before splitting it by CC")
-    items, gst_rows = _advance_rows(pr, exclude_id)
-    by_item = {(r.get("pbItemId") or r.get("jeLineId")): r for r in items}
-    by_gst = {r["gstType"]: r for r in gst_rows}
-    out_items, out_gst = [], []
-    for i in sent_items:
-        key = i.get("pbItemId") or i.get("jeLineId")
-        row = by_item.get(int(key)) if key else None
-        if not row:
-            raise ValueError(f"CC row {i.get('ccCode') or key} is not on the linked bill")
-        cur = round(float(i.get("currentAmount") or 0), 2)
-        if cur > round(row["balanceAmount"], 2):
-            raise ValueError(f"{row['ccCode']}: amount {cur:.2f} exceeds row balance {row['balanceAmount']:.2f}")
-        out_items.append({**row, "currentAmount": cur})
-    for g in sent_gst:
-        row = by_gst.get(g.get("gstType"))
-        if not row:
-            raise ValueError(f"GST row {g.get('gstType')} is not on the linked bill")
-        cur = round(float(g.get("currentAmount") or 0), 2)
-        if cur > round(row["balanceAmount"], 2):
-            raise ValueError(f"{row['gstType']}: amount {cur:.2f} exceeds row balance {row['balanceAmount']:.2f}")
-        out_gst.append({**row, "currentAmount": cur})
-    amount = _D(sum(r["currentAmount"] for r in out_items) + sum(r["currentAmount"] for r in out_gst))
-    return out_items, out_gst, amount
-
-
-def _save_advance_rows(r, items, gst_rows):
+def _clear_receipt_rows(r):
+    """An advance payment carries no bill rows (only an amount)."""
     BillPaymentReceiptItem.query.filter_by(receipt_id=r.id).delete()
     BillPaymentReceiptGst.query.filter_by(receipt_id=r.id).delete()
-    db.session.flush()
-    basic = Decimal("0")
-    gst_total = Decimal("0")
-    for idx, row in enumerate(items, start=1):
-        db.session.add(BillPaymentReceiptItem(
-            receipt_id=r.id, pb_item_id=row.get("pbItemId"), je_line_id=row.get("jeLineId"),
-            sl_no=idx, cc_code=row.get("ccCode"), cc_name=row.get("ccName"),
-            booked_amount=_D(row.get("bookedAmount")), current_amount=_D(row["currentAmount"]),
-        ))
-        basic += _D(row["currentAmount"])
-    for row in gst_rows:
-        db.session.add(BillPaymentReceiptGst(
-            receipt_id=r.id, gst_type=row["gstType"], cc_code=row.get("ccCode"), cc_name=row.get("ccName"),
-            booked_amount=_D(row.get("bookedAmount")), current_amount=_D(row["currentAmount"]), is_selected=True,
-        ))
-        gst_total += _D(row["currentAmount"])
-    if items or gst_rows:
-        r.basic_amount, r.gst_amount = basic, gst_total
 
 
 def _build_advance_detail_payload(r):
     from app.modules.billing.payment_request.service import advance_paid
+    from app.modules.finance.advance_adjustment.service import advance_status
     pr = r.payment_request
     approved, in_progress = advance_paid(pr.id, exclude_receipt_id=r.id) if pr else (Decimal("0"), Decimal("0"))
     net = _D(pr.net_payable) if pr else Decimal("0")
+    status = advance_status(pr) if pr else {}
     return {
         "id":                  r.id,
         "receiptNo":           r.receipt_no,
@@ -606,9 +359,12 @@ def _build_advance_detail_payload(r):
         "requestNetPayable":   float(net),
         "requestPaidOther":    float(approved + in_progress),   # other payments on the request
         "requestBalance":      float(max(net - approved - in_progress, Decimal("0"))),
-        "linkType":            pr.link_type if pr else None,
-        "linkedNo":            (pr.brr_no if pr and pr.link_type == "BRR"
-                                else pr.journal_voucher_no if pr and pr.link_type == "JOURNAL" else None),
+        # Vendor Advance Register status of the request
+        "advancePaidApproved": status.get("advancePaidApproved", 0.0),
+        "advanceAdjusted":     status.get("advanceAdjusted", 0.0),
+        "advanceOutstanding":  status.get("advanceOutstanding", 0.0),
+        "adjustType":          status.get("adjustType"),
+        "adjustments":         status.get("adjustments", []),
         "projectCode":         r.project_code,
         "vendorId":            r.vendor_id,
         "vendorName":          r.vendor.ledger_name if r.vendor else None,
@@ -637,27 +393,9 @@ def _build_advance_detail_payload(r):
         "finalApprovedAt":     _fmt_date(r.final_approved_at),
         "rejectedBy":          r.rejector.username  if r.rejector  else None,
         "rejectedAt":          _fmt_date(r.rejected_at),
-        **_advance_detail_rows(r, pr),
+        "items":               [],
+        "gstLines":            [],
     }
-
-
-def _advance_detail_rows(r, pr):
-    """The linked bill's CC rows with this payment's saved amounts on them."""
-    if not pr or not pr.link_type:
-        return {"items": [], "gstLines": []}
-    items, gst_rows = _advance_rows(pr, exclude_id=r.id)
-    if not r.items and not r.gst_lines:
-        # saved before the link (or without a split): show it auto-split by
-        # the bill's rows — the same order its ledger posting uses
-        _fill_rows(items + gst_rows, r.total_invoice_amount)
-        return {"items": items, "gstLines": gst_rows}
-    saved_i = {(i.pb_item_id or i.je_line_id): float(i.current_amount or 0) for i in r.items}
-    saved_g = {g.gst_type: float(g.current_amount or 0) for g in r.gst_lines}
-    for row in items:
-        row["currentAmount"] = saved_i.get(row.get("pbItemId") or row.get("jeLineId"), 0)
-    for row in gst_rows:
-        row["currentAmount"] = saved_g.get(row["gstType"], 0)
-    return {"items": items, "gstLines": gst_rows}
 
 
 def _build_detail_payload(r):
@@ -1654,8 +1392,7 @@ def _create_advance_payment(data, user_id, project_code):
         pr = _lock_advance_request(int(data["paymentRequestId"]))
         if not pr:
             raise ValueError("Advance Payment Request not found")
-        cc_items, cc_gst, rows_amount = _advance_rows_from_payload(pr, data)
-        amount = rows_amount if rows_amount is not None else _D(data.get("amount"))
+        amount = _D(data.get("amount"))
         _validate_advance_payment(pr, project_code, amount)
 
         r = BillPaymentReceiptMaster(
@@ -1683,7 +1420,6 @@ def _create_advance_payment(data, user_id, project_code):
         )
         db.session.add(r)
         db.session.flush()
-        _save_advance_rows(r, cc_items, cc_gst)
         db.session.commit()
         return res("Advance payment created", {
             "id":          r.id,
@@ -2085,11 +1821,7 @@ def _edit_advance_payment(r, data, user_id):
         pr = _lock_advance_request(r.payment_request_id)
         if not pr:
             raise ValueError("Advance Payment Request not found")
-        cc_items, cc_gst, rows_amount = _advance_rows_from_payload(pr, data, exclude_id=r.id)
-        if rows_amount is not None:
-            amount = rows_amount
-        else:
-            amount = _D(data.get("amount")) if data.get("amount") not in (None, "") else _D(r.total_invoice_amount)
+        amount = _D(data.get("amount")) if data.get("amount") not in (None, "") else _D(r.total_invoice_amount)
         _validate_advance_payment(pr, r.project_code, amount, exclude_id=r.id)
 
         if data.get("paymentDate"):
@@ -2103,7 +1835,7 @@ def _edit_advance_payment(r, data, user_id):
             r.payment_remarks = data.get("paymentRemarks")
         r.basic_amount = r.total_invoice_amount = amount
         r.gst_amount = r.discount = r.round_off = Decimal("0")
-        _save_advance_rows(r, cc_items, cc_gst)   # clears old rows; amount-only → no rows
+        _clear_receipt_rows(r)   # amount only — bill rows come from Advance Adjustments
         if r.workflow_status == "Reback":
             r.correction_sent_at = None
         r.updated_by = user_id
@@ -2520,6 +2252,24 @@ def _row(r, amount, pr=None):
     }
 
 
+def _adj_row(a):
+    """An Advance Adjustment as a popup row."""
+    pr = a.payment_request
+    return {
+        "id":               f"adj-{a.id}",
+        "receiptNo":        a.adjustment_no,
+        "paymentDate":      _fmt_date(a.adjustment_date),
+        "paymentType":      "adjustment",
+        "typeLabel":        "Advance Adjusted",
+        "paymentRequestNo": pr.pr_no if pr else None,
+        "paymentMode":      "Advance",
+        "accountName":      None,
+        "utrVoucherNo":     None,
+        "amount":           round(float(a.amount or 0), 2),
+        "workflowStatus":   a.workflow_status,
+    }
+
+
 def _receipt_amount_on_bills(r, bill_ids):
     """Part of receipt r that belongs to the given purchase bills."""
     item_ids = {p.id for p in PurchaseBillItem.query.filter(PurchaseBillItem.purchase_bill_id.in_(bill_ids)).all()}
@@ -2544,8 +2294,9 @@ def _receipt_amount_on_bills(r, bill_ids):
 def get_bill_payments_on_bill(data):
     """Payments made against a bill — for the popup table.
     One of: purchaseBillId | brrId | journalEntryId (+ vendorId).
-    Totals: bill amount, paid (approved), advance adjusted (approved advance
-    payments of linked advance requests), in progress, balance."""
+    Totals: bill amount, paid (approved), advance adjusted (active Advance
+    Adjustments on the bill), in progress, balance."""
+    from app.models.advanceAdjustment import AdvanceAdjustmentMaster
     try:
         rows, in_prog = [], 0.0
         paid = adv_total = bill_amount = 0.0
@@ -2591,29 +2342,14 @@ def get_bill_payments_on_bill(data):
                     elif r.workflow_status not in _DEAD:
                         in_prog += amt
 
-            # advance payments of advances linked to this BRR
-            if brr_id:
-                advs = (
-                    BillPaymentReceiptMaster.query
-                    .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
-                    .filter(BillPaymentReceiptMaster.payment_type == "advance",
-                            PaymentRequestMaster.link_type == "BRR",
-                            PaymentRequestMaster.brr_id == brr_id)
-                    .order_by(BillPaymentReceiptMaster.payment_date.asc(), BillPaymentReceiptMaster.id.asc())
-                    .all()
-                )
-                for r in advs:
-                    rows.append(_row(r, r.total_invoice_amount, r.payment_request))
-                if data.get("purchaseBillId"):
-                    siblings = PurchaseBillMaster.query.filter(
-                        PurchaseBillMaster.brr_id == brr_id,
-                        PurchaseBillMaster.workflow_status == "Approved",
-                    ).all()
-                    p_map, i_map = _bill_paid_totals([b.id for b in siblings])
-                    adv_total = _advance_adjusted_for_bills(siblings, p_map, i_map).get(bills[0].id, 0.0)
-                else:
-                    adv_total = min(_advance_paid_by("brr_id", [brr_id]).get(brr_id, 0.0),
-                                    max(bill_amount - paid - in_prog, 0))
+            # advance adjusted against these bills
+            if bill_ids:
+                for a in (AdvanceAdjustmentMaster.query
+                          .filter(AdvanceAdjustmentMaster.purchase_bill_id.in_(bill_ids))
+                          .order_by(AdvanceAdjustmentMaster.id.asc()).all()):
+                    rows.append(_adj_row(a))
+                    if a.workflow_status == "Approved":
+                        adv_total += float(a.amount or 0)
 
         elif data.get("journalEntryId"):
             je = JournalEntryMaster.query.get(int(data["journalEntryId"]))
@@ -2641,24 +2377,17 @@ def get_bill_payments_on_bill(data):
                     paid += amt
                 elif r.workflow_status not in _DEAD:
                     in_prog += amt
-            adv_q = (
-                BillPaymentReceiptMaster.query
-                .join(PaymentRequestMaster, BillPaymentReceiptMaster.payment_request_id == PaymentRequestMaster.id)
-                .filter(BillPaymentReceiptMaster.payment_type == "advance",
-                        PaymentRequestMaster.link_type == "JOURNAL",
-                        PaymentRequestMaster.journal_id == je.id)
-            )
+            adj_q = AdvanceAdjustmentMaster.query.filter(AdvanceAdjustmentMaster.journal_id == je.id)
             if vendor_id:
-                adv_q = adv_q.filter(PaymentRequestMaster.vendor_id == vendor_id)
-            for r in adv_q.order_by(BillPaymentReceiptMaster.id.asc()).all():
-                rows.append(_row(r, r.total_invoice_amount, r.payment_request))
-                if r.workflow_status == "Approved":
-                    adv_total += float(r.total_invoice_amount or 0)
-            adv_total = min(adv_total, max(bill_amount - paid - in_prog, 0))
+                adj_q = adj_q.filter(AdvanceAdjustmentMaster.vendor_id == vendor_id)
+            for a in adj_q.order_by(AdvanceAdjustmentMaster.id.asc()).all():
+                rows.append(_adj_row(a))
+                if a.workflow_status == "Approved":
+                    adv_total += float(a.amount or 0)
         else:
             return res("purchaseBillId, brrId or journalEntryId required", [], 400)
 
-        rows.sort(key=lambda x: (x["paymentDate"] or "", x["id"]))
+        rows.sort(key=lambda x: (x["paymentDate"] or "", str(x["id"])))
         return res("Bill payment history fetched", {
             "title":           title,
             "billAmount":      round(bill_amount, 2),

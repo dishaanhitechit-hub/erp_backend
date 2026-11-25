@@ -34,6 +34,7 @@ Structure per entry:
 
 # ── Models ─────────────────────────────────────────────────────────────────
 from app.models.indent_master      import IndentMaster
+from app.models.advanceAdjustment  import AdvanceAdjustmentMaster
 from app.models.orderMaster        import OrderMaster
 from app.models.ORDER_projectwork  import ProjectWorkOrderMaster
 from app.models.grnMaster          import GrnMaster
@@ -334,6 +335,13 @@ DEPENDENCY_MAP = {
                 "module_code":  "BILL_PAYMENT",
                 "label":        "Advance Payment",
             },
+            {
+                "child_model":  AdvanceAdjustmentMaster,
+                "fk_column":    "payment_request_id",
+                "doc_no_field": "adjustment_no",
+                "module_code":  "ADVANCE_ADJUSTMENT",
+                "label":        "Advance Adjustment",
+            },
         ],
         # journal-sourced requests: only payment_request_journal.EDIT holders may delete
         "access_check": lambda record, user_id: (
@@ -381,6 +389,13 @@ DEPENDENCY_MAP = {
                 "module_code":  "BILL_PAYMENT",
                 "label":        "Bill Payment Receipt",
             },
+            {
+                "child_model":  AdvanceAdjustmentMaster,
+                "fk_column":    "purchase_bill_id",
+                "doc_no_field": "adjustment_no",
+                "module_code":  "ADVANCE_ADJUSTMENT",
+                "label":        "Advance Adjustment",
+            },
         ],
     },
 
@@ -389,6 +404,15 @@ DEPENDENCY_MAP = {
         "doc_no_field": "receipt_no",
         "project_field": "project_code",
         "children": [],  # leaf — deepest node in procurement chain
+        # an advance payment whose money is adjusted against bills
+        "special_checks": ["advance_payment_adjusted"],
+    },
+
+    "ADVANCE_ADJUSTMENT": {
+        "model_class":  AdvanceAdjustmentMaster,
+        "doc_no_field": "adjustment_no",
+        "project_field": "project_code",
+        "children": [],  # leaf — cancelled (reversed), never deleted
     },
 
     "PAYMENT_VOUCHER": {
@@ -489,6 +513,13 @@ DEPENDENCY_MAP = {
                 "doc_no_field": "receipt_no",
                 "module_code":  "BILL_PAYMENT",
                 "label":        "Bill Payment Receipt",
+            },
+            {
+                "child_model":  AdvanceAdjustmentMaster,
+                "fk_column":    "journal_id",
+                "doc_no_field": "adjustment_no",
+                "module_code":  "ADVANCE_ADJUSTMENT",
+                "label":        "Advance Adjustment",
             },
         ],
         # Bulk-docket journals (JB…) are built FROM approved petty-cash journal
@@ -670,6 +701,7 @@ MODULE_DISPLAY_NAMES = {
     "PAYMENT_REQUEST":      "Payment Request",
     "PURCHASE_BILL":        "Purchase Bill",
     "BILL_PAYMENT":         "Bill Payment Receipt",
+    "ADVANCE_ADJUSTMENT":   "Advance Adjustment",
     "PAYMENT_VOUCHER":      "Payment Voucher",
     "SALE_BILL":            "Sale Bill",
     "SALE_RECEIPT":         "Sale Receipt",
