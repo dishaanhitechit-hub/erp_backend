@@ -342,11 +342,12 @@ def _clear_receipt_rows(r):
 
 def _build_advance_detail_payload(r):
     from app.modules.billing.payment_request.service import advance_paid
-    from app.modules.finance.advance_adjustment.service import advance_status
+    from app.modules.finance.advance_adjustment.service import advance_status, advance_breakdown_rows
     pr = r.payment_request
     approved, in_progress = advance_paid(pr.id, exclude_receipt_id=r.id) if pr else (Decimal("0"), Decimal("0"))
     net = _D(pr.net_payable) if pr else Decimal("0")
     status = advance_status(pr) if pr else {}
+    bd = advance_breakdown_rows(pr) if pr else (None, [], [])
     return {
         "id":                  r.id,
         "receiptNo":           r.receipt_no,
@@ -393,8 +394,10 @@ def _build_advance_detail_payload(r):
         "finalApprovedAt":     _fmt_date(r.final_approved_at),
         "rejectedBy":          r.rejector.username  if r.rejector  else None,
         "rejectedAt":          _fmt_date(r.rejected_at),
-        "items":               [],
-        "gstLines":            [],
+        # bill-wise rows this advance is adjusted on (read-only view)
+        "breakdownType":       ("voucher" if bd[0] == "JOURNAL" else "bill") if bd[0] else None,
+        "items":               bd[1],
+        "gstLines":            bd[2],
     }
 
 

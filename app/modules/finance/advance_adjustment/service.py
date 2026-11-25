@@ -1041,3 +1041,61 @@ def convert_legacy_links(user_id=None, apply=False):
     else:
         db.session.rollback()
     return report
+
+
+# ══════════════════════════════════════════════════════════════════
+# BILL-WISE VIEW of an advance (Account › Payment advance page): the bill
+# rows its active adjustments sit on, in the Bill / Voucher breakdown shape.
+#   currentAmount = adjusted by THIS advance
+#   advanceAmount = adjusted by other advances
+#   balanceAmount = row balance before this advance (UI shows balance − current)
+# ══════════════════════════════════════════════════════════════════
+
+def advance_breakdown_rows(pr):
+    """(link_type, items, gst_lines) for the advance's active adjustments."""
+    adjs = (AdvanceAdjustmentMaster.query
+            .filter_by(payment_request_id=pr.id, workflow_status=_ACTIVE)
+            .order_by(AdvanceAdjustmentMaster.id.asc()).all())
+    mine, order = {}, []          # (bill key) → {row key: amount}
+    for a in adjs:
+        bkey = ("BRR", a.purchase_bill_id) if a.link_type == BRR else ("JOURNAL", a.journal_id)
+        if bkey not in mine:
+            mine[bkey] = {}
+            order.append(bkey)
+        for l in a.lines:
+            k = (f"i:{l.pb_item_id}" if l.line_type == "item" else
+                 f"g:{_gst_plain(l.gst_type)}" if l.line_type == "gst" else f"j:{l.je_line_id}")
+            mine[bkey][k] = mine[bkey].get(k, 0.0) + float(l.amount or 0)
+    items, gst_lines = [], []
+    for kind, bid in order:
+        amounts = mine[(kind, bid)]
+        if kind == "BRR":
+            bill = PurchaseBillMaster.query.get(bid)
+            if not bill:
+                continue
+            head = {"purchaseBillId": bill.id, "purchaseBillNo": bill.purchase_bill_no, "orderNo": _order_no(bill),
+                    "brrNo": bill.brr_no, "brrDate": _fmt(getattr(bill, "brr_date", None))}
+            rows = purchase_bill_rows(bill)
+        else:
+            je = JournalEntryMaster.query.get(bid)
+            if not je:
+                continue
+            head = {"journalEntryId": je.id, "voucherNo": je.voucher_no, "entryDate": _fmt(je.entry_date)}
+            rows = journal_rows(je)
+        for r in rows:
+            cur = round(amounts.get(r["key"], 0.0), 2)
+            if cur <= 0:
+                continue
+            row = {**head,
+                   "pbItemId": r["pbItemId"], "jeLineId": r["jeLineId"], "slNo": r["slNo"],
+                   "ccCode": r["ccCode"] or "", "ccName": r["ccName"] or "", "description": r["description"] or "",
+                   "bookedAmount": r["bookedAmount"], "paidAmount": r["paidAmount"],
+                   "advanceAmount": round(r["adjustedAmount"] - cur, 2),
+                   "balanceAmount": round(r["balanceAmount"] + cur, 2),
+                   "currentAmount": cur}
+            if r["lineType"] == "gst":
+                gst_lines.append({**row, "gstType": f"{bid}:{r['gstType']}", "isSelected": True, "percent": 0})
+            else:
+                items.append(row)
+    link_type = adjs[0].link_type if adjs else None
+    return link_type, items, gst_lines
