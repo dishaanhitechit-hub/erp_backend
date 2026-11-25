@@ -22,6 +22,7 @@ linked to the bank account. Linking from a docket uses the docket's own
 petty_cash creator rule.
 """
 
+from app.utils.date_utils import created_ts
 from app.utils.pagination import set_pagination
 import hashlib
 import logging
@@ -242,6 +243,7 @@ def _txn_payload(t, with_link=False):
         "status":          t.reconciliation_status,
         "reserved":        bool(t.linked_docket_id) and t.reconciliation_status != "Reconciled",
         "linkedDocketId":  t.linked_docket_id,
+        "createdTs":       created_ts(t.created_at),
     }
     if with_link:
         d = t.linked_docket
@@ -500,6 +502,7 @@ def _batch_payload(b):
         "totalDebit": _num(b.total_debit), "totalCredit": _num(b.total_credit),
         "status": b.status,
         "createdBy": b.creator.username if b.creator else None, "createdAt": _fmt(b.created_at),
+        "createdTs": created_ts(b.created_at),
         "revertedBy": b.reverter.username if b.reverter else None, "revertedAt": _fmt(b.reverted_at),
     }
 

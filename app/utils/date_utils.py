@@ -134,3 +134,41 @@ def month_label(start: datetime) -> str:
 
 def period_label(start: datetime, end: datetime) -> str:
     return f"{start.strftime('%d %b %Y')} – {end.strftime('%d %b %Y')}"
+
+
+def created_ts(dt) -> str | None:
+    """DB entry time for list rows ("Created On" column), as ISO-8601 UTC.
+
+    ``created_at`` columns hold naive UTC (datetime.utcnow / now() on a UTC
+    server); the trailing Z lets the browser show it in the viewer's time.
+    """
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        from datetime import timezone
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _db_utc_offset():
+    """DB session's UTC offset (timedelta), read once per request."""
+    from datetime import timedelta
+    from flask import g, has_request_context
+    from sqlalchemy import text
+    from app.extensions import db
+
+    if has_request_context() and "_db_utc_offset" in g:
+        return g._db_utc_offset
+    secs = db.session.execute(text("SELECT EXTRACT(TIMEZONE FROM now())")).scalar() or 0
+    offset = timedelta(seconds=float(secs))
+    if has_request_context():
+        g._db_utc_offset = offset
+    return offset
+
+
+def created_ts_db(dt) -> str | None:
+    """created_ts() for columns filled by Postgres now() (server_default),
+    which hold the DB session's local time rather than UTC."""
+    if dt is None:
+        return None
+    return created_ts(dt - _db_utc_offset())

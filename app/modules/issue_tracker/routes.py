@@ -14,6 +14,7 @@ endpoint except GET /status and the super-admin settings / member endpoints
 answers 403, and /status tells the frontend to hide the menu entry.
 """
 
+from app.utils.date_utils import created_ts_db
 import json
 import uuid
 from datetime import datetime
@@ -91,6 +92,7 @@ def _item_json(it, names):
         "kind": it.kind,
         "bodyHtml": it.body_html,
         "createdBy": it.created_by, "createdByName": names.get(it.created_by), "createdAt": _iso(it.created_at),
+        "createdTs": created_ts_db(it.created_at),  # created_at is Postgres now() (DB time zone)
         "updatedBy": it.updated_by, "updatedByName": names.get(it.updated_by), "updatedAt": _iso(it.updated_at),
         "isDone": bool(it.is_done),
         "doneBy": it.done_by, "doneByName": names.get(it.done_by), "doneAt": _iso(it.done_at),

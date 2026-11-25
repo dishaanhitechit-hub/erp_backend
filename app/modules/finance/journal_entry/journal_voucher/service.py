@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import json
 import math
 from sqlalchemy.exc import SQLAlchemyError
@@ -317,6 +318,7 @@ def get_journal_voucher_list(params):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      _fmt(r.created_at),
+                "createdTs":      created_ts(r.created_at),
             }
             for r in rows
         ]

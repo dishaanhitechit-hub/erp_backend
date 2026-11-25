@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import json
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -222,6 +223,7 @@ def get_petty_cash_budget_list(data):
                 "workflowStatus":   r.workflow_status,
                 "createdBy":        r.creator.username if r.creator else None,
                 "createdAt":        _fmt_date(r.created_at),
+                "createdTs":        created_ts(r.created_at),
             }
             for r in rows
         ]

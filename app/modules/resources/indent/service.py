@@ -1,4 +1,5 @@
 
+from app.utils.date_utils import created_ts
 import uuid as _uuid
 from collections import defaultdict
 from datetime import datetime,date
@@ -404,7 +405,8 @@ def get_indent_list(filters=None):
                 "placedBy" : row.creator.username if row.creator else None,
                 "createdAt": row.created_at.strftime(
                     "%Y-%m-%d %H:%M:%S"
-                ) if row.created_at else None
+                ) if row.created_at else None,
+                "createdTs": created_ts(row.created_at),
             })
 
         return res(

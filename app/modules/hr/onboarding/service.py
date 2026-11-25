@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts_db
 from app.extensions import db
 from app.response import res
 from app.models.onboarding import OnboardingTask, DEFAULT_TASKS
@@ -37,6 +38,8 @@ def get_onboarding_list(data):
             "done_tasks": done,
             "progress_pct": round((done / total) * 100) if total else 0,
             "onboarding_status": "Completed" if done == total else ("In Progress" if done > 0 else "Pending"),
+            # onboarding started = first task created (Postgres now(), DB time zone)
+            "createdTs": created_ts_db(min((t.created_at for t in tasks if t.created_at), default=None)),
         })
     return res("ok", result)
 

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -335,6 +336,7 @@ def get_og_sale_order_list(data):
                 "debtorCorporateAddress": row.debtor.corporate_address if row.debtor else None,
                 "createdBy":       row.creator.username if row.creator else None,
                 "createdAt":       _fmt_date(row.created_at),
+                "createdTs":       created_ts(row.created_at),
                 "amendmentCount":  amd_count.get(row.id, 0),
                 "openAmendment":   amd_open.get(row.id),
             }

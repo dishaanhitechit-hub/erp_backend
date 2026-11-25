@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from app.extensions import db
 from datetime import datetime
 
@@ -42,6 +43,7 @@ class GangMember(db.Model):
             "log": [l.to_dict() for l in self.logs],
             "last_log":     last_log.to_dict() if last_log else None,
             "created_at":   self.created_at.isoformat() if self.created_at else None,
+            "createdTs": created_ts(self.created_at),
         }
 
     def __repr__(self):

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from datetime import datetime
 
 from app.extensions import db
@@ -18,6 +19,7 @@ def _parse_date(val):
 
 def _serialize(h: PMServiceHistory):
     return {
+        "createdTs": created_ts(getattr(h, "created_at", None)),
         "id":              h.id,
         "pmId":            h.pm_id,
         "pmUid":           h.pm.pm_uid if h.pm else None,

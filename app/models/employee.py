@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts_db
 from app.extensions import db
 
 
@@ -150,6 +151,7 @@ class Employee(db.Model):
             "other_doc_urls": self.other_doc_urls,
             "reporting_manager_id": self.reporting_manager_id,
             "created_at": str(self.created_at) if self.created_at else None,
+            "createdTs": created_ts_db(self.created_at),
             "updated_at": str(self.updated_at) if self.updated_at else None,
         })
         return d

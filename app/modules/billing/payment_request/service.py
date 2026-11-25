@@ -33,6 +33,7 @@ Rules
   legacy — see scripts/convert_advance_links.py.)
 """
 
+from app.utils.date_utils import created_ts
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 import time as _time
@@ -585,6 +586,7 @@ def _payload(pr, with_summary=True):
         "locked":              pr.locked,
         "createdBy":           pr.creator.username  if pr.creator  else None,
         "createdAt":           _fmt_date(pr.created_at),
+        "createdTs":           created_ts(pr.created_at),
         "approvedBy":          pr.approver.username if pr.approver else None,
         "finalApprovedAt":     _fmt_date(pr.final_approved_at),
     }

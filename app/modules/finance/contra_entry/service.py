@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -225,6 +226,7 @@ def get_contra_entry_list(data):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      _fmt_date(r.created_at),
+                "createdTs":      created_ts(r.created_at),
             })
 
         return res("Contra entry list fetched", {"list": result, "summary": {k: float(v) for k, v in summary.items()}}, 200)

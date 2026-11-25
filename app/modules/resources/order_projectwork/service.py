@@ -15,6 +15,7 @@
 #   5. Order-number series starts at 550000.
 # ──────────────────────────────────────────────────────────────────
 
+from app.utils.date_utils import created_ts
 import uuid as _uuid
 from collections import defaultdict
 from decimal import Decimal
@@ -835,6 +836,7 @@ def get_pw_order_list(data: dict):
         result = []
         for row in rows:
             result.append({
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "id":             row.id,
                 "orderNo":        row.order_no,
                 "projectCode":    row.project_code,

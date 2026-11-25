@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from collections import defaultdict
 from datetime import datetime
 
@@ -118,6 +119,7 @@ def _serialize(d: DlrMaster):
         "locked": d.locked,
         "createdBy": d.created_by,
         "createdAt": d.created_at.isoformat() if d.created_at else None,
+        "createdTs": created_ts(d.created_at),
         "updatedAt": d.updated_at.isoformat() if d.updated_at else None,
         "submittedAt": d.submitted_at.isoformat() if d.submitted_at else None,
         "finalApprovedAt": d.final_approved_at.isoformat() if d.final_approved_at else None,

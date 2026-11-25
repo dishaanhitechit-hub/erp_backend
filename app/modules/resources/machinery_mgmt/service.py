@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -672,6 +673,7 @@ def get_log_entry_list(data):
         for row in rows:
             result.append({
                 "id":               row.id,
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "logUid":           row.log_uid,
                 "logBookId":        row.log_book_id,
                 "logBookNo":        row.log_book.log_book_no if row.log_book else None,

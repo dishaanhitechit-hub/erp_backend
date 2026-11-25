@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -305,6 +306,7 @@ def get_brr_list(data):
             order_obj = row.order if row.order_type == "GRN" else row.pw_order
 
             result.append({
+                "createdTs":      created_ts(row.created_at),
                 "id":             row.id,
                 "brrNo":          row.brr_no,
                 "brrDate":        _fmt_date(row.brr_date),

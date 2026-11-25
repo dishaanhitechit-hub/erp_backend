@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -409,6 +410,7 @@ def get_gin_list(data):
         for row in rows:
             result.append({
                 "id": row.id,
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "ginNo": row.gin_no,
                 "ginDate": _fmt_date(row.gin_date),
                 "projectCode": row.project_code,

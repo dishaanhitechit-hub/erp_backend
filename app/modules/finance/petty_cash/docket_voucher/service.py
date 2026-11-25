@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import json
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
@@ -386,6 +387,7 @@ def get_petty_cash_docket_voucher_list(data):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.username,
                 "createdAt":      _fmt_date(r.created_at),
+                "createdTs":      created_ts(r.created_at),
             }
             for r in rows
         ]

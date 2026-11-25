@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -426,6 +427,7 @@ def get_tr_list(data):
                 "transitStatus":       row.transit_status or "Pending_Dispatch",
                 "createdBy":           creator_name,
                 "createdAt":           _fmt_datetime(row.created_at),
+                "createdTs":           created_ts(row.created_at),
             })
 
         return res("Transit Requests fetched", result, 200)

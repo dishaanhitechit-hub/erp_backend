@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy import func
 from app.extensions import db
 from datetime import datetime
@@ -422,6 +423,7 @@ def get_lb_list(data):
             vendor_name = row.vendor.ledger_name if row.vendor else None
             result.append({
                 "id":               row.id,
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "lbNo":             row.lb_no,
                 "billDate":         _fmt_date(row.bill_date),
                 "projectCode":      row.project_code,

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -500,6 +501,7 @@ def get_grn_list(data):
         for row in rows:
             result.append({
                 "id": row.id,
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "grnNo": row.grn_no,
                 "grnDate": _fmt_date(row.grn_date),
                 "projectCode": row.project_code,

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -236,6 +237,7 @@ def get_debit_note_list(data):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      fmt_date(r.created_at),
+                "createdTs":      created_ts(r.created_at),
             }
             for r in rows
         ]

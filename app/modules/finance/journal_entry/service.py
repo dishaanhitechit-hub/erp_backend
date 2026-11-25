@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime, date
@@ -288,6 +289,7 @@ def get_journal_entry_list(data):
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.creator.username if r.creator else None,
                 "createdAt":      _fmt_date(r.created_at),
+                "createdTs":      created_ts(r.created_at),
                 "crName":         _cr_label(r),
             }
             for r in rows

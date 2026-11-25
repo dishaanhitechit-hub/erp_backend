@@ -30,6 +30,7 @@ Ledger (source_type "advance_adjustment"):
     Cr Vendor   total, untagged (the advance)
 Cancel → reversal (-REV); the record is kept as Cancelled.
 """
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from datetime import datetime, date
 
@@ -572,6 +573,7 @@ def get_register(data, user_id=None):
                 "paymentRequestId": pr.id, "uuid": pr.pr_uuid, "prNo": pr.pr_no, "prDate": _fmt(pr.pr_date),
                 "netPayable": _f(pr.net_payable), "paid": float(paid), "adjusted": float(adjusted),
                 "outstanding": float(outstanding), "adjustType": locked_type(pr),
+                "createdTs": created_ts(pr.created_at),
             })
         rows = sorted(vendors.values(), key=lambda r: (r["partyName"] or ""))
         totals = {k: round(sum(r[k] for r in rows), 2) for k in ("requested", "paid", "adjusted", "outstanding")}

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import uuid as _uuid
 from collections import defaultdict
 from decimal import Decimal
@@ -935,6 +936,7 @@ def get_order_list(
 
             data.append({
 
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "id":
                 row.id,
 

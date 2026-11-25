@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import json
 from flask import g, request as flask_request
 from sqlalchemy import text
@@ -119,6 +120,7 @@ def _supplier_dict(supplier):
         })
 
     return {
+        "createdTs": created_ts(getattr(supplier, "created_at", None)),
         "supplierId": supplier.id,
         "supplierCode": supplier.supplier_code,
         "supplierName": supplier.supplier_name,

@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from datetime import datetime
@@ -163,6 +164,7 @@ def get_drawing_register_list(data):
         result = []
         for row in rows:
             result.append({
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "id": row.id,
                 "drNo": row.dr_no,
                 "projectCode": row.project_code,

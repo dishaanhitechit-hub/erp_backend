@@ -1,4 +1,5 @@
 # app/modules/setting/service.py
+from app.utils.date_utils import created_ts, created_ts_db
 import os
 from app.alias_helper import get_approval_module
 import uuid
@@ -809,6 +810,8 @@ def get_all_users(projectCode=None):  # Test done & pass
     users = query.all()
 
     data = [{
+        # users.created_at is filled by Postgres now() (DB time zone), not utcnow
+        "createdTs": created_ts_db(u.created_at),
         "id": u.id,
         "userName": u.username,
         "empCode": u.emp_code,
@@ -852,6 +855,7 @@ def get_all_project(exclude_current: bool = False, current_project_code: str = N
         return res("No projects found", [], 404)
     data = [
         {
+        "createdTs": created_ts(getattr(p, "created_at", None)),
         "id": p.id,
         "projectCode": p.project_code,
         "projectName": p.project_name,

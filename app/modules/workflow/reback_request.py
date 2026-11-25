@@ -12,6 +12,7 @@ Reback requests — ask for a fully approved record to be sent back.
 One PENDING request per record. Nothing is undone while a request is pending.
 """
 
+from app.utils.date_utils import created_ts
 from datetime import datetime
 
 from flask import current_app
@@ -83,6 +84,7 @@ def _payload(req, names=None, user_id=None):
     names = names if names is not None else _names({req.requested_by, req.decided_by} - {None})
     label = U._labels().get(req.module, req.module)
     return {
+        "createdTs": created_ts(req.requested_at),
         "id":              req.id,
         "module":          req.module,
         "moduleLabel":     label,

@@ -1,6 +1,7 @@
 # app/modules/resources/dc/service.py
 # Delivery Challan
 
+from app.utils.date_utils import created_ts
 from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -417,6 +418,7 @@ def get_dc_list(data):
 
             result.append({
                 "id":             row.id,
+                "createdTs": created_ts(getattr(row, "created_at", None)),
                 "dcNo":           row.dc_no,
                 "challanDate":    _fmt_date(row.challan_date),
                 "orderType":      row.order_type,

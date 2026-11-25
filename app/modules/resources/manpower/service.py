@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from datetime import datetime, date
 
 from flask import g
@@ -52,6 +53,7 @@ def _parse_date(val):
 def _serialize(w: ManpowerWorker):
     return {
         "id": w.id,
+        "createdTs": created_ts(getattr(w, "created_at", None)),
         "manId": w.man_id,
         "vendorId": w.vendor_id,
         "vendorName": w.vendor.ledger_name if w.vendor else None,

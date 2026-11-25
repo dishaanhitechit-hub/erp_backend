@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
@@ -439,6 +440,7 @@ def get_budget_list(args):
                 "workflowStatus":   row.workflow_status,
                 "createdBy":        row.creator.username if row.creator else None,
                 "createdAt":        _fmt_date(row.created_at),
+                "createdTs":        created_ts(row.created_at),
             }
             for row in rows
         ]

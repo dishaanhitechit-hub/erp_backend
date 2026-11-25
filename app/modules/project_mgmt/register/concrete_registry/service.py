@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from datetime import datetime, date, time
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -38,6 +39,7 @@ def _fmt_date(d):
 
 def _registry_dict(r):
     return {
+        "createdTs": created_ts(getattr(r, "created_at", None)),
         "id": r.id,
         "projectCode": r.projectcode,
         "referenceOrderNo": r.reference_order_no,

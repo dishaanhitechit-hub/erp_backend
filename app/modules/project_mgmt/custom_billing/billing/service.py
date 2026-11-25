@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from decimal import Decimal
 from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -982,6 +983,7 @@ def get_billing_list(data):
                 "workflowStatus":      row.workflow_status,
                 "createdBy":           row.creator.username if row.creator else None,
                 "createdAt":           _fmt_date(row.created_at),
+                "createdTs":           created_ts(row.created_at),
                 "billsUnderOgSo":      bills,
             })
 

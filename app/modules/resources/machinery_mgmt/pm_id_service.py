@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from datetime import datetime
 
 from app.extensions import db
@@ -103,6 +104,7 @@ def get_pm_id_list():
         data = []
         for p in rows:
             data.append({
+                "createdTs": created_ts(getattr(p, "created_at", None)),
                 "id":                   p.id,
                 "pmUid":                p.pm_uid,
                 "machineId":            p.pm_uid,

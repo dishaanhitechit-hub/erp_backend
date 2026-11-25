@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from app.extensions import db
 from datetime import datetime
 
@@ -85,6 +86,7 @@ class DeleteRequest(db.Model):
             "project_code":        self.project_code,
             "requested_by":        self.requested_by,
             "requested_at":        self.requested_at.isoformat() if self.requested_at else None,
+            "createdTs":           created_ts(self.requested_at),
             "reason":              self.reason,
             "status":              self.status,
             "blocked_by_modules":  json.loads(self.blocked_by_modules) if self.blocked_by_modules else [],

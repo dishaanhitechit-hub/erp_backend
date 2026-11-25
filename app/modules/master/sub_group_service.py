@@ -2,6 +2,7 @@
 #   Group -> Sub Group (level 0) -> Sub Group 1 (level 1) -> Sub Group 2 (level 2)
 # Code: optional on input. Typed codes are saved in UPPERCASE; empty -> auto code.
 # Codes are unique across all sub groups.
+from app.utils.date_utils import created_ts
 import re
 
 from flask import g
@@ -134,6 +135,7 @@ def row(sub):
     path = sub.path()
     return {
         "subGroupId": sub.id,
+        "createdTs": created_ts(getattr(sub, "created_at", None)),
         "subGroupCode": sub.fixed_code,
         "subGroupName": sub.sub_group_name,
         "groupId": sub.group_id,

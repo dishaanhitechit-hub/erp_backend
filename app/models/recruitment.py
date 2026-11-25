@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts_db
 from app.extensions import db
 
 
@@ -35,6 +36,7 @@ class JobOpening(db.Model):
             "salary_band": self.salary_band,
             "deadline": str(self.deadline) if self.deadline else None,
             "created_at": str(self.created_at) if self.created_at else None,
+            "createdTs": created_ts_db(self.created_at),
         }
 
 
@@ -80,6 +82,7 @@ class Candidate(db.Model):
             "offer_letter_generated": self.offer_letter_generated or False,
             "appointment_letter_generated": self.appointment_letter_generated or False,
             "created_at": str(self.created_at) if self.created_at else None,
+            "createdTs": created_ts_db(self.created_at),
         }
 
 
@@ -117,4 +120,5 @@ class Interview(db.Model):
             "feedback": self.feedback,
             "decision": self.decision,
             "created_at": str(self.created_at) if self.created_at else None,
+            "createdTs": created_ts_db(self.created_at),
         }

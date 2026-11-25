@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 from sqlalchemy import func
 from app.extensions import db
 from datetime import datetime
@@ -683,6 +684,7 @@ def get_ua_list(data):
                 "remarks":         r.remarks,
                 "createdBy":       r.creator.username if r.creator else None,
                 "createdAt":       _fmt_date(r.created_at),
+                "createdTs":       created_ts(r.created_at),
             }
             for r in rows
         ]

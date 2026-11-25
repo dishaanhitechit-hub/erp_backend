@@ -1,3 +1,4 @@
+from app.utils.date_utils import created_ts
 import uuid as _uuid
 from datetime import datetime
 from decimal import Decimal
@@ -202,6 +203,7 @@ def get_hindrance_register_list(data):
                 "workflowStatus":      row.workflow_status,
                 "createdBy":           row.creator.username if row.creator else None,
                 "createdAt":           row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
+                "createdTs":           created_ts(row.created_at),
             }
             for row in rows
         ]

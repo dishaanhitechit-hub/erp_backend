@@ -3,6 +3,7 @@
 Module code for permissions and the approval workflow: "daily_progress_report".
 """
 
+from app.utils.date_utils import created_ts
 import logging
 import os
 import uuid as _uuid
@@ -665,6 +666,7 @@ def list_days(project_code, user, limit=90):
             "summary": r.summary if r else None,
             "manpowerTotal": r.manpower_total if r else None,
             "workflowStatus": r.workflow_status if r else "No report",
+            "createdTs": created_ts(getattr(r, "created_at", None)) if r else None,
         })
     return res("DPR days", out, 200)
 

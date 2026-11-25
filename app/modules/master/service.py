@@ -1,5 +1,6 @@
 # modules/vendor/service.py
 # Service layer for Vendor Master
+from app.utils.date_utils import created_ts
 import os
 import uuid
 import json
@@ -229,6 +230,7 @@ def get_all_vendors(ledger_type=None):
     data = [
         {
             "ledgerId":    v.id,
+            "createdTs": created_ts(getattr(v, "created_at", None)),
             "ledgerCode":  v.ledger_code,
             "ledgerName":  v.ledger_name,
             "isDebtor":    bool(v.is_debtor),
@@ -521,6 +523,7 @@ def get_all_items():
     for item in items:
         data.append({
             "itemId": item.id,
+            "createdTs": created_ts(getattr(item, "created_at", None)),
             "itemCode": item.item_code,
             "itemName": item.item_name,
             "itemDescription": item.item_description,
@@ -686,6 +689,7 @@ def _cc_row(cc):
     """Shared response dict for a CC code record."""
     return {
         "ccId": cc.id,
+        "createdTs": created_ts(getattr(cc, "created_at", None)),
         "ccCode": cc.cc_code,
         "ccName": cc.cc_name,
         "ccGroupId": cc.group_id,
@@ -1159,6 +1163,7 @@ def get_all_groups():
 
     for group in groups:
         data.append({
+            "createdTs": created_ts(getattr(group, "created_at", None)),
             "groupId": group.id,
             "groupName": group.group_name,
             "headUnder": group.head_under,
@@ -1186,6 +1191,7 @@ def get_all_categories(data):
 
     for category in categories:
         data.append({
+            "createdTs": created_ts(getattr(category, "created_at", None)),
             "categoryId": category.id,
             "categoryCode": category.fixed_code,
             "categoryName": category.category_name,
@@ -1257,6 +1263,7 @@ def get_all_assets():
     for asset in assets:
         data.append({
             "assetId": asset.id,
+            "createdTs": created_ts(getattr(asset, "created_at", None)),
             "assetCode": asset.asset_code,
             "assetName": asset.asset_name,
             "assetDescription": asset.asset_description,
@@ -1443,6 +1450,7 @@ def get_all_units(filters=None):
 
     data = [{
         "unitId": unit.id,
+        "createdTs": created_ts(getattr(unit, "created_at", None)),
         "unitName": unit.unit_name,
         "shortName": unit.short_name,
         "unitType": unit.unit_type,
@@ -1620,6 +1628,7 @@ def _validate_term_fields(data):
 def _serialize_term(term):
     return {
         "termId": term.term_id,
+        "createdTs": created_ts(getattr(term, "created_at", None)),
         "module": term.module,
         "subModule": term.sub_module,
         "termType": term.term_type,
@@ -1843,6 +1852,7 @@ def get_all_bank_cash(type_filter=None, project_id=None):
         "branchManagerMailId": r.branch_manager_email,
         "status": r.status,
         "createdAt": r.created_at,
+        "createdTs": created_ts(r.created_at),
         "groupId": r.group_id,
         "groupName": r.group.group_name if r.group else None,
         **_sg_path(r.sub_group, "bs"),
