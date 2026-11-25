@@ -165,7 +165,7 @@ def _post_purchase_bill(source_id):
     discount = _d(bill.discount)
     if discount > 0:
         lines.append(_cc_line(
-            "DISC", "Cr", discount,
+            "DSCR", "Cr", discount,
             project_code=bill.project_code,
             narration=f"PB discount: {bill.purchase_bill_no}",
         ))
@@ -173,7 +173,8 @@ def _post_purchase_bill(source_id):
     round_off = _d(bill.round_off)
     if round_off != 0:
         lines.append(_cc_line(
-            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            "ROFE" if round_off > 0 else "ROFI",
+            "Dr" if round_off > 0 else "Cr", abs(round_off),
             project_code=bill.project_code,
             narration=f"PB round off: {bill.purchase_bill_no}",
         ))
@@ -233,7 +234,7 @@ def _post_payment_voucher(source_id):
     discount = _d(pv.discount)
     if discount > 0:
         lines.append(_cc_line(
-            "DISC", "Cr", discount,
+            "DSCR", "Cr", discount,
             project_code=pv.project_code,
             narration=f"PV discount: {pv.payment_vouch_no}",
         ))
@@ -241,7 +242,8 @@ def _post_payment_voucher(source_id):
     round_off = _d(pv.round_off)
     if round_off != 0:
         lines.append(_cc_line(
-            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            "ROFE" if round_off > 0 else "ROFI",
+            "Dr" if round_off > 0 else "Cr", abs(round_off),
             project_code=pv.project_code,
             narration=f"PV round off: {pv.payment_vouch_no}",
         ))
@@ -323,8 +325,8 @@ def _post_bill_payment_bill(source_id):
     # The vendor is settled for the full bill amount paid off (basic + GST):
     # total = gross - discount + round_off  →  gross = total + discount - round_off
     #   Dr Vendor   gross   (split per CC, tagged)
-    #   Cr DISC     discount (discount received)
-    #   Dr/Cr ROFF  round off (Dr when we paid more, Cr when less)
+    #   Cr DSCR         discount (discount received)
+    #   Dr ROFE/Cr ROFI round off (Dr when we paid more, Cr when less)
     #   Cr Bank     total
     gross = total + discount - round_off
 
@@ -343,14 +345,15 @@ def _post_bill_payment_bill(source_id):
 
     if discount > 0:
         lines.append(_cc_line(
-            "DISC", "Cr", discount,
+            "DSCR", "Cr", discount,
             project_code=bpr.project_code,
             narration=f"BPR discount received: {bpr.receipt_no}",
         ))
 
     if round_off != 0:
         lines.append(_cc_line(
-            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            "ROFE" if round_off > 0 else "ROFI",
+            "Dr" if round_off > 0 else "Cr", abs(round_off),
             project_code=bpr.project_code,
             narration=f"BPR round off: {bpr.receipt_no}",
         ))
@@ -501,7 +504,7 @@ def _post_sale_bill(source_id):
     discount = _d(sb.discount)
     if discount > 0:
         lines.append(_cc_line(
-            "DISC", "Dr", discount,
+            "DSCA", "Dr", discount,
             project_code=sb.project_code,
             narration=f"SB discount: {sb.sale_bill_no}",
         ))
@@ -509,7 +512,8 @@ def _post_sale_bill(source_id):
     round_off = _d(sb.round_off)
     if round_off != 0:
         lines.append(_cc_line(
-            "ROFF", "Dr" if round_off > 0 else "Cr", abs(round_off),
+            "ROFE" if round_off > 0 else "ROFI",
+            "Dr" if round_off > 0 else "Cr", abs(round_off),
             project_code=sb.project_code,
             narration=f"SB round off: {sb.sale_bill_no}",
         ))

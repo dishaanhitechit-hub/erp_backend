@@ -81,7 +81,7 @@ def post_document(source_type, source_id, user_id=None):
             side = "Dr" if total_cr > total_dr else "Cr"
             lines_data.append({
                 "account_type": "CC",
-                "cc_code": "ROFF",
+                "cc_code": "ROFE" if side == "Dr" else "ROFI",
                 "dr_cr": side,
                 "amount": diff,
                 "project_code": header_data.get("project_code"),
