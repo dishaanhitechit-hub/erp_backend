@@ -126,6 +126,11 @@ def project_member_ids(project_id):
 
 def board_perm(user_id, project_id, action):
     """task_tracker.<action> in that project (EDIT implies VIEW). Super admin: always."""
+    return has_perm(user_id, project_id, BOARD_PERM, action)
+
+
+def has_perm(user_id, project_id, perm_key, action):
+    """<key>.<action> in that project (EDIT implies VIEW). Super admin: always."""
     if is_super(user_id):
         return True
     if project_id is None:
@@ -141,9 +146,9 @@ def board_perm(user_id, project_id, action):
             log.warning("permission lookup failed (project %s)", project_id, exc_info=True)
             cache[key] = {}
     perms = cache[key]
-    if perms.get(f"{BOARD_PERM}.EDIT"):
+    if perms.get(f"{perm_key}.EDIT"):
         return True
-    return action == "VIEW" and bool(perms.get(f"{BOARD_PERM}.VIEW"))
+    return action == "VIEW" and bool(perms.get(f"{perm_key}.VIEW"))
 
 
 def board_projects(user_id, action):
@@ -160,6 +165,19 @@ def can_supervise_project(user_id, project_id):
     if project_id is None:
         return bool(board_projects(user_id, "EDIT"))
     return board_perm(user_id, project_id, "EDIT")
+
+
+SPRINT_PERM = "sprint_admin"     # Boards: create / start / close sprints, set capacity
+
+
+def can_manage_sprints(user_id, project_id):
+    """Follow-up supervisors (task_tracker.EDIT) or sprint_admin.EDIT. Company level: super admin,
+    or anyone who holds either permission in some project."""
+    if can_supervise_project(user_id, project_id):
+        return True
+    if project_id is None:
+        return any(has_perm(user_id, pid, SPRINT_PERM, "EDIT") for pid in member_project_ids(user_id))
+    return has_perm(user_id, project_id, SPRINT_PERM, "EDIT")
 
 
 def check_assignee(user, project_id):

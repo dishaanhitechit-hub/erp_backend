@@ -448,6 +448,15 @@ def create_item(data, user_id):
 def update_item(item_id, data, user_id):
     user_id = uid(user_id)
     t = _get(item_id, user_id, edit=True)
+    reassigned = _apply_update(t, data, user_id)
+    db.session.commit()
+    if reassigned:
+        _notify_assigned(t, user_id)
+    return res("Work item updated", _out(t, user_id))
+
+
+def _apply_update(t, data, user_id):
+    """Apply an edit (no commit). Returns True when the item went to someone else (→ WhatsApp)."""
     if t.work_item_type == "Task" and t.is_locked:
         raise MisError(task_svc.LOCKED_MSG, 409)
 
@@ -517,11 +526,7 @@ def update_item(item_id, data, user_id):
         nv = getattr(t, k)
         if _norm(nv) != _norm(v):
             _log(t, user_id, "UPDATED", old=k, new=str(nv) if nv is not None else None)
-
-    db.session.commit()
-    if reassigned:
-        _notify_assigned(t, user_id)
-    return res("Work item updated", _out(t, user_id))
+    return reassigned
 
 
 @api

@@ -167,6 +167,26 @@ def _add_perf_score_job(scheduler, app, tz):
     )
 
 
+def _mis_sprint_snapshot_once(app, tz):
+    """Nightly: today's burndown snapshot for every Active Boards sprint."""
+    from app.modules.mis.workitem import planning
+
+    def run(app_):
+        _single_run(app_, "mis_sprint_snapshot", planning.nightly_snapshots, lease_seconds=30 * 60)
+
+    day = datetime.now(ZoneInfo(tz)).strftime("%Y-%m-%d")
+    _run_once_per_period(app, "mis_sprint_snapshot", day, run, keep_seconds=3 * 86400)
+
+
+def _add_mis_snapshot_job(scheduler, app, tz):
+    hour = int(os.getenv("MIS_SNAPSHOT_HOUR") or 23)
+    scheduler.add_job(
+        func=_mis_sprint_snapshot_once, args=[app, tz],
+        trigger=CronTrigger(hour=hour, minute=45, timezone=tz), id="mis_sprint_snapshot",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+
+
 def _purge_runtime_store():
     from app.utils import runtime_store
     deleted = runtime_store.purge_expired()
@@ -206,6 +226,7 @@ def init_scheduler(app, force=False):
         )
         _add_dpr_jobs(scheduler, app, tz)
         _add_perf_score_job(scheduler, app, tz)
+        _add_mis_snapshot_job(scheduler, app, tz)
         scheduler.add_job(
             func=_single_run, args=[app, "runtime_store_purge", _purge_runtime_store, 15 * 60],
             trigger="interval", hours=1, id="runtime_store_purge", replace_existing=True,

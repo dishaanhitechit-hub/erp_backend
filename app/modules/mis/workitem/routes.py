@@ -2,6 +2,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from . import service as svc
+from . import planning
 
 mis_workitem_bp = Blueprint("mis_workitem", __name__)
 
@@ -94,3 +95,21 @@ def api_add_link(item_id):
 @jwt_required()
 def api_delete_link(item_id, link_id):
     return svc.delete_link(item_id, link_id, get_jwt_identity())
+
+
+@mis_workitem_bp.route("/reorder", methods=["POST"])
+@jwt_required()
+def api_reorder():
+    return planning.reorder(_body(), get_jwt_identity())       # { itemId, afterId?, beforeId? }
+
+
+@mis_workitem_bp.route("/bulk", methods=["POST"])
+@jwt_required()
+def api_bulk():
+    return planning.bulk_update(_body(), get_jwt_identity())   # { ids: [], changes: {} }
+
+
+@mis_workitem_bp.route("/velocity", methods=["GET"])
+@jwt_required()
+def api_velocity():
+    return planning.velocity(request.args, get_jwt_identity())  # ?projectCode= &count=6

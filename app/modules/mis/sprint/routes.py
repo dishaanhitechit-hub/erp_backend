@@ -59,3 +59,26 @@ def api_close(sprint_id):
 @jwt_required()
 def api_report(sprint_id):
     return svc.sprint_report(sprint_id, get_jwt_identity())
+
+
+# ── Boards planning (capacity, burndown) ──────────────────────────────────
+from app.modules.mis.workitem import planning as _planning  # noqa: E402
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/capacity", methods=["GET"])
+@jwt_required()
+def api_capacity(sprint_id):
+    return _planning.get_capacity(sprint_id, get_jwt_identity())
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/capacity", methods=["PUT"])
+@jwt_required()
+def api_set_capacity(sprint_id):
+    # { members: [{ userId, hoursPerDay, daysOff: ["YYYY-MM-DD"] }] }
+    return _planning.set_capacity(sprint_id, _body(), get_jwt_identity())
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/burndown", methods=["GET"])
+@jwt_required()
+def api_burndown(sprint_id):
+    return _planning.burndown(sprint_id, get_jwt_identity())

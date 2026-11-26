@@ -17,7 +17,7 @@ from app.response import res
 from app.models.misFollowup import MisSprint, MisFollowup, SPRINT_TYPES
 from app.modules.mis.common import (
     MisError, api, uid, parse_date, choice, project_by_code, is_super, member_project_ids,
-    can_supervise_project, log_activity,
+    can_supervise_project, can_manage_sprints, log_activity,
 )
 
 ENTITY = "sprint"
@@ -39,8 +39,8 @@ def _get(sprint_id, user_id):
 
 
 def _require_supervisor(user_id, project_id):
-    if not can_supervise_project(user_id, project_id):
-        raise MisError("Only a supervisor (Task Tracker edit permission) can manage sprints here", 403)
+    if not can_manage_sprints(user_id, project_id):
+        raise MisError("Only a supervisor (Task Tracker edit or Sprint Admin permission) can manage sprints here", 403)
 
 
 def _default_window(sprint_type, start):
@@ -96,7 +96,7 @@ def get_sprint(sprint_id, user_id):
     user_id = uid(user_id)
     s = _get(sprint_id, user_id)
     out = s.to_dict(_counts([s.id])[s.id])
-    out["canManage"] = can_supervise_project(user_id, s.project_id)
+    out["canManage"] = can_manage_sprints(user_id, s.project_id)
     return res("ok", out)
 
 
@@ -204,14 +204,20 @@ def close_sprint(sprint_id, data, user_id):
         log_activity("followup", f.id, user_id, "SPRINT", old=s.name, new=target.name if target else "Backlog")
         moved += 1
 
+    # Boards work items: final burndown snapshot, then unfinished PBIs / Bugs / Tasks carry over
+    from app.modules.mis.workitem import planning
+    moved_wi = planning.carry_over(s, target, user_id)
+
     old = s.status
     s.status = "Closed"
     s.closed_at = datetime.utcnow()
     log_activity(ENTITY, s.id, user_id, "STATUS", old=old, new="Closed",
-                 comment=f"{moved} unfinished item(s) moved to {target.name if target else 'Backlog'}")
+                 comment=f"{moved} unfinished item(s) and {moved_wi} work item(s) moved to "
+                         f"{target.name if target else 'Backlog'}")
     db.session.commit()
     out = s.to_dict(_counts([s.id])[s.id])
     out["movedCount"] = moved
+    out["movedWorkItems"] = moved_wi
     return res("Sprint closed", out)
 
 
@@ -220,7 +226,9 @@ def delete_sprint(sprint_id, user_id):
     user_id = uid(user_id)
     s = _get(sprint_id, user_id)
     _require_supervisor(user_id, s.project_id)
-    if MisFollowup.query.filter(MisFollowup.sprint_id == s.id, MisFollowup.is_deleted.is_(False)).count():
+    from app.modules.mis.workitem import planning
+    if MisFollowup.query.filter(MisFollowup.sprint_id == s.id, MisFollowup.is_deleted.is_(False)).count() \
+            or planning.sprint_has_work_items(s.id):
         raise MisError("Move or remove this sprint's items before deleting it")
     s.is_deleted = True
     log_activity(ENTITY, s.id, user_id, "DELETED")
