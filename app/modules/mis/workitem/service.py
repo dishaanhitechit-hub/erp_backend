@@ -16,7 +16,7 @@ Follow-ups stay a separate flow; they are only *linked* (mis_work_item_links, ta
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import or_, func
+from sqlalchemy import or_, and_, func
 
 from app.extensions import db
 from app.response import res
@@ -29,7 +29,7 @@ from app.models.misFollowup import MisSprint, MisFollowup
 from app.models.user import User
 from app.modules.mis.common import (
     MisError, api, uid, parse_int, parse_date, choice, project_by_code, is_all, is_member, is_super,
-    member_project_ids, notify,
+    member_project_ids, notify, is_supervisor,
 )
 from app.modules.mis.task import service as task_svc
 
@@ -49,6 +49,8 @@ def _can_view(t, user_id):
     if t.work_item_type in TEAM_TYPES and t.project_id is not None:
         if is_super(user_id) or is_member(user_id, t.project_id):
             return True
+    if t.work_item_type == "Task" and is_supervisor(user_id):   # Team view: supervisors open anyone's task
+        return True
     return task_svc._can(t, user_id, "VIEW")
 
 
@@ -719,7 +721,7 @@ def assignable(args, user_id):
     if is_all(args.get("projectCode")):
         # central view: people of every project I work in (each item is still checked on save)
         q = User.query.filter(or_(User.is_active.is_(True), User.is_active.is_(None)))
-        if not is_super(user_id):
+        if not is_supervisor(user_id):                 # supervisors reach every active user
             from app.modules.mis.common import project_member_ids
             ids = {user_id}
             for pid in member_project_ids(user_id):
@@ -736,3 +738,109 @@ def assignable(args, user_id):
     users = (User.query.filter(User.id.in_(ids), or_(User.is_active.is_(True), User.is_active.is_(None)))
              .order_by(User.username.asc()).all())
     return res("ok", [{"id": u.id, "name": u.username, "empCode": u.emp_code} for u in users])
+
+
+# ─────────────────────────────── Team view ─────────────────────────────
+
+def _local_day_start_utc(day):
+    from app.models.misTask import local_to_utc
+    from datetime import time as _t
+    return local_to_utc(day, _t.min)
+
+
+@api
+def team(args, user_id):
+    """Who is doing what — one card per person, every Task (self-created or assigned, any sprint or none).
+    Supervisors (common.is_supervisor) see ALL active users, including people with no work yet;
+    everyone else sees only themselves. ?projectCode=all|<code>|company &search="""
+    from app.models.misTask import APP_TZ
+    from datetime import timedelta
+    user_id = uid(user_id)
+    sup = is_supervisor(user_id)
+    pc = args.get("projectCode") or "all"
+
+    uq = User.query.filter(or_(User.is_active.is_(True), User.is_active.is_(None)))
+    if not sup:
+        uq = uq.filter(User.id == user_id)
+    search = (args.get("search") or "").strip()
+    if search:
+        like = f"%{search}%"
+        uq = uq.filter(or_(User.username.ilike(like), User.emp_code.ilike(like)))
+    people = {u.id: u for u in uq.order_by(User.username.asc()).all()}
+
+    today = datetime.now(APP_TZ).date()
+    day0 = _local_day_start_utc(today)
+    week0 = _local_day_start_utc(today - timedelta(days=today.weekday()))
+    q = MisTask.query.filter(MisTask.is_deleted.is_(False), MisTask.owner_user_id.in_(list(people) or [-1]),
+                             or_(MisTask.status.in_(("To Do", "In Progress", "On Hold")),
+                                 and_(MisTask.work_item_type.in_(POINT_TYPES),            # own Activities / Snags
+                                      MisTask.status.in_(("New", "Approved", "Committed"))),
+                                 and_(MisTask.status == "Done", MisTask.completed_at >= week0),
+                                 MisTask.is_blocked.is_(True)))
+    if not is_all(pc):
+        p = project_by_code(pc)
+        q = q.filter(MisTask.project_id.is_(None) if p is None else MisTask.project_id == p.id)
+    rows = q.all()
+
+    def brief(t):
+        return {"id": t.id, "code": t.task_code, "title": t.title, "type": t.work_item_type, "state": t.status,
+                "projectCode": t.project.project_code if t.project else None,
+                "dueDate": t.due_date.isoformat() if t.due_date else None, "isOverdue": t.is_overdue(today),
+                "isRunning": t.run_started_at is not None, "workedSeconds": t.live_worked_seconds(),
+                "remainingHours": float(t.remaining_hours) if t.remaining_hours is not None else None,
+                "blockedReason": t.blocked_reason, "completedAt": t.completed_at.isoformat() + "Z" if t.completed_at else None}
+
+    cards = {pid: {"userId": pid, "name": u.username, "empCode": u.emp_code, "working": [], "onHold": [],
+                   "toDo": [], "doneToday": [], "doneThisWeek": 0, "overdue": 0, "blocked": [], "lastActive": None}
+             for pid, u in people.items()}
+    for t in rows:
+        c = cards.get(t.owner_user_id)
+        if not c:
+            continue
+        if t.updated_at and (c["lastActive"] is None or t.updated_at.isoformat() > c["lastActive"]):
+            c["lastActive"] = t.updated_at.isoformat()
+        if t.is_blocked and t.status not in ("Done", "Removed", "Cancelled"):
+            c["blocked"].append(brief(t))
+        if t.work_item_type in POINT_TYPES:              # Activity / Snag they are responsible for
+            if t.status == "Committed":
+                c["working"].append(brief(t))
+            elif t.status in ("New", "Approved"):
+                c["toDo"].append(brief(t))
+            elif t.status == "Done" and t.completed_at and t.completed_at >= day0:
+                c["doneToday"].append(brief(t))
+            continue
+        if t.work_item_type != "Task":
+            continue
+        if t.status == "In Progress":
+            c["working"].append(brief(t))
+        elif t.status == "On Hold":
+            c["onHold"].append(brief(t))
+        elif t.status == "To Do":
+            c["toDo"].append(brief(t))
+        elif t.status == "Done" and t.completed_at:
+            c["doneThisWeek"] += 1
+            if t.completed_at >= day0:
+                c["doneToday"].append(brief(t))
+        if t.is_overdue(today):                       # open + past due (Task rule)
+            c["overdue"] += 1
+    for c in cards.values():
+        c["toDo"].sort(key=lambda x: (x["dueDate"] is None, x["dueDate"] or ""))
+        c["lastActive"] = c["lastActive"] + "Z" if c["lastActive"] else None
+        c["status"] = ("working" if c["working"] else "blocked" if c["blocked"] else "onHold" if c["onHold"]
+                       else "toDo" if c["toDo"] else "idle")
+
+    order = {"working": 0, "blocked": 1, "onHold": 2, "toDo": 3, "idle": 4}
+    out = sorted(cards.values(), key=lambda c: (order[c["status"]], (c["name"] or "").lower()))
+    return res("ok", {
+        "isSupervisor": sup,
+        "today": today.isoformat(),
+        "summary": {
+            "people": len(out),
+            "workingNow": sum(1 for c in out if c["working"]),
+            "doneToday": sum(len(c["doneToday"]) for c in out),
+            "overdue": sum(c["overdue"] for c in out),
+            "blocked": sum(len(c["blocked"]) for c in out),
+            "idle": sum(1 for c in out if c["status"] == "idle"),
+        },
+        "people": out,
+    })

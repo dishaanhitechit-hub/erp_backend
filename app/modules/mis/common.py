@@ -188,6 +188,19 @@ def can_manage_sprints(user_id, project_id):
     return has_perm(user_id, project_id, SPRINT_PERM, "EDIT")
 
 
+def is_supervisor(user_id):
+    """Sees EVERYONE's work on the Boards Team view: super admin, or anyone who holds Self Task view-all
+    (self_task_all VIEW/EDIT), Follow-up Board edit (task_tracker EDIT) or Sprint manage
+    (sprint_admin EDIT) in any project. Seeing is all it grants — editing keeps its own rules."""
+    cache = g.setdefault("_mis_supervisor", {})
+    if user_id not in cache:
+        cache[user_id] = is_super(user_id) or any(
+            has_perm(user_id, pid, "self_task_all", "VIEW") or has_perm(user_id, pid, BOARD_PERM, "EDIT")
+            or has_perm(user_id, pid, SPRINT_PERM, "EDIT")
+            for pid in member_project_ids(user_id))
+    return cache[user_id]
+
+
 def check_assignee(user, project_id):
     """Relay rule: any member of the same project (company level: any active user)."""
     if project_id is not None and not is_member(user.id, project_id):

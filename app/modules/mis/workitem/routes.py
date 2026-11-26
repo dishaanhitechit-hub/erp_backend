@@ -25,6 +25,12 @@ def api_access():
     return svc.my_access(get_jwt_identity())
 
 
+@mis_workitem_bp.route("/team", methods=["GET"])
+@jwt_required()
+def api_team():
+    return svc.team(request.args, get_jwt_identity())          # ?projectCode=all &search=
+
+
 @mis_workitem_bp.route("/assignable", methods=["GET"])
 @jwt_required()
 def api_assignable():
