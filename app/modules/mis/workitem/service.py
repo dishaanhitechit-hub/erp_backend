@@ -28,7 +28,7 @@ from app.models.misTask import (
 from app.models.misFollowup import MisSprint, MisFollowup
 from app.models.user import User
 from app.modules.mis.common import (
-    MisError, api, uid, parse_int, parse_date, choice, project_by_code, is_member, is_super,
+    MisError, api, uid, parse_int, parse_date, choice, project_by_code, is_all, is_member, is_super,
     member_project_ids, notify,
 )
 from app.modules.mis.task import service as task_svc
@@ -171,7 +171,8 @@ def _sprint_for(sprint_id, typ, project_id):
         raise MisError("Sprint not found", 404)
     if s.status == "Closed":
         raise MisError("That sprint is closed")
-    if s.project_id != project_id:
+    # a company-level sprint is shared: items of ANY project can be planned into it (central weekly plan)
+    if s.project_id is not None and s.project_id != project_id:
         raise MisError("The sprint belongs to a different project")
     return s
 
@@ -277,7 +278,7 @@ def list_items(args, user_id):
     q = _visible_filter(MisTask.query.filter(MisTask.is_deleted.is_(False)), user_id)
 
     pc = args.get("projectCode")
-    if pc:
+    if pc and not is_all(pc):                           # "all" = central view, every visible project
         p = project_by_code(pc)
         q = q.filter(MisTask.project_id.is_(None) if p is None else MisTask.project_id == p.id)
     if args.get("type"):
@@ -339,14 +340,15 @@ def list_items(args, user_id):
 
 @api
 def tree(args, user_id):
-    """Backlog tree for one project: Epic > Feature > PBI/Bug > Task, ordered by rank.
-    ?projectCode= (required, 'company' allowed) &sprintId=<id>|backlog &includeDone=1"""
+    """Backlog tree: Epic > Feature > PBI/Bug > Task, ordered by rank.
+    ?projectCode= (required: a code, 'company', or 'all' = every visible project) &sprintId=<id>|backlog &includeDone=1"""
     user_id = uid(user_id)
     if not args.get("projectCode"):
         raise MisError("projectCode is required")
-    p = project_by_code(args["projectCode"])
     q = _visible_filter(MisTask.query.filter(MisTask.is_deleted.is_(False)), user_id)
-    q = q.filter(MisTask.project_id.is_(None) if p is None else MisTask.project_id == p.id)
+    if not is_all(args["projectCode"]):
+        p = project_by_code(args["projectCode"])
+        q = q.filter(MisTask.project_id.is_(None) if p is None else MisTask.project_id == p.id)
     if str(args.get("includeDone", "")).lower() not in ("1", "true"):
         q = q.filter(MisTask.status.notin_(("Done", "Removed", "Cancelled")))
     rows = q.order_by(MisTask.backlog_rank.asc().nullslast(), MisTask.id.asc()).all()
@@ -406,6 +408,8 @@ def get_by_uuid(item_uuid, user_id):
 def create_item(data, user_id):
     user_id = uid(user_id)
     typ = choice(data.get("workItemType") or data.get("type") or "Task", WORK_ITEM_TYPES, "workItemType")
+    if is_all(data.get("projectCode")):
+        raise MisError("Choose the project this item belongs to")
     project = project_by_code(data.get("projectCode"))
     pid = project.id if project else None
     if project is not None and not is_super(user_id) and not is_member(user_id, pid):
@@ -488,7 +492,8 @@ def _apply_update(t, data, user_id):
                 raise MisError("Move or remove the child items first")
             if project is not None and not is_super(user_id) and not is_member(user_id, new_pid):
                 raise MisError("You are not a member of that project", 403)
-            t.project_id, t.parent_id, t.sprint_id = new_pid, None, None
+            keep = t.sprint if t.sprint and t.sprint.project_id is None else None   # shared sprint stays
+            t.project_id, t.parent_id, t.sprint_id = new_pid, None, keep.id if keep else None
             _log(t, user_id, "UPDATED", old="project", new=project.project_code if project else "Company")
 
     if "parentId" in data:
@@ -711,6 +716,17 @@ def assignable(args, user_id):
     """Who an item can be assigned to. ?projectCode= &type=Task|PBI|… (Task → Self Task rules)."""
     user_id = uid(user_id)
     typ = choice(args.get("type") or "PBI", WORK_ITEM_TYPES, "type")
+    if is_all(args.get("projectCode")):
+        # central view: people of every project I work in (each item is still checked on save)
+        q = User.query.filter(or_(User.is_active.is_(True), User.is_active.is_(None)))
+        if not is_super(user_id):
+            from app.modules.mis.common import project_member_ids
+            ids = {user_id}
+            for pid in member_project_ids(user_id):
+                ids |= set(project_member_ids(pid))
+            q = q.filter(User.id.in_(ids))
+        return res("ok", [{"id": u.id, "name": u.username, "empCode": u.emp_code}
+                          for u in q.order_by(User.username.asc()).all()])
     project = project_by_code(args.get("projectCode"))
     if typ == "Task" or project is None:
         # Self Task's helper knows no 'company' code → pass the real project code or nothing

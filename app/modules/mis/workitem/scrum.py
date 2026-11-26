@@ -19,7 +19,7 @@ from app.models.misTask import (
 )
 from app.models.user import User
 from app.modules.mis.common import (
-    MisError, api, uid, parse_int, choice, project_by_code, is_member, is_super, can_manage_sprints,
+    MisError, api, uid, parse_int, choice, project_by_code, is_all, is_member, is_super, can_manage_sprints,
     log_activity,
 )
 from app.modules.mis.workitem import service as wi
@@ -238,7 +238,7 @@ def _visible_queries(user_id, project_id):
 @api
 def queries_list(args, user_id):
     user_id = uid(user_id)
-    p = project_by_code(args.get("projectCode"))
+    p = None if is_all(args.get("projectCode")) else project_by_code(args.get("projectCode"))
     pid = p.id if p else None
     _require_member(user_id, pid)
     rows = _visible_queries(user_id, pid).order_by(MisSavedQuery.name.asc()).all()
@@ -254,7 +254,7 @@ def query_save(data, user_id, query_id=None):
         if not r or r.owner_user_id != user_id:
             raise MisError("Query not found", 404)
     else:
-        p = project_by_code(data.get("projectCode"))
+        p = None if is_all(data.get("projectCode")) else project_by_code(data.get("projectCode"))
         pid = p.id if p else None
         _require_member(user_id, pid)
         r = MisSavedQuery(owner_user_id=user_id, project_id=pid)

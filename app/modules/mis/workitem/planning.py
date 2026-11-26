@@ -24,7 +24,7 @@ from app.models.misTask import (
 from app.models.misFollowup import MisSprint
 from app.models.user import User
 from app.modules.mis.common import (
-    MisError, api, uid, parse_int, parse_date, choice, project_by_code, is_member, is_super,
+    MisError, api, uid, parse_int, parse_date, choice, project_by_code, is_all, is_member, is_super,
     can_manage_sprints, project_member_ids, log_activity,
 )
 from app.modules.mis.workitem import service as wi
@@ -182,7 +182,12 @@ def get_capacity(sprint_id, user_id):
     saved = {c.user_id: c for c in MisSprintCapacity.query.filter_by(sprint_id=s.id).all()}
     work = _open_task_hours(s.id)
 
-    member_ids = set(project_member_ids(s.project_id)) if s.project_id else set()
+    if s.project_id:
+        member_ids = set(project_member_ids(s.project_id))
+    else:                                               # shared sprint: people of every project planned into it
+        pids = {p for (p,) in db.session.query(MisTask.project_id).filter(
+            MisTask.sprint_id == s.id, MisTask.is_deleted.is_(False), MisTask.project_id.isnot(None)).distinct()}
+        member_ids = set().union(*(project_member_ids(p) for p in pids)) if pids else set()
     member_ids |= set(saved) | {u for u in work if u}
     users = {u.id: u for u in User.query.filter(User.id.in_(member_ids or {-1})).all()}
 
@@ -342,7 +347,7 @@ def velocity(args, user_id):
     user_id = uid(user_id)
     if not args.get("projectCode"):
         raise MisError("projectCode is required")
-    p = project_by_code(args["projectCode"])
+    p = None if is_all(args["projectCode"]) else project_by_code(args["projectCode"])   # all → shared sprints
     pid = p.id if p else None
     if pid is not None and not is_super(user_id) and not is_member(user_id, pid):
         raise MisError("You are not a member of this project", 403)

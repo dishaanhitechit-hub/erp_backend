@@ -16,7 +16,7 @@ from app.extensions import db
 from app.response import res
 from app.models.misFollowup import MisSprint, MisFollowup, SPRINT_TYPES
 from app.modules.mis.common import (
-    MisError, api, uid, parse_date, choice, project_by_code, is_super, member_project_ids,
+    MisError, api, uid, parse_date, choice, project_by_code, is_all, is_super, member_project_ids,
     can_supervise_project, can_manage_sprints, log_activity,
 )
 
@@ -79,9 +79,14 @@ def list_sprints(args, user_id):
     user_id = uid(user_id)
     q = _visible_q(user_id)
     code = args.get("projectCode")
-    if code:
+    if code and is_all(code):
+        q = q.filter(MisSprint.project_id.is_(None))        # central view: the shared company sprints
+    elif code:
         p = project_by_code(code)
-        q = q.filter(MisSprint.project_id == (p.id if p else None)) if p else q.filter(MisSprint.project_id.is_(None))
+        if p and str(args.get("includeCompany", "")).lower() in ("1", "true"):
+            q = q.filter(or_(MisSprint.project_id == p.id, MisSprint.project_id.is_(None)))   # Boards: + shared
+        else:
+            q = q.filter(MisSprint.project_id == (p.id if p else None)) if p else q.filter(MisSprint.project_id.is_(None))
     if args.get("status"):
         q = q.filter(MisSprint.status.in_([s for s in args["status"].split(",") if s]))
     if args.get("sprintType"):

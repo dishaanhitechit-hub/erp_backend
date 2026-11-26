@@ -79,6 +79,14 @@ def choice(v, allowed, field):
     return v
 
 
+ALL_PROJECTS = "all"
+
+
+def is_all(code):
+    """projectCode=all → the central view: every project the user can see (MIS Boards)."""
+    return str(code or "").strip().lower() == ALL_PROJECTS
+
+
 def project_by_code(code):
     """None for ''/None/'company'; 404 when unknown."""
     if not code or str(code).lower() == "company":

@@ -16,7 +16,7 @@ from app.extensions import db
 from app.response import res
 from app.models.misTask import MisTask, MisBoardConfig, WI_STATES
 from app.modules.mis.common import (
-    MisError, api, uid, choice, project_by_code, is_member, is_super, can_manage_sprints, log_activity,
+    MisError, api, uid, choice, project_by_code, is_all, is_member, is_super, can_manage_sprints, log_activity,
 )
 from app.modules.mis.workitem import service as wi
 
@@ -37,6 +37,9 @@ def default_columns(level):
 
 
 def _project(code):
+    """'all' (central view) uses the company board settings, like 'company'."""
+    if is_all(code):
+        return None, None
     p = project_by_code(code)
     return p, (p.id if p else None)
 
@@ -48,7 +51,8 @@ def _config_row(project_id, level):
 
 
 def get_config(project_id, level):
-    row = _config_row(project_id, level)
+    """Project settings → else the company (central) settings → else the defaults."""
+    row = _config_row(project_id, level) or (_config_row(None, level) if project_id is not None else None)
     return {"columns": row.columns if row else default_columns(level),
             "swimlanes": (row.swimlanes or []) if row else [], "isDefault": row is None}
 
@@ -154,8 +158,9 @@ def kanban(args, user_id):
     _check_access(user_id, pid)
     cfg = get_config(pid, level)
     q = wi._visible_filter(MisTask.query.filter(MisTask.is_deleted.is_(False)), user_id)
-    q = q.filter(MisTask.project_id.is_(None) if pid is None else MisTask.project_id == pid,
-                 MisTask.work_item_type.in_(LEVELS[level]), MisTask.status != "Removed")
+    if not is_all(args.get("projectCode")):
+        q = q.filter(MisTask.project_id.is_(None) if pid is None else MisTask.project_id == pid)
+    q = q.filter(MisTask.work_item_type.in_(LEVELS[level]), MisTask.status != "Removed")
     cutoff = datetime.utcnow() - timedelta(days=DONE_DAYS)
     q = q.filter(db.or_(MisTask.status != "Done", MisTask.completed_at.is_(None), MisTask.completed_at >= cutoff))
     rows = q.order_by(MisTask.backlog_rank.asc().nullslast(), MisTask.id.asc()).all()
@@ -194,7 +199,8 @@ def board_move(item_id, data, user_id):
     level = LEVEL_OF.get(t.work_item_type)
     if not level:
         raise MisError("Tasks move on the sprint taskboard, not on the Kanban board")
-    cfg = get_config(t.project_id, level)
+    # the board the user is looking at decides the columns (central view → company settings)
+    cfg = get_config(_project(data["projectCode"])[1] if "projectCode" in data else t.project_id, level)
     col = next((c for c in cfg["columns"] if c["name"] == data.get("column")), None)
     if not col:
         raise MisError("Unknown column")
