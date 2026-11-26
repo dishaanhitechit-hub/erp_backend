@@ -677,3 +677,39 @@ def linked_to(args, user_id):
         if w and not w.is_deleted and _can_view(w, user_id):
             out.append({**_summary(w), "linkId": l.id, "linkType": l.link_type})
     return res("ok", out)
+
+
+# ─────────────────────────────── UI helpers ────────────────────────────
+
+@api
+def my_access(user_id):
+    """Projects the user works in + where they may manage sprints (for the Boards header)."""
+    from app.models.project import Project
+    from app.modules.mis.common import can_manage_sprints
+    user_id = uid(user_id)
+    sup = is_super(user_id)
+    pids = member_project_ids(user_id)
+    projects = Project.query.filter(Project.id.in_(pids or {-1})).order_by(Project.project_code.asc()).all()
+    return res("ok", {
+        "isSuperAdmin": sup,
+        "projects": [{"code": p.project_code, "name": p.project_name} for p in projects],
+        "manageSprintProjects": [p.project_code for p in projects if can_manage_sprints(user_id, p.id)],
+        "canManageCompanySprints": can_manage_sprints(user_id, None),
+        "canEditOthersTasks": bool(sup or task_svc._scope(user_id, "EDIT")["projects"]),
+    })
+
+
+@api
+def assignable(args, user_id):
+    """Who an item can be assigned to. ?projectCode= &type=Task|PBI|… (Task → Self Task rules)."""
+    user_id = uid(user_id)
+    typ = choice(args.get("type") or "PBI", WORK_ITEM_TYPES, "type")
+    project = project_by_code(args.get("projectCode"))
+    if typ == "Task" or project is None:
+        # Self Task's helper knows no 'company' code → pass the real project code or nothing
+        return task_svc.assignable_users({"projectCode": project.project_code} if project else {}, user_id)
+    from app.modules.mis.common import project_member_ids
+    ids = set(project_member_ids(project.id)) | {user_id}
+    users = (User.query.filter(User.id.in_(ids), or_(User.is_active.is_(True), User.is_active.is_(None)))
+             .order_by(User.username.asc()).all())
+    return res("ok", [{"id": u.id, "name": u.username, "empCode": u.emp_code} for u in users])

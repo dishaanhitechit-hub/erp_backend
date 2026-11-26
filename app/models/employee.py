@@ -155,3 +155,12 @@ class Employee(db.Model):
             "updated_at": str(self.updated_at) if self.updated_at else None,
         })
         return d
+
+
+from sqlalchemy import event  # noqa: E402
+
+
+@event.listens_for(Employee, "before_update")
+def _lock_employee_code(mapper, connection, target):
+    from app.models.user import assert_emp_code_unchanged
+    assert_emp_code_unchanged(target, connection)

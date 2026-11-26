@@ -1085,12 +1085,18 @@ def update_user(userId, request):
     emp_code = request.form.get("employeeCode")
     is_active = request.form.get("status")
 
+    # Employee code is locked once saved — reject any attempt to change it.
+    if emp_code is not None and emp_code.strip() and user.emp_code \
+            and emp_code.strip() != user.emp_code:
+        return res("Employee code cannot be changed once saved", code=400)
+
     # update fields
     user.username = username or user.username
     user.email = email or user.email
     user.mobile = mobile or user.mobile
     user.wp_mobile = wp_mobile or user.wp_mobile
-    user.emp_code = emp_code or user.emp_code
+    if not user.emp_code and emp_code:
+        user.emp_code = emp_code
 
 
     # update role

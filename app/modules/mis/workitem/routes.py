@@ -17,6 +17,18 @@ def api_meta():
     return svc.meta(get_jwt_identity())
 
 
+@mis_workitem_bp.route("/access", methods=["GET"])
+@jwt_required()
+def api_access():
+    return svc.my_access(get_jwt_identity())
+
+
+@mis_workitem_bp.route("/assignable", methods=["GET"])
+@jwt_required()
+def api_assignable():
+    return svc.assignable(request.args, get_jwt_identity())   # ?projectCode= &type=
+
+
 @mis_workitem_bp.route("", methods=["GET"])
 @jwt_required()
 def api_list():

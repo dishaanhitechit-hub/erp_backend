@@ -111,6 +111,11 @@ def update_employee(emp_id, data):
     if not emp:
         return res("Employee not found", {}, 404)
 
+    # Employee code is locked once saved.
+    new_code = data.get("emp_code")
+    if new_code is not None and str(new_code).strip() and str(new_code).strip() != (emp.emp_code or ""):
+        return res("Employee code cannot be changed once saved", {}, 400)
+
     fields = [
         "full_name", "date_of_birth", "gender", "blood_group", "nationality",
         "mother_tongue", "marital_status", "personal_mobile", "personal_email",
