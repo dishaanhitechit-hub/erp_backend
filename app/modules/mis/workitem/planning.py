@@ -316,7 +316,8 @@ def burndown(sprint_id, user_id):
     out = []
     for i, d in enumerate(days):
         row = {"date": d.isoformat(),
-               "idealHours": round(start_rem * (1 - (i + 1) / len(days)), 2) if len(days) else 0}
+               # full work on the first working day, straight down to 0 on the last
+               "idealHours": round(start_rem * (1 - i / (len(days) - 1)), 2) if len(days) > 1 else 0}
         snap = snaps.get(d)
         if snap is not None:
             row.update(snap.to_dict())

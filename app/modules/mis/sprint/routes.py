@@ -82,3 +82,37 @@ def api_set_capacity(sprint_id):
 @jwt_required()
 def api_burndown(sprint_id):
     return _planning.burndown(sprint_id, get_jwt_identity())
+
+
+# ── Boards Scrum: stand-up + retrospective ─────────────────────────────────
+from app.modules.mis.workitem import scrum as _scrum  # noqa: E402
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/standup", methods=["GET"])
+@jwt_required()
+def api_standup(sprint_id):
+    return _scrum.standup(sprint_id, request.args, get_jwt_identity())
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/retro", methods=["GET"])
+@jwt_required()
+def api_retro_list(sprint_id):
+    return _scrum.retro_list(sprint_id, get_jwt_identity())
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/retro", methods=["POST"])
+@jwt_required()
+def api_retro_add(sprint_id):
+    return _scrum.retro_add(sprint_id, _body(), get_jwt_identity())       # { category, text }
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/retro/<int:item_id>", methods=["DELETE"])
+@jwt_required()
+def api_retro_delete(sprint_id, item_id):
+    return _scrum.retro_delete(sprint_id, item_id, get_jwt_identity())
+
+
+@mis_sprint_bp.route("/<int:sprint_id>/retro/<int:item_id>/to-backlog", methods=["POST"])
+@jwt_required()
+def api_retro_to_backlog(sprint_id, item_id):
+    return _scrum.retro_to_backlog(sprint_id, item_id, _body(), get_jwt_identity())

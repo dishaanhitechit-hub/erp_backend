@@ -308,6 +308,12 @@ def list_items(args, user_id):
         like = f"%{search}%"
         q = q.filter(or_(MisTask.title.ilike(like), MisTask.task_code.ilike(like),
                          MisTask.description.ilike(like)))
+    if args.get("dueFrom"):
+        q = q.filter(MisTask.due_date >= parse_date(args["dueFrom"], "dueFrom"))
+    if args.get("dueTo"):
+        q = q.filter(MisTask.due_date <= parse_date(args["dueTo"], "dueTo"))
+    if str(args.get("openOnly", "")).lower() in ("1", "true"):
+        q = q.filter(MisTask.status.notin_(("Done", "Removed", "Cancelled")))
     tag = (args.get("tag") or "").strip()
 
     try:

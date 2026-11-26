@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from . import service as svc
 from . import planning
 from . import kanban
+from . import scrum
 
 mis_workitem_bp = Blueprint("mis_workitem", __name__)
 
@@ -150,3 +151,27 @@ def api_save_board_config():
 @jwt_required()
 def api_board_move(item_id):
     return kanban.board_move(item_id, _body(), get_jwt_identity())  # { column, done?, lane? }
+
+
+@mis_workitem_bp.route("/queries", methods=["GET"])
+@jwt_required()
+def api_queries():
+    return scrum.queries_list(request.args, get_jwt_identity())        # ?projectCode=
+
+
+@mis_workitem_bp.route("/queries", methods=["POST"])
+@jwt_required()
+def api_query_create():
+    return scrum.query_save(_body(), get_jwt_identity())               # { name, filters, columns, isShared, projectCode }
+
+
+@mis_workitem_bp.route("/queries/<int:query_id>", methods=["PUT"])
+@jwt_required()
+def api_query_update(query_id):
+    return scrum.query_save(_body(), get_jwt_identity(), query_id)
+
+
+@mis_workitem_bp.route("/queries/<int:query_id>", methods=["DELETE"])
+@jwt_required()
+def api_query_delete(query_id):
+    return scrum.query_delete(query_id, get_jwt_identity())
