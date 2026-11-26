@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from . import service as svc
 from . import planning
+from . import kanban
 
 mis_workitem_bp = Blueprint("mis_workitem", __name__)
 
@@ -125,3 +126,27 @@ def api_bulk():
 @jwt_required()
 def api_velocity():
     return planning.velocity(request.args, get_jwt_identity())  # ?projectCode= &count=6
+
+
+@mis_workitem_bp.route("/kanban", methods=["GET"])
+@jwt_required()
+def api_kanban():
+    return kanban.kanban(request.args, get_jwt_identity())        # ?projectCode= &level=PBI|Feature|Epic
+
+
+@mis_workitem_bp.route("/board-config", methods=["GET"])
+@jwt_required()
+def api_board_config():
+    return kanban.board_config(request.args, get_jwt_identity())  # ?projectCode= &level=
+
+
+@mis_workitem_bp.route("/board-config", methods=["PUT"])
+@jwt_required()
+def api_save_board_config():
+    return kanban.save_board_config(_body(), get_jwt_identity())  # { projectCode, level, columns, swimlanes }
+
+
+@mis_workitem_bp.route("/<int:item_id>/board-move", methods=["POST"])
+@jwt_required()
+def api_board_move(item_id):
+    return kanban.board_move(item_id, _body(), get_jwt_identity())  # { column, done?, lane? }

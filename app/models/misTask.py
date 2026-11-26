@@ -107,6 +107,11 @@ class MisTask(db.Model):
     backlog_rank = db.Column(db.Float, index=True)      # lower = higher on the backlog
     is_blocked = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     blocked_reason = db.Column(db.Text)
+    # Kanban position (team items): which board column / lane the card sits in, and whether it is
+    # in the "Done" half of a split column. NULL column = the first column mapped to its state.
+    board_column = db.Column(db.String(40))
+    board_column_done = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    board_lane = db.Column(db.String(40))
 
     # all timestamps are UTC (set in Python so the DB server's time zone does not matter)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now())
@@ -188,6 +193,9 @@ class MisTask(db.Model):
             "backlogRank": self.backlog_rank,
             "isBlocked": bool(self.is_blocked),
             "blockedReason": self.blocked_reason,
+            "boardColumn": self.board_column,
+            "boardColumnDone": bool(self.board_column_done),
+            "boardLane": self.board_lane,
             "createdAt": _d(self.created_at),
             "updatedAt": _d(self.updated_at),
         }
@@ -413,3 +421,17 @@ class MisSavedQuery(db.Model):
             "isShared": bool(self.is_shared),
             "createdAt": _d(self.created_at),
         }
+
+
+class MisBoardConfig(db.Model):
+    """Kanban settings per project (NULL = company) and backlog level (PBI / Feature / Epic):
+    columns [{name, state, wip, split}] and swimlanes [name, ...]."""
+    __tablename__ = "mis_board_configs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True, index=True)
+    level = db.Column(db.String(10), nullable=False)
+    columns = db.Column(db.JSON, nullable=False)
+    swimlanes = db.Column(db.JSON)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now(), onupdate=datetime.utcnow)
