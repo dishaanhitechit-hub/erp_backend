@@ -18,6 +18,7 @@ from app.models.term_conditions import *
 from app.extensions import db
 from app.cloudinary_uploader import *
 from app.modules.helper import get_category_by_head_under,get_cc_code_list
+from app.modules.master.asset_cc import fixed_asset_cc_condition
 from app.modules.master.supplier_service import sync_vendor_to_suppliers, auto_create_or_link_supplier
 from app.modules.master.sub_group_service import sub_group_path_fields
 from app.utils.audit_utils import audit_fields as _audit
@@ -797,13 +798,8 @@ def get_all_cc_codes(data):
 
     if key == "asset":
 
-        query = (
-            query
-            .join(GroupMaster, CCCode.group_id == GroupMaster.id)
-            .filter(
-                GroupMaster.group_name=="Fixed Asset"
-            )
-        )
+        # group or sub group (any level) named "Fixed Asset(s)"
+        query = query.filter(fixed_asset_cc_condition())
 
 
     elif key == "item":

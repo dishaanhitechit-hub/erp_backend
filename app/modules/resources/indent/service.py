@@ -18,6 +18,7 @@ from app.models.indent_item import IndentItem
 from app.models.approval_path import *
 from app.cloudinary_uploader import *
 from app.models.cc_code import CCCode
+from app.modules.master.asset_cc import fixed_asset_cc_condition
 from app.models.category_group import GroupMaster
 from app.models.unit import Unit
 from sqlalchemy import func, case
@@ -538,11 +539,10 @@ def get_items_by_category(category_code, asset_filter="exclude"):
             query = query.filter(Item.category_code == category_code)
 
         if asset_filter == "only":
-            query = query.filter(GroupMaster.group_name == "Fixed Asset")
+            query = query.filter(CCCode.id.isnot(None), fixed_asset_cc_condition())
         elif asset_filter == "exclude":
             query = query.filter(
-                (GroupMaster.group_name != "Fixed Asset") |
-                (GroupMaster.group_name == None)
+                (CCCode.id == None) | ~fixed_asset_cc_condition()
             )
         # "all" -> no group_name filter at all, so both assets and materials come through
 
