@@ -180,7 +180,8 @@ def activity_for(entity_type, entity_id):
             .order_by(MisActivity.created_at.desc(), MisActivity.id.desc()).all()]
 
 
-def notify(user_id, *, title, code, priority, project, actor_id, state, link_path, module_code, record_id, event):
+def notify(user_id, *, title, code, priority, project, actor_id, state, link_path, module_code, record_id, event,
+           label="Follow-up"):
     """Fire-and-forget WhatsApp (same approved template as tasks). Never raises."""
     try:
         from app.modules.communication.whatsapp_service import send_template
@@ -194,7 +195,7 @@ def notify(user_id, *, title, code, priority, project, actor_id, state, link_pat
             phone=phone,
             template_name=os.getenv("WA_TEMPLATE_TASK_ASSIGNED", "erp_action_required"),
             body_params={
-                "module_name": f"Follow-up ({priority}) – {title[:60]}",
+                "module_name": f"{label} ({priority}) – {title[:60]}",
                 "doc_no": code,
                 "project_code": project.project_code if project else "Company",
                 "actor_name": actor.username if actor else "ERP",

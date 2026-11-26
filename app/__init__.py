@@ -336,6 +336,10 @@ def create_app():
     app.register_blueprint(mis_sprint_bp, url_prefix="/mis/sprints")
     app.register_blueprint(mis_followup_bp, url_prefix="/mis/followups")
 
+    # MIS — Boards (Azure Boards style work items: Epic → Feature → PBI/Bug → Task)
+    from .modules.mis.workitem.routes import mis_workitem_bp
+    app.register_blueprint(mis_workitem_bp, url_prefix="/mis/work-items")
+
     # MIS — Schedule Compliance report
     from .modules.mis.compliance import mis_compliance_bp
     app.register_blueprint(mis_compliance_bp, url_prefix="/mis/compliance")

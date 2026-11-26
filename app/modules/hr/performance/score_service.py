@@ -144,6 +144,7 @@ def _collect(start, end, project_id=None):
 
     tasks = MisTask.query.filter(
         MisTask.is_deleted.is_(False), MisTask.status != "Cancelled",
+        MisTask.work_item_type == "Task",          # Boards Epic/Feature/PBI/Bug are not personal work
         or_(and_(MisTask.due_date <= end, or_(MisTask.completed_at.is_(None), MisTask.completed_at >= s_dt)),
             and_(MisTask.completed_at >= s_dt, MisTask.completed_at < e_dt)),
         *([MisTask.project_id == project_id] if project_id else []),
@@ -164,6 +165,7 @@ def _collect(start, end, project_id=None):
     reopens = (db.session.query(MisTask.owner_user_id)
                .join(MisActivity, and_(MisActivity.entity_type == "task", MisActivity.entity_id == MisTask.id))
                .filter(MisActivity.action.in_(("STATUS", "REOPENED")), MisActivity.old_value == "Done",
+                       MisTask.work_item_type == "Task",
                        MisActivity.created_at >= s_dt, MisActivity.created_at < e_dt,
                        *([MisTask.project_id == project_id] if project_id else [])).all())
     for (uid,) in reopens:

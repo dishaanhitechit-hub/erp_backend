@@ -144,7 +144,8 @@ def _is_member(user_id, project_id):
 
 
 def _get_task(task_id):
-    t = MisTask.query.filter_by(id=task_id, is_deleted=False).first()
+    # Self Task only handles Task-type work items (Epic/Feature/PBI/Bug live on Boards)
+    t = MisTask.query.filter_by(id=task_id, is_deleted=False, work_item_type="Task").first()
     if not t:
         raise _Err("Task not found", 404)
     return t
@@ -327,7 +328,7 @@ def _notify_assigned(task, assigner_id):
 # ─────────────────────────────── queries ───────────────────────────────
 
 def _scoped_query(user_id, scope_name, project_code=None):
-    q = MisTask.query.filter(MisTask.is_deleted.is_(False))
+    q = MisTask.query.filter(MisTask.is_deleted.is_(False), MisTask.work_item_type == "Task")
     if scope_name == "mine":
         q = q.filter(MisTask.owner_user_id == user_id)
     elif scope_name == "my_all":                         # my tasks + tasks I gave to others
@@ -429,7 +430,7 @@ def get_task(task_id, user_id):
 
 @_wrap
 def get_task_by_uuid(task_uuid, user_id):
-    t = MisTask.query.filter_by(task_uuid=task_uuid, is_deleted=False).first()
+    t = MisTask.query.filter_by(task_uuid=task_uuid, is_deleted=False, work_item_type="Task").first()
     if not t:
         return res("Task not found", [], 404)
     return get_task(t.id, user_id)
