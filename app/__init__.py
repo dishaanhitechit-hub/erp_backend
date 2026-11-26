@@ -6,6 +6,7 @@ from .extensions import db, jwt, bcrypt, migrate
 
 from flask_cors import CORS
 from .middleware.maintenance import register_maintenance_middleware
+from .middleware.project_guard import register_project_guard
 
 def create_app():
     # logging first, so everything below (and every module logger) is captured
@@ -54,6 +55,9 @@ def create_app():
 
     # maintenance middleware
     register_maintenance_middleware(app)
+
+    # project permission guard on write APIs (page.EDIT in the record's project)
+    register_project_guard(app)
     # socketio.init_app(app)
 
     # FUN: error sound on every error
