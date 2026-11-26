@@ -266,17 +266,22 @@ def set_capacity(sprint_id, data, user_id):
 def compute_snapshot(sprint_id):
     rows = (MisTask.query.filter(MisTask.sprint_id == sprint_id, MisTask.is_deleted.is_(False)).all())
     counts = defaultdict(lambda: defaultdict(int))
+    people = defaultdict(lambda: {"committed": 0.0, "done": 0.0})
     remaining = committed = done = 0.0
     for t in rows:
         counts[t.work_item_type][t.status] += 1
         if t.work_item_type == "Task" and t.status in OPEN_STATUSES:
             remaining += float(t.remaining_hours or 0)
         if t.work_item_type in POINT_TYPES and t.status != "Removed":
-            committed += float(t.story_points or 0)
+            pts = float(t.story_points or 0)
+            committed += pts
+            people[str(t.owner_user_id)]["committed"] += pts
             if t.status == "Done":
-                done += float(t.story_points or 0)
+                done += pts
+                people[str(t.owner_user_id)]["done"] += pts
     return {"remaining_hours": round(remaining, 2), "committed_points": round(committed, 1),
-            "done_points": round(done, 1), "state_counts": {k: dict(v) for k, v in counts.items()}}
+            "done_points": round(done, 1), "state_counts": {k: dict(v) for k, v in counts.items()},
+            "people": {u: {k: round(v, 1) for k, v in p.items()} for u, p in people.items()}}
 
 
 def save_snapshot(s, day=None):

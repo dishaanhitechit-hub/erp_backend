@@ -4,11 +4,13 @@ Employee Performance Score (0–100) — worked out from real work, not filled i
 Parts (weights in WEIGHTS; a part with no data for the person is left out and
 the remaining weights are scaled up, so nobody is punished for missing data):
 
-  onTime      30  items due in the period finished on or before their due date
+  onTime      20  items due in the period finished on or before their due date
   quality     25  "error-less": 100 − share of completed items that were reopened
                   (self task Done → open again) or sent back (follow-up step Rejected)
   throughput  15  items completed vs the company median for the same period
-  backlog     10  100 − share of due work still open past its due date
+  backlog      5  100 − share of due work still open past its due date
+  sprintCommitment 10  Boards sprints closed in the period: own story points done ÷ committed
+                  (from the close snapshot; capped at 100)
   pickup       5  hours from being assigned a follow-up step to starting it
                   (≤ 4 h = 100, ≥ 72 h = 0)
   appraisal   15  latest HR performance review rating × 20
@@ -29,15 +31,16 @@ from app.extensions import db
 from app.models.user import User
 from app.models.employee import Employee
 from app.models.performanceModel import PerformanceReview, DisciplineCase, EmployeePerformanceScore
-from app.models.misTask import MisTask, MisActivity
-from app.models.misFollowup import MisFollowup, MisFollowupStep
+from app.models.misTask import MisTask, MisActivity, MisSprintSnapshot
+from app.models.misFollowup import MisFollowup, MisFollowupStep, MisSprint
 
 # One grading method for everyone — see GRADECARD.md (keep both in step).
-WEIGHTS = {"onTime": 25, "quality": 25, "throughput": 15, "timeEfficiency": 10,
-           "backlog": 10, "pickup": 5, "appraisal": 10}
+WEIGHTS = {"onTime": 20, "quality": 25, "throughput": 15, "timeEfficiency": 10,
+           "sprintCommitment": 10, "backlog": 5, "pickup": 5, "appraisal": 10}
 LABELS = {
     "onTime": "On-time delivery", "quality": "Quality (error-less)", "throughput": "Work completed",
-    "timeEfficiency": "Time vs estimate", "backlog": "Overdue backlog", "pickup": "Pick-up speed",
+    "timeEfficiency": "Time vs estimate", "sprintCommitment": "Sprint commitment",
+    "backlog": "Overdue backlog", "pickup": "Pick-up speed",
     "appraisal": "Manager appraisal",
 }
 # time vs estimate, per task: up to 10 % over the estimate = full marks, 2× the estimate (or more) = 0
@@ -113,7 +116,8 @@ def _subjects():
 
 def _blank():
     return {"due": 0, "onTime": 0, "lateDone": 0, "done": 0, "errors": 0, "reopened": 0, "rejected": 0,
-            "backlogBase": 0, "overdueOpen": 0, "pickupHours": [], "timeScores": [], "overEstimate": 0}
+            "backlogBase": 0, "overdueOpen": 0, "pickupHours": [], "timeScores": [], "overEstimate": 0,
+            "sprintCommitted": 0.0, "sprintDone": 0.0, "sprints": 0}
 
 
 def _count_item(m, due, comp, created, start, end, cutoff, on_time=None):
@@ -189,6 +193,22 @@ def _collect(start, end, project_id=None):
             r["errors"] += 1
         if st.started_at and st.assigned_at and s_dt <= st.assigned_at < e_dt:
             r["pickupHours"].append(max(0.0, (st.started_at - st.assigned_at).total_seconds() / 3600))
+
+    # sprint commitment: Boards sprints CLOSED in the period → each owner's committed vs done story
+    # points, from the final snapshot taken at close (before unfinished work carried over)
+    sprints = MisSprint.query.filter(MisSprint.is_deleted.is_(False), MisSprint.status == "Closed",
+                                     MisSprint.closed_at >= s_dt, MisSprint.closed_at < e_dt,
+                                     *([MisSprint.project_id == project_id] if project_id else [])).all()
+    for sp in sprints:
+        last = (MisSprintSnapshot.query.filter_by(sprint_id=sp.id)
+                .order_by(MisSprintSnapshot.snap_date.desc(), MisSprintSnapshot.id.desc()).first())
+        for uid, pts in ((last.people or {}) if last else {}).items():
+            if not pts.get("committed"):
+                continue
+            r = m[int(uid)]
+            r["sprintCommitted"] += float(pts["committed"])
+            r["sprintDone"] += float(pts.get("done") or 0)
+            r["sprints"] += 1
     return m
 
 
@@ -265,6 +285,10 @@ def _score_one(raw, median_done, appraisal, disc):
     put("timeEfficiency", sum(ts) / len(ts) if ts else None,
         f"{raw.get('overEstimate', 0)} of {len(ts)} timed task(s) over the estimate" if ts
         else "No timed task with an estimate")
+    sc, sd = raw.get("sprintCommitted") or 0, raw.get("sprintDone") or 0
+    put("sprintCommitment", 100.0 * min(1.0, sd / sc) if sc else None,
+        f"{sd:g} of {sc:g} committed points done in {raw.get('sprints', 0)} sprint(s)" if sc
+        else "No closed sprint with points")
     ph = raw["pickupHours"]
     avg = sum(ph) / len(ph) if ph else None
     put("pickup", _pickup_score(avg) if ph else None, f"avg {avg:.1f} h to start" if ph else "No hand-offs received")

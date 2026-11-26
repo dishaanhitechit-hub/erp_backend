@@ -349,6 +349,7 @@ class MisSprintSnapshot(db.Model):
     committed_points = db.Column(db.Numeric(7, 1), nullable=False, default=0)
     done_points = db.Column(db.Numeric(7, 1), nullable=False, default=0)
     state_counts = db.Column(db.JSON)                              # {"To Do": 4, "In Progress": 2, ...}
+    people = db.Column(db.JSON)          # {"<userId>": {"committed": pts, "done": pts}} — PBI/Bug owners (score)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.func.now())
 
     __table_args__ = (db.UniqueConstraint("sprint_id", "snap_date", name="uq_mis_sprint_snapshot_day"),)
