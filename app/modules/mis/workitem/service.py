@@ -23,7 +23,7 @@ from app.response import res
 from app.utils.pagination import set_pagination
 from app.models.misTask import (
     MisTask, MisActivity, MisWorkItemLink, TASK_PRIORITIES, WORK_ITEM_TYPES, WI_STATES,
-    WI_DEFAULT_STATE, WI_PARENT_TYPES, WI_CODE_PREFIX, LINK_TARGET_TYPES, LINK_TYPES,
+    WI_DEFAULT_STATE, WI_PARENT_TYPES, WI_CODE_PREFIX, WI_LABEL, LINK_TARGET_TYPES, LINK_TYPES,
 )
 from app.models.misFollowup import MisSprint, MisFollowup
 from app.models.user import User
@@ -127,7 +127,7 @@ def _apply_board_fields(t, data):
     typ = t.work_item_type
     if "storyPoints" in data:
         if typ not in POINT_TYPES and data["storyPoints"] not in (None, ""):
-            raise MisError("Story points are only for PBI and Bug")
+            raise MisError("Effort points are only for an Activity or a Snag")
         t.story_points = _num(data["storyPoints"], "storyPoints")
     if "remainingHours" in data:
         if typ != "Task" and data["remainingHours"] not in (None, ""):
@@ -135,7 +135,7 @@ def _apply_board_fields(t, data):
         t.remaining_hours = _num(data["remainingHours"], "remainingHours")
     if "acceptanceCriteria" in data:
         if typ not in POINT_TYPES and data["acceptanceCriteria"]:
-            raise MisError("Acceptance criteria are only for PBI and Bug")
+            raise MisError("Acceptance criteria are only for an Activity or a Snag")
         t.acceptance_criteria = (data.get("acceptanceCriteria") or "").strip() or None
     if "isBlocked" in data:
         t.is_blocked = bool(data["isBlocked"])
@@ -153,8 +153,9 @@ def _parent_for(parent_id, typ, project_id):
     allowed = WI_PARENT_TYPES.get(typ, ())
     if p.work_item_type not in allowed:
         if not allowed:
-            raise MisError(f"An {typ} cannot have a parent")
-        raise MisError(f"A {typ} can only sit under {' or '.join(allowed)} (not {p.work_item_type})")
+            raise MisError(f"A {WI_LABEL[typ]} is the top level and cannot have a parent")
+        raise MisError(f"A {WI_LABEL[typ]} can only sit under a {' or '.join(WI_LABEL[a] for a in allowed)} "
+                       f"(not a {WI_LABEL[p.work_item_type]})")
     if p.project_id != project_id:
         raise MisError("The parent belongs to a different project")
     return p
@@ -164,7 +165,7 @@ def _sprint_for(sprint_id, typ, project_id):
     if sprint_id in (None, "", "backlog"):
         return None
     if typ not in SPRINT_TYPES_OK:
-        raise MisError(f"An {typ} is not planned into a sprint — plan its PBIs instead")
+        raise MisError(f"A {WI_LABEL[typ]} is not planned into a sprint — plan its Activities instead")
     s = MisSprint.query.filter_by(id=parse_int(sprint_id, "sprintId"), is_deleted=False).first()
     if not s:
         raise MisError("Sprint not found", 404)
@@ -218,7 +219,7 @@ def _notify_assigned(t, actor_id, user_id=None, state=None, event="ASSIGNED"):
     notify(user_id or t.owner_user_id, title=t.title, code=t.task_code, priority=t.priority,
            project=t.project, actor_id=actor_id, state=state or t.status,
            link_path=LINK_PATH.format(uuid=t.task_uuid), module_code="mis_work_item",
-           record_id=t.id, event=event, label=t.work_item_type)
+           record_id=t.id, event=event, label=WI_LABEL.get(t.work_item_type, t.work_item_type))
 
 
 # ─────────────────────────────── output ────────────────────────────────
@@ -447,7 +448,7 @@ def create_item(data, user_id):
     db.session.commit()
     if owner.id != user_id:
         _notify_assigned(t, user_id)
-    return res(f"{typ} created", _out(t, user_id), 201)
+    return res(f"{WI_LABEL[typ]} created", _out(t, user_id), 201)
 
 
 @api
@@ -470,7 +471,7 @@ def _apply_update(t, data, user_id):
     if data.get("workItemType") and data["workItemType"] != t.work_item_type:
         new_type = choice(data["workItemType"], WORK_ITEM_TYPES, "workItemType")
         if {t.work_item_type, new_type} != {"PBI", "Bug"}:
-            raise MisError("Only a PBI and a Bug can be changed into each other")
+            raise MisError("Only an Activity and a Snag can be changed into each other")
         _log(t, user_id, "UPDATED", old="type", new=new_type)
         t.work_item_type = new_type
 

@@ -32,7 +32,12 @@ WI_PARENT_TYPES = {
     "Bug": ("Feature",),
     "Task": ("PBI", "Bug"),
 }
-WI_CODE_PREFIX = {"Epic": "EPC", "Feature": "FEA", "PBI": "PBI", "Bug": "BUG", "Task": "TSK"}
+# ID prefix for NEW items (construction names). Items created before 2026-11-27 keep their old codes
+# (EPC-, FEA-, PBI-, BUG-); a code never changes after creation — not even when an Activity becomes a Snag.
+WI_CODE_PREFIX = {"Epic": "PHS", "Feature": "WPK", "PBI": "ACT", "Bug": "SNG", "Task": "TSK"}
+# Construction names shown to users (messages, WhatsApp). Keys stay as stored; keep in step with
+# TYPE_LABEL in erp-frontend src/lib/misBoards.js and typeLabel in erp_mobile sprint_board_screen.dart.
+WI_LABEL = {"Epic": "Phase", "Feature": "Work Package", "PBI": "Activity", "Bug": "Snag", "Task": "Task"}
 
 LINK_TARGET_TYPES = ("WORK_ITEM", "FOLLOWUP", "ERP_DOC")
 LINK_TYPES = ("related", "predecessor", "successor")
