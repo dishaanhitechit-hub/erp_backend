@@ -335,16 +335,22 @@ def _post_bill_payment_bill(source_id):
 
     if gross > 0 and bpr.vendor_id:
         kind = "advance" if bpr.payment_type == "advance" else "bill"
-        # an advance has no bill yet → untagged; it reaches the bill's CCs
-        # through an Advance Adjustment (source_type "advance_adjustment")
-        cc_rows = [] if kind == "advance" else _receipt_cc_rows(bpr)
-        for cc, amt in _fit_cc_parts(cc_rows, gross):
-            lines.append(_vendor_line(
-                bpr.vendor_id, "Dr", amt,
+        if kind == "advance":
+            # Advance sits on CAAV (Current Asset: Advance to Vendors) until adjusted
+            lines.append(_cc_line(
+                "CAAV", "Dr", gross,
                 project_code=bpr.project_code,
-                cost_centre_code=cc,
-                narration=f"BPR {kind} payment: {bpr.receipt_no}" + (f" | CC {cc}" if cc else ""),
+                narration=f"BPR advance payment: {bpr.receipt_no}",
             ))
+        else:
+            cc_rows = _receipt_cc_rows(bpr)
+            for cc, amt in _fit_cc_parts(cc_rows, gross):
+                lines.append(_vendor_line(
+                    bpr.vendor_id, "Dr", amt,
+                    project_code=bpr.project_code,
+                    cost_centre_code=cc,
+                    narration=f"BPR bill payment: {bpr.receipt_no}" + (f" | CC {cc}" if cc else ""),
+                ))
 
     if discount > 0:
         lines.append(_cc_line(
@@ -400,16 +406,13 @@ def _post_bill_payment_receipt(source_id):
 
     if bpr.payment_type == "voucher":
         return _post_bill_payment_voucher(source_id)
-    # "bill" and "advance" post the same way: Dr Vendor, Cr Bank / Cash.
-    # An advance leaves a debit balance on the vendor until the bill is booked.
     return _post_bill_payment_bill(source_id)
 
 
 # ---------------------------------------------------------------------------
 # 5b. Advance Adjustment — settles an outstanding advance against a bill
 #     Dr Vendor per bill row, tagged with the row's CC
-#     Cr Vendor total, untagged (the advance)
-#     The vendor's balance does not change; the advance moves onto the bill's CCs.
+#     Cr CAAV (clears the advance asset)
 # ---------------------------------------------------------------------------
 
 def _post_advance_adjustment(source_id):
@@ -435,8 +438,8 @@ def _post_advance_adjustment(source_id):
             a.vendor_id, "Dr", amt, project_code=a.project_code, cost_centre_code=cc,
             narration=f"Advance adjusted: {a.adjustment_no} | {a.bill_no}" + (f" | CC {cc}" if cc else ""),
         ))
-    lines.append(_vendor_line(
-        a.vendor_id, "Cr", total, project_code=a.project_code,
+    lines.append(_cc_line(
+        "CAAV", "Cr", total, project_code=a.project_code,
         narration=f"Advance {pr_no} adjusted against {a.bill_no}: {a.adjustment_no}",
     ))
     header = {
@@ -461,6 +464,8 @@ def _post_sale_bill(source_id):
         from .posting_engine import PostingError
         raise PostingError(f"SaleBill {source_id} not found")
 
+    from .posting_engine import PostingError
+
     lines = []
 
     # Resolve customer (debtor) via sale_order → OgSaleOrder.debtor_id
@@ -469,11 +474,16 @@ def _post_sale_bill(source_id):
         so = OgSaleOrderMaster.query.get(sb.sale_order_id)
         if so:
             debtor_vendor_id = so.debtor_id
+    if not debtor_vendor_id:
+        raise PostingError(
+            f"Sale bill {sb.sale_bill_no}: no debtor linked "
+            f"(sale_order_id={sb.sale_order_id}, check sale order has debtor set)"
+        )
 
     total = _d(sb.total_invoice_amount)
 
     # Dr Customer receivable
-    if total > 0 and debtor_vendor_id:
+    if total > 0:
         lines.append(_vendor_line(
             debtor_vendor_id, "Dr", total,
             project_code=sb.project_code,
@@ -594,10 +604,6 @@ def _post_journal_entry(source_id):
     if not je:
         from .posting_engine import PostingError
         raise PostingError(f"JournalEntry {source_id} not found")
-
-    # C12: Skip bulk_docket entries — PCDV is the authoritative source
-    if je.entry_mode == "bulk_docket":
-        return None, []
 
     lines = []
 
@@ -870,27 +876,39 @@ def _post_sale_claim_bill(source_id):
         from .posting_engine import PostingError
         raise PostingError(f"BillingMaster (claim) {source_id} not found")
 
+    from .posting_engine import PostingError
+
     lines = []
     total = _d(bill.this_bill_claim)
 
     if total > 0:
+        # Resolve debtor before building any lines — an unlinked sale order or missing
+        # debtor means the entry cannot balance; fail fast with a clear message.
+        if not bill.og_sale_order_id:
+            raise PostingError(
+                f"Claim bill {bill.erp_no}: no sale order linked (og_sale_order_id is null)"
+            )
+        so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
+        if not so:
+            raise PostingError(
+                f"Claim bill {bill.erp_no}: sale order id={bill.og_sale_order_id} not found"
+            )
+        debtor_vendor_id = so.debtor_id
+        if not debtor_vendor_id:
+            raise PostingError(
+                f"Claim bill {bill.erp_no}: sale order {so.erp_no or so.id} has no debtor linked"
+            )
+
         lines.append(_cc_line(
             "UWIP", "Dr", total,
             project_code=bill.project_code,
             narration=f"Claim bill WIP: {bill.erp_no}",
         ))
-
-        debtor_vendor_id = None
-        if bill.og_sale_order_id:
-            so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
-            if so:
-                debtor_vendor_id = so.debtor_id
-        if debtor_vendor_id:
-            lines.append(_vendor_line(
-                debtor_vendor_id, "Cr", total,
-                project_code=bill.project_code,
-                narration=f"Claim bill provisional: {bill.erp_no}",
-            ))
+        lines.append(_vendor_line(
+            debtor_vendor_id, "Cr", total,
+            project_code=bill.project_code,
+            narration=f"Claim bill provisional: {bill.erp_no}",
+        ))
 
     header = {
         "posting_date": bill.billing_date,
@@ -914,27 +932,37 @@ def _post_sale_certified_bill(source_id):
         from .posting_engine import PostingError
         raise PostingError(f"BillingMaster (cert) {source_id} not found")
 
+    from .posting_engine import PostingError
+
     lines = []
     total = _d(bill.this_bill_claim)
 
     if total > 0:
+        if not bill.og_sale_order_id:
+            raise PostingError(
+                f"Certified bill {bill.erp_no}: no sale order linked (og_sale_order_id is null)"
+            )
+        so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
+        if not so:
+            raise PostingError(
+                f"Certified bill {bill.erp_no}: sale order id={bill.og_sale_order_id} not found"
+            )
+        debtor_vendor_id = so.debtor_id
+        if not debtor_vendor_id:
+            raise PostingError(
+                f"Certified bill {bill.erp_no}: sale order {so.erp_no or so.id} has no debtor linked"
+            )
+
         lines.append(_cc_line(
             "UWIP", "Cr", total,
             project_code=bill.project_code,
             narration=f"Certified bill reduces WIP: {bill.erp_no}",
         ))
-
-        debtor_vendor_id = None
-        if bill.og_sale_order_id:
-            so = OgSaleOrderMaster.query.get(bill.og_sale_order_id)
-            if so:
-                debtor_vendor_id = so.debtor_id
-        if debtor_vendor_id:
-            lines.append(_vendor_line(
-                debtor_vendor_id, "Dr", total,
-                project_code=bill.project_code,
-                narration=f"Certified receivable: {bill.erp_no}",
-            ))
+        lines.append(_vendor_line(
+            debtor_vendor_id, "Dr", total,
+            project_code=bill.project_code,
+            narration=f"Certified receivable: {bill.erp_no}",
+        ))
 
     header = {
         "posting_date": bill.billing_date,
@@ -1036,7 +1064,7 @@ _POSTING_RULES = {
     "contra_entry": _post_contra_entry,
     "debit_note": _post_debit_note,
     "credit_note": _post_credit_note,
-    "petty_cash_docket": _post_petty_cash_docket,
+    # petty_cash_docket removed — PCDV does not post to GL; GL posting is via bulk_docket JE
     "grn": _post_grn,
     "gin": _post_gin,
     "sale_claim_bill": _post_sale_claim_bill,

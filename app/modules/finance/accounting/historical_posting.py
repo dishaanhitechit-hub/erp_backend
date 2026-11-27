@@ -28,7 +28,7 @@ _POSTING_ORDER = [
     ("purchase_bill", "PurchaseBillMaster", "purchase_bill_master", "workflow_status", "processing_date", "purchase_bill_no"),
     ("sale_bill", "SaleBillMaster", "sale_bill_master", "workflow_status", "invoice_date", "sale_bill_no"),
     ("payment_voucher", "PaymentVoucherMaster", "payment_voucher_master", "workflow_status", "payment_date", "payment_vouch_no"),
-    ("petty_cash_docket", "PettyCashDocketVoucher", "petty_cash_docket_voucher", "workflow_status", "voucher_date", "voucher_no"),
+    # petty_cash_docket removed — PCDV does not post to GL; GL posting is via bulk_docket JE
     ("bill_payment", "BillPaymentReceiptMaster", "bill_payment_receipt_master", "workflow_status", "payment_date", "receipt_no"),
     ("advance_adjustment", "AdvanceAdjustmentMaster", "advance_adjustment_master", "workflow_status", "adjustment_date", "adjustment_no"),
     ("sale_receipt_billing", "SaleReceiptBillingMaster", "sale_receipt_billing", "workflow_status", "srb_date", "srb_no"),
@@ -141,10 +141,6 @@ def run_historical_posting(user_id, options=None):
             if hasattr(Model, "status"):
                 q = q.filter(Model.status != "Deleted")
 
-            # Exclude bulk_docket JEs — posted via petty_cash_docket
-            if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
-                q = q.filter(Model.entry_mode != "bulk_docket")
-
             # BillingMaster stores two source types under one table; filter by mode
             if source_type in ("sale_claim_bill", "sale_certified_bill") and hasattr(Model, "mode"):
                 q = q.filter(Model.mode == source_type)
@@ -194,6 +190,9 @@ def run_historical_posting(user_id, options=None):
                             post_gin_stock(doc.id, user_id=user_id)
                     except Exception:
                         pass
+                    # GRN/GIN have no GL entries — stock ledger is their only posting.
+                    posted_count += 1
+                    continue
 
                 existing = AccountingLedger.query.filter_by(
                     source_type=source_type,
@@ -279,10 +278,6 @@ def get_posting_status():
             approved_q = Model.query.filter(status_field == "Approved")
             if hasattr(Model, "status"):
                 approved_q = approved_q.filter(Model.status != "Deleted")
-
-            # Exclude bulk_docket JEs — they are posted via petty_cash_docket
-            if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
-                approved_q = approved_q.filter(Model.entry_mode != "bulk_docket")
 
             # BillingMaster stores two source types; filter by mode
             if source_type in ("sale_claim_bill", "sale_certified_bill") and hasattr(Model, "mode"):

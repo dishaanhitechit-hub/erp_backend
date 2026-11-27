@@ -648,14 +648,8 @@ def approve_petty_cash_docket_voucher(voucher_id, approved_by, comments=None):
         voucher.updated_by = approved_by
         voucher.updated_at = datetime.utcnow()
 
-        if voucher.workflow_status == "Approved":
-            db.session.flush()
-            try:
-                from app.modules.finance.accounting import post_document
-                post_document("petty_cash_docket", voucher.id, approved_by)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Accounting posting failed for PCDV {voucher.id}: {e}")
+        # PCDV does not post to GL — it is a collection/reconciliation voucher only.
+        # GL posting happens when the PCJV (bulk_docket Journal Entry) is approved.
 
         db.session.commit()
 
