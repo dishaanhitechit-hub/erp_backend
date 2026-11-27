@@ -360,15 +360,17 @@ def get_petty_cash_docket_voucher_list(data):
             .all()
         )
 
-        # CC names per docket, in line order, without repeats
+        # CC heads per docket, in line order, without repeats, with the amount
+        # spent on each head (lines of the same head are added up)
         cc_names = {}
-        for vid, cc in (
-            db.session.query(D.voucher_id, D.cc_name)
+        for vid, cc, cc_code, amt in (
+            db.session.query(D.voucher_id, D.cc_name, D.cc_code, D.amount)
             .join(V, V.id == D.voucher_id)
             .filter(*conds, D.cc_name.isnot(None), D.cc_name != "")
             .order_by(D.voucher_id, D.sl_no)
         ):
-            cc_names.setdefault(vid, {})[cc] = None
+            head = cc_names.setdefault(vid, {}).setdefault(cc, {"ccCode": cc_code, "ccName": cc, "amount": 0.0})
+            head["amount"] = round(head["amount"] + float(amt or 0), 2)
 
         result = [
             {
@@ -384,6 +386,7 @@ def get_petty_cash_docket_voucher_list(data):
                 "paymentRefId":   r.payment_ref_id,
                 "totalAmount":    float(r.total_amount or 0),
                 "ccNames":        ", ".join(cc_names.get(r.id, ())),
+                "ccBreakdown":    list(cc_names.get(r.id, {}).values()),
                 "workflowStatus": r.workflow_status,
                 "createdBy":      r.username,
                 "createdAt":      _fmt_date(r.created_at),
