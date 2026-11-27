@@ -86,6 +86,9 @@ def _d(val):
 
 def _cc_line(cc_code_str, dr_cr, amount, project_code=None, gst_type=None, gst_rate=None, source_line_id=None, narration=None):
     cc_id, cc_code = _resolve_cc_id(cc_code_str)
+    if cc_id is None:
+        from .posting_engine import PostingError
+        raise PostingError(f"CC code '{cc_code_str}' not found in cc_codes master — cannot post")
     return {
         "account_type": "CC",
         "cc_id": cc_id,
@@ -984,6 +987,15 @@ def _post_uncertified_statement(source_id):
             total_reclassified += amount
 
     if total_reclassified > 0:
+        # Guard: total reclassified must not exceed the UA's own declared difference
+        ua_difference = _d(ua.total_difference)
+        if ua_difference > 0 and total_reclassified > ua_difference:
+            from .posting_engine import PostingError
+            raise PostingError(
+                f"UA {ua.ua_no}: total reclassified ({total_reclassified}) exceeds "
+                f"UA difference ({ua_difference}). Justification fields sum too high."
+            )
+
         lines.append(_cc_line(
             "UWIP", "Cr", total_reclassified,
             project_code=ua.project_code,

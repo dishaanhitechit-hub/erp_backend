@@ -1246,11 +1246,8 @@ def approve_billing(bill_id, approved_by, comments=None):
             bill.approved_by       = approved_by
             bill.final_approved_at = datetime.utcnow()
 
-            try:
-                from app.modules.finance.accounting import post_document
-                post_document(bill.mode, bill.id, approved_by)
-            except Exception:
-                pass
+            from app.modules.finance.accounting import post_document
+            post_document(bill.mode, bill.id, approved_by)
 
         bill.updated_by = approved_by
         bill.updated_at = datetime.utcnow()

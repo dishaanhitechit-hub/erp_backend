@@ -64,7 +64,8 @@ from app.models.onboarding import OnboardingTask
 from app.modules.traceability.access import TraceAccess
 from app.modules.traceability.registry import DOC_TYPES
 from app.modules.traceability.workbench_service import _as_date, _date, _num, _like
-from app.modules.finance.vendor_ledger.service import _build_ledger, _parse_date
+from app.modules.finance.vendor_ledger.service import _central_to_legacy
+from app.modules.finance.accounting.ledger_service import get_vendor_ledger_central
 
 QUICK_LIMIT = 10
 QUICK_LIMIT_MAX = 25
@@ -752,7 +753,14 @@ def get_vendor_ledger(user_id, vendor_id, from_date=None, to_date=None):
         if allowed is not None and not allowed:
             return res("Access denied", [], 403)
 
-        _, entries = _build_ledger(vendor.id, None, _parse_date(from_date), _parse_date(to_date))
+        _ledger_result, _ledger_status = get_vendor_ledger_central({
+            "vendor_id": vendor.id,
+            "from_date": from_date,
+            "to_date": to_date,
+        })
+        if _ledger_status != 200:
+            return res("Ledger error", [], _ledger_status)
+        _, entries = _central_to_legacy(_ledger_result["data"])
         if allowed is not None:
             entries = [e for e in entries if e["projectCode"] in allowed]
 

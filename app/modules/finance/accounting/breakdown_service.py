@@ -10,9 +10,9 @@ A Group Ledger row (e.g. Sundry Creditors, Direct Expenses) opens to show:
 Each account then opens in the existing account reconciliation popup
 (get_reconciliation) for the voucher-by-voucher list.
 
-The grouping rules mirror get_group_ledger exactly and, like every report,
-cancelled originals and their reversals are counted (they net to zero), so
-the accounts always add up to the number the user clicked.
+The grouping rules mirror get_group_ledger exactly, including the
+_not_cancelled() filter, so the breakdown totals always match the
+group ledger row that was clicked.
 """
 
 from decimal import Decimal
@@ -26,7 +26,7 @@ from app.models.category_group import GroupMaster
 from app.models.vendor import Vendor
 from app.models.bankCash import BankCash
 
-from .ledger_service import _parse_date, _d, _fmt_date, SOURCE_TYPE_LABELS
+from .ledger_service import _parse_date, _d, _fmt_date, SOURCE_TYPE_LABELS, _not_cancelled
 
 # Group Ledger rows for vendors have no GroupMaster id
 VENDOR_GROUP_KEYS = {
@@ -100,7 +100,7 @@ def get_group_breakdown(params):
     from_date = _parse_date(params.get("from_date"))
     to_date = _parse_date(params.get("to_date"))
     project_code = params.get("project_code") or None
-    filters = [_group_line_filter(group_id, group_key)]
+    filters = [_group_line_filter(group_id, group_key), _not_cancelled()]
     if from_date:
         filters.append(AccountingLedger.posting_date >= from_date)
     if to_date:

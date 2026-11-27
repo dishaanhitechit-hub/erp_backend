@@ -79,9 +79,21 @@ def _build_item_cc_map(item_codes):
 
 def post_grn_accounting(source_id):
     """
-    Build accounting posting data for an approved GRN.
-    Dr cost_head CC (Stock-in-Hand) per item, Cr Vendor payable for total.
+    GRN is a stock-management document — it updates the stock ledger only.
+
+    Accounting (Dr CC / Cr Vendor) is deferred to the linked Purchase Bill,
+    which carries the vendor's actual invoice amount and is the authoritative
+    trigger for the financial books.  Raising both entries would double-count
+    the CC expense and the vendor payable (confirmed in reconciliation: GRN and
+    PB each debited the same CC code for the same items).
     """
+    # Return no-op — post_grn_stock handles the stock ledger separately.
+    return None, []
+
+    # ── DEAD CODE BELOW — kept for reference ──────────────────────────────
+    # Previous implementation: Dr CC / Cr Vendor per GRN receipt.
+    # Removed because Purchase Bill already posts Dr CC / Cr Vendor,
+    # creating duplicate entries in the accounting ledger.
     from app.models.grnMaster import GrnMaster
 
     grn = GrnMaster.query.get(source_id)

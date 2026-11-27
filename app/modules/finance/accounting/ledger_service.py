@@ -74,6 +74,25 @@ def _fmt_date(d):
 
 # ── Source type display names ─────────────────────────────────────────────
 
+# ── P&L income / expense group classification ──────────────────────────────
+# Groups whose name contains any of these words are treated as income groups.
+# Keyword match is intentionally broad to cover Indian-accounting conventions
+# (Tally names "Direct Income", "Indirect Income", "Sales A/c", etc.) until a
+# `group_nature` column is added to GroupMaster (schema change, pending).
+_PL_INCOME_KEYWORDS = frozenset({
+    "revenue", "income", "sales", "receipt", "receipts",
+    "turnover", "trading", "other income",
+})
+
+# ── Balance Sheet asset / liability group classification ───────────────────
+# Groups whose name contains any of these words are placed on the asset side.
+_BS_ASSET_KEYWORDS = frozenset({
+    "asset", "stock", "receivable", "advance paid", "advance given",
+    "deposit", "prepaid", "cash", "investment", "loan given",
+    "work in progress", "wip", "capital work", "inventory",
+    "debtors", "debtor",
+})
+
 SOURCE_TYPE_LABELS = {
     "purchase_bill": "Purchase Bill",
     "payment_voucher": "Payment Voucher",
@@ -412,7 +431,9 @@ def get_trial_balance(params):
             (AccountingLedgerLine.dr_cr == "Cr", AccountingLedgerLine.amount),
             else_=literal_column("0"),
         )), 0).label("total_cr"),
-    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
+    ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
+        _not_cancelled(),
+    )
 
     if from_date:
         q = q.filter(AccountingLedger.posting_date >= from_date)
@@ -644,7 +665,7 @@ def get_profit_loss(params):
         all_sgs += SubGroupMaster.query.filter(SubGroupMaster.group_id.in_(list(pl_linked_group_ids))).all()
     all_subgroups_map = {sg.id: sg for sg in all_sgs}
 
-    # 4. Single aggregated query for balances
+    # 4. Single aggregated query for balances (excluding cancelled/reversed pairs)
     q = db.session.query(
         AccountingLedgerLine.cc_id,
         func.coalesce(func.sum(case(
@@ -658,6 +679,7 @@ def get_profit_loss(params):
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
         AccountingLedgerLine.account_type == "CC",
         AccountingLedgerLine.cc_id.in_(all_pl_ids),
+        _not_cancelled(),
     )
 
     if from_date:
@@ -692,7 +714,9 @@ def get_profit_loss(params):
 
         # Determine side by group membership, not by value sign
         grp = pl_groups_map.get(grp_id)
-        is_income_group = grp and "revenue" in (grp.group_name or "").lower()
+        is_income_group = grp and any(
+            kw in (grp.group_name or "").lower() for kw in _PL_INCOME_KEYWORDS
+        )
 
         row = {
             "type": "account",
@@ -797,7 +821,7 @@ def get_balance_sheet_report(params):
     ).all() if bs_group_ids else []
     all_subgroups_map = {sg.id: sg for sg in all_sgs}
 
-    # 2. Single aggregated query for CC balances
+    # 2. Single aggregated query for CC balances (excluding cancelled/reversed pairs)
     cc_q = db.session.query(
         AccountingLedgerLine.cc_id,
         func.coalesce(func.sum(case(
@@ -810,6 +834,7 @@ def get_balance_sheet_report(params):
         )), 0).label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
         AccountingLedgerLine.account_type == "CC",
+        _not_cancelled(),
     )
     if as_of_date:
         cc_q = cc_q.filter(AccountingLedger.posting_date <= as_of_date)
@@ -841,7 +866,7 @@ def get_balance_sheet_report(params):
         if not grp:
             return True
         name = (grp.group_name or "").lower()
-        return "asset" in name
+        return any(kw in name for kw in _BS_ASSET_KEYWORDS)
 
     # Place ALL BS CCs on their group's natural side (Tally standard)
     for cc in bs_ccs:
@@ -912,6 +937,7 @@ def get_balance_sheet_report(params):
             )), 0).label("cr"),
         ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
             AccountingLedgerLine.account_type == "Vendor",
+            _not_cancelled(),
         )
     ).group_by(AccountingLedgerLine.vendor_id)
 
@@ -989,6 +1015,7 @@ def get_balance_sheet_report(params):
             )), 0).label("cr"),
         ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
             AccountingLedgerLine.account_type == "BankCash",
+            _not_cancelled(),
         )
     ).group_by(AccountingLedgerLine.bank_cash_id)
 
@@ -1084,14 +1111,14 @@ def get_balance_sheet_report(params):
                 elif ("profit" in sg_name and "loss" in sg_name) and not pl_sg_id:
                     pl_sg_id = sg.id
 
-    # Place P&L result under Equity > Current Year Profit / Loss.
-    # NOTE: income/expense CCs are also on the BS under their BS groups,
-    # so this P&L figure overlaps with those account balances. Including
-    # it in the Equity total means the BS grand totals won't balance
-    # exactly (the P&L amount is effectively counted twice). This is
-    # intentional for now — the Equity section should show the P&L
-    # contribution. Remove or zero-out this row's net to make totals
-    # balance strictly.
+    # Place P&L result under Equity > Current Year Profit / Loss — FOR DISPLAY ONLY.
+    # The individual income/expense CC balances already flow through their own BS
+    # groups (pl_linked CCs still have a group_id pointing to a BS group), so the
+    # net profit is already captured in total_assets/total_liabilities through the
+    # CC account rows.  Adding net_profit to total_liabilities a second time would
+    # make the BS grand total wrong.  The row is therefore _informational: True and
+    # is NOT counted in any total — it shows management the period P&L contribution
+    # in the Equity section without distorting the balance.
     pl_section = None
     if net_profit != 0 and equity_group_id and pl_sg_id:
         pl_row = {
@@ -1102,10 +1129,10 @@ def get_balance_sheet_report(params):
             "debit": 0.0,
             "credit": 0.0,
             "net": float(net_profit),
-            "_informational": True,
+            "_informational": True,  # display only — not counted in group/section totals
         }
         liability_by_group.setdefault(equity_group_id, {}).setdefault(pl_sg_id, []).append(pl_row)
-        total_liabilities += net_profit
+        # Do NOT add net_profit to total_liabilities — it is already in the CC account rows
     elif net_profit != 0:
         pl_section = {
             "type": "plResult",
@@ -1488,6 +1515,7 @@ def get_outstanding_payables(params):
         )), 0).label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
         AccountingLedgerLine.account_type == "Vendor",
+        _not_cancelled(),
     )
     if as_of_date:
         q = q.filter(AccountingLedger.posting_date <= as_of_date)
@@ -1541,6 +1569,7 @@ def get_outstanding_receivables(params):
         )), 0).label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
         AccountingLedgerLine.account_type == "Vendor",
+        _not_cancelled(),
     )
     if as_of_date:
         q = q.filter(AccountingLedger.posting_date <= as_of_date)
@@ -1592,6 +1621,7 @@ def get_gst_summary(params):
         func.sum(AccountingLedgerLine.amount).label("total"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id).filter(
         AccountingLedgerLine.gst_type.isnot(None),
+        _not_cancelled(),
     )
     if from_date:
         q = q.filter(AccountingLedger.posting_date >= from_date)
@@ -1646,7 +1676,7 @@ def get_gst_reconciliation(params):
         AccountingLedger.project_code,
         AccountingLedger.remarks,
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
-    ).filter(AccountingLedgerLine.gst_type.isnot(None))
+    ).filter(AccountingLedgerLine.gst_type.isnot(None), _not_cancelled())
 
     if gst_type:
         q = q.filter(AccountingLedgerLine.gst_type == gst_type)
@@ -1746,7 +1776,7 @@ def get_project_summary(params):
         AccountingLedgerLine.dr_cr,
         func.sum(AccountingLedgerLine.amount).label("total"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
-    ).filter(AccountingLedgerLine.account_type.in_(["CC", "BankCash"]), *base_filter
+    ).filter(AccountingLedgerLine.account_type.in_(["CC", "BankCash"]), _not_cancelled(), *base_filter
     ).group_by(AccountingLedgerLine.account_type, AccountingLedgerLine.dr_cr)
 
     summary = {}
@@ -1760,7 +1790,7 @@ def get_project_summary(params):
         func.sum(AccountingLedgerLine.amount).label("total"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
     ).outerjoin(Vendor, AccountingLedgerLine.vendor_id == Vendor.id
-    ).filter(AccountingLedgerLine.account_type == "Vendor", *base_filter
+    ).filter(AccountingLedgerLine.account_type == "Vendor", _not_cancelled(), *base_filter
     ).group_by("is_debtor", AccountingLedgerLine.dr_cr)
 
     for is_debtor, dr_cr, total in vq.all():
@@ -1833,7 +1863,7 @@ def get_group_ledger(params):
     cc_balances = db.session.query(
         AccountingLedgerLine.cc_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
-    ).filter(AccountingLedgerLine.account_type == "CC", *date_filters
+    ).filter(AccountingLedgerLine.account_type == "CC", _not_cancelled(), *date_filters
     ).group_by(AccountingLedgerLine.cc_id).all()
 
     if cc_balances:
@@ -1862,7 +1892,7 @@ def get_group_ledger(params):
         BankCash.group_id, _dr_sum.label("dr"), _cr_sum.label("cr"),
     ).join(AccountingLedgerLine, AccountingLedgerLine.bank_cash_id == BankCash.id
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
-    ).filter(AccountingLedgerLine.account_type == "BankCash", *date_filters
+    ).filter(AccountingLedgerLine.account_type == "BankCash", _not_cancelled(), *date_filters
     ).group_by(BankCash.group_id)
 
     for gid, dr, cr in bank_q.all():
@@ -1879,7 +1909,7 @@ def get_group_ledger(params):
         _dr_sum.label("dr"), _cr_sum.label("cr"),
     ).join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id
     ).outerjoin(Vendor, AccountingLedgerLine.vendor_id == Vendor.id
-    ).filter(AccountingLedgerLine.account_type == "Vendor", *date_filters
+    ).filter(AccountingLedgerLine.account_type == "Vendor", _not_cancelled(), *date_filters
     ).group_by("is_debtor")
 
     vendor_rows = {}  # "creditor"/"debtor" -> {dr, cr}

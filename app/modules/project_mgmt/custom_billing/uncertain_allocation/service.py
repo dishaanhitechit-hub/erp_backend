@@ -879,11 +879,8 @@ def submit_ua(ua_id, submitted_by=None):
             ua.submitted_at      = datetime.utcnow()
             ua.final_approved_at = datetime.utcnow()
 
-            try:
-                from app.modules.finance.accounting import post_document
-                post_document("uncertified_statement", ua.id, submitted_by)
-            except Exception:
-                pass
+            from app.modules.finance.accounting import post_document
+            post_document("uncertified_statement", ua.id, submitted_by)
         else:
             ua.workflow_status = f"Pending_L{first_level.level_no}"
             ua.current_level   = first_level.level_no
@@ -950,11 +947,8 @@ def approve_ua(ua_id, approved_by=None, comments=None):
             ua.approved_by       = approved_by
             ua.final_approved_at = datetime.utcnow()
 
-            try:
-                from app.modules.finance.accounting import post_document
-                post_document("uncertified_statement", ua.id, approved_by)
-            except Exception:
-                pass
+            from app.modules.finance.accounting import post_document
+            post_document("uncertified_statement", ua.id, approved_by)
 
         ua.updated_by = approved_by
         ua.updated_at = datetime.utcnow()

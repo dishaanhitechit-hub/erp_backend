@@ -37,6 +37,11 @@ _POSTING_ORDER = [
     ("contra_entry", "ContraEntryMaster", "contra_entry_master", "workflow_status", "entry_date", "contra_entry_no"),
     ("grn", "GrnMaster", "grn_master", "workflow_status", "grn_date", "grn_no"),
     ("gin", "GinMaster", "gin_master", "workflow_status", "gin_date", "gin_no"),
+    # Billing module: same BillingMaster table, different mode values
+    ("sale_claim_bill", "BillingMaster", "billing_master", "workflow_status", "billing_date", "erp_no"),
+    ("sale_certified_bill", "BillingMaster", "billing_master", "workflow_status", "billing_date", "erp_no"),
+    # Uncertified Statement (WIP reclassification)
+    ("uncertified_statement", "UncertainAllocationMaster", "uncertain_allocation_master", "workflow_status", "ua_date", "ua_no"),
 ]
 
 
@@ -81,6 +86,12 @@ def _get_model_class(model_name):
     elif model_name == "GinMaster":
         from app.models.ginMaster import GinMaster
         return GinMaster
+    elif model_name == "BillingMaster":
+        from app.models.billingMaster import BillingMaster
+        return BillingMaster
+    elif model_name == "UncertainAllocationMaster":
+        from app.models.uncertainAllocation import UncertainAllocationMaster
+        return UncertainAllocationMaster
     return None
 
 
@@ -133,6 +144,10 @@ def run_historical_posting(user_id, options=None):
             # Exclude bulk_docket JEs — posted via petty_cash_docket
             if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
                 q = q.filter(Model.entry_mode != "bulk_docket")
+
+            # BillingMaster stores two source types under one table; filter by mode
+            if source_type in ("sale_claim_bill", "sale_certified_bill") and hasattr(Model, "mode"):
+                q = q.filter(Model.mode == source_type)
 
             date_field = getattr(Model, date_col, None)
             if date_field is not None:
@@ -268,6 +283,10 @@ def get_posting_status():
             # Exclude bulk_docket JEs — they are posted via petty_cash_docket
             if source_type == "journal_entry" and hasattr(Model, "entry_mode"):
                 approved_q = approved_q.filter(Model.entry_mode != "bulk_docket")
+
+            # BillingMaster stores two source types; filter by mode
+            if source_type in ("sale_claim_bill", "sale_certified_bill") and hasattr(Model, "mode"):
+                approved_q = approved_q.filter(Model.mode == source_type)
 
             total_approved = approved_q.count()
 

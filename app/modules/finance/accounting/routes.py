@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.middleware.auth_middleware import login_required
+from app.extensions import db
 
 from .ledger_service import (
     get_general_ledger,

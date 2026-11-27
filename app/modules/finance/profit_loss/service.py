@@ -43,6 +43,8 @@ def _actual_from_ledger(project_code=None, from_date=None, to_date=None):
     For revenue codes: sum of Cr amounts (actual revenue recognised).
     Returns {cc_code_upper: float}.
     """
+    from sqlalchemy import and_
+
     q = (
         db.session.query(
             func.upper(CCCode.cc_code).label("code"),
@@ -57,7 +59,11 @@ def _actual_from_ledger(project_code=None, from_date=None, to_date=None):
         )
         .join(CCCode, AccountingLedgerLine.cc_id == CCCode.id)
         .join(AccountingLedger, AccountingLedgerLine.posting_id == AccountingLedger.id)
-        .filter(AccountingLedgerLine.account_type == "CC")
+        .filter(
+            AccountingLedgerLine.account_type == "CC",
+            # Exclude cancelled/reversed pairs so they don't inflate actuals
+            and_(AccountingLedger.is_reversal.is_(False), AccountingLedger.is_reversed.is_(False)),
+        )
         .group_by(func.upper(CCCode.cc_code))
     )
     if project_code:
@@ -115,6 +121,7 @@ def _stock_from_ledger(project_code=None, from_date=None, to_date=None):
         .filter(
             AccountingLedgerLine.account_type == "CC",
             func.upper(CCCode.cc_code).in_([c.upper() for c in _STOCK_CODES]),
+            and_(AccountingLedger.is_reversal.is_(False), AccountingLedger.is_reversed.is_(False)),
         )
         .group_by(func.upper(CCCode.cc_code))
     )
