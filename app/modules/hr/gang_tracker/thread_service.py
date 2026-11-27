@@ -138,15 +138,21 @@ def get_thread(thread_id):
 
 
 # ── create / add step ────────────────────────────────────────────────────────
-def create_thread(data, user_id=None):
+def new_thread(data, user_id=None):
+    """Build a conversation + its first talk in the session (no commit). Raises ValueError on bad input."""
     topic = " ".join((data.get("topic") or "").split())[:300]
     if not topic:
-        return res("Topic / agenda is required", {}, 400)
+        raise ValueError("Topic / agenda is required")
+    t = GangThread(topic=topic, project=(data.get("project") or "").strip()[:200] or None, created_by=user_id)
+    db.session.add(t)
+    entry = _apply_step(t, data, user_id, first=True)
+    t.started_with = entry.member
+    return t
+
+
+def create_thread(data, user_id=None):
     try:
-        t = GangThread(topic=topic, project=(data.get("project") or "").strip()[:200] or None, created_by=user_id)
-        db.session.add(t)
-        entry = _apply_step(t, data, user_id, first=True)
-        t.started_with = entry.member
+        t = new_thread(data, user_id)
     except ValueError as e:
         db.session.rollback()
         return res(str(e), {}, 400)

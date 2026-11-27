@@ -107,8 +107,22 @@ def create_member(data, user_id=None):
         log = GangFollowupLog(member_id=m.id, log_date=_today(), note=data["notes"])
         db.session.add(log)
 
+    # optional: start a conversation with the new member in the same save
+    conv = data.get("conversation")
+    thread = None
+    if conv:
+        from .thread_service import new_thread
+        try:
+            thread = new_thread({**conv, "person": {"id": m.id}}, user_id)
+        except ValueError as e:
+            db.session.rollback()
+            return res(str(e), {}, 400)
+
     db.session.commit()
-    return res("Member created", m.to_dict(), 201)
+    out = m.to_dict()
+    if thread is not None:
+        out["conversation"] = thread.to_dict(with_entries=True)
+    return res("Member created" + (" and conversation started" if thread is not None else ""), out, 201)
 
 
 # ── update ────────────────────────────────────────────────────────────────────
