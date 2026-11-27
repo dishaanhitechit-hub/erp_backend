@@ -699,6 +699,17 @@ def get_profit_loss(params):
     total_income = Decimal("0")
     total_expense = Decimal("0")
 
+    # Pre-populate ALL P&L groups so groups with no accounts still appear in output
+    for _grp in pl_groups:
+        if _grp.pl_section:
+            _is_income = _grp.pl_section == "Income"
+        else:
+            _is_income = any(kw in (_grp.group_name or "").lower() for kw in _PL_INCOME_KEYWORDS)
+        if _is_income:
+            income_by_group.setdefault(_grp.id, {})
+        else:
+            expense_by_group.setdefault(_grp.id, {})
+
     for cc in pl_ccs:
         dr_raw, cr_raw = balances.get(cc.id, (0, 0))
         dr_total = _d(dr_raw)
@@ -871,6 +882,13 @@ def get_balance_sheet_report(params):
             return True
         name = (grp.group_name or "").lower()
         return any(kw in name for kw in _BS_ASSET_KEYWORDS)
+
+    # Pre-populate ALL BS groups so groups with no accounts still appear in output
+    for _bgrp in bs_groups:
+        if _is_asset_group(_bgrp):
+            asset_by_group.setdefault(_bgrp.id, {})
+        else:
+            liability_by_group.setdefault(_bgrp.id, {})
 
     # Place ALL BS CCs on their group's natural side (Tally standard)
     for cc in bs_ccs:
