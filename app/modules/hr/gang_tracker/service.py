@@ -32,7 +32,38 @@ def list_members(params):
         q = q.filter(GangMember.skill == skill)
 
     members = q.order_by(GangMember.name).all()
-    return res("ok", [m.to_dict() for m in members])
+    talks = _open_talks_by_member()
+    rows = []
+    for m in members:
+        d = m.to_dict()
+        d["talks"] = talks.get(m.id, {"open": 0})
+        rows.append(d)
+    return res("ok", rows)
+
+
+# ── open conversations per person (for the member list) ──────────────────────
+_STATUS_RANK = {"Scheduled": 0, "Ongoing": 1, "Waiting": 2}
+
+
+def _open_talks_by_member():
+    """member_id → {open, status, topic, threadId, nextFollowup} for the most pressing open conversation."""
+    from app.models.gang_tracker import GangThread, CLOSED_STATUSES
+    out = {}
+    for t in GangThread.query.filter(GangThread.status.notin_(CLOSED_STATUSES)).all():
+        # earliest follow-up first, then by status
+        key = (t.next_followup_date or date.max, _STATUS_RANK.get(t.status, 9))
+        for p in t.people():
+            cur = out.get(p.id)
+            if cur is None:
+                cur = out[p.id] = {"open": 0, "_key": None}
+            cur["open"] += 1
+            if cur["_key"] is None or key < cur["_key"]:
+                cur.update(_key=key, threadId=t.id, topic=t.topic, status=t.status,
+                           nextFollowup=t.next_followup_date.isoformat() if t.next_followup_date else None,
+                           nextWithMe=bool(t.next_member_id == p.id))
+    for v in out.values():
+        v.pop("_key", None)
+    return out
 
 
 # ── get one ───────────────────────────────────────────────────────────────────
