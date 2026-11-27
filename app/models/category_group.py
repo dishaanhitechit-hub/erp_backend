@@ -28,6 +28,9 @@ class GroupMaster(db.Model):
     )
     # Profit & Loss / Balance Sheet
 
+    # For Profit & Loss groups only: "Income" or "Expense"
+    pl_section = db.Column(db.String(20), nullable=True)
+
     sort_order = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     status = db.Column(

@@ -1003,9 +1003,13 @@ def create_group(data):
         createdBy = g.current_user.get("id")
     else:
         createdBy = None
+    head_under = data.get("headUnder")
+    pl_section = data.get("plSection") if head_under == "Profit & Loss" else None
+
     group = GroupMaster(
         group_name=data.get("groupName"),
-        head_under=data.get("headUnder"),
+        head_under=head_under,
+        pl_section=pl_section,
         created_by=createdBy
     )
 
@@ -1017,7 +1021,8 @@ def create_group(data):
         [{
             "groupId": group.id,
             "groupName": group.group_name,
-            "headUnder": group.head_under
+            "headUnder": group.head_under,
+            "plSection": group.pl_section,
         }],
         200
     )
@@ -1093,6 +1098,11 @@ def update_group(groupId, data):
 
     group.group_name = data.get("groupName", group.group_name)
     group.head_under = new_head_under
+    if new_head_under == "Profit & Loss":
+        if "plSection" in data:
+            group.pl_section = data["plSection"] or None
+    else:
+        group.pl_section = None
 
     db.session.commit()
 
@@ -1101,7 +1111,8 @@ def update_group(groupId, data):
         [{
             "groupId": group.id,
             "groupName": group.group_name,
-            "headUnder": group.head_under
+            "headUnder": group.head_under,
+            "plSection": group.pl_section,
         }],
         200
     )
@@ -1167,6 +1178,7 @@ def get_all_groups():
             "groupId": group.id,
             "groupName": group.group_name,
             "headUnder": group.head_under,
+            "plSection": group.pl_section,
             "sortOrder": group.sort_order,
             "status": group.status
         })

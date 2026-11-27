@@ -308,7 +308,11 @@ def update_sub_group(subGroupId, data):
 
 def get_all_sub_groups(args):
     """?groupId=&parentId=(id | root)&level=&status="""
-    q = SubGroupMaster.query
+    from sqlalchemy.orm import joinedload
+    q = SubGroupMaster.query.options(
+        joinedload(SubGroupMaster.group),
+        joinedload(SubGroupMaster.parent),
+    )
     if args.get("groupId"):
         q = q.filter(SubGroupMaster.group_id == args.get("groupId"))
     parent_id = args.get("parentId")

@@ -712,11 +712,15 @@ def get_profit_loss(params):
             grp_id = cc.group_id
             sg_id = cc.sub_group_id
 
-        # Determine side by group membership, not by value sign
+        # Determine side by explicit pl_section field; fall back to keyword match
+        # for groups that pre-date the pl_section column (pl_section IS NULL).
         grp = pl_groups_map.get(grp_id)
-        is_income_group = grp and any(
-            kw in (grp.group_name or "").lower() for kw in _PL_INCOME_KEYWORDS
-        )
+        if grp and grp.pl_section:
+            is_income_group = grp.pl_section == "Income"
+        else:
+            is_income_group = grp and any(
+                kw in (grp.group_name or "").lower() for kw in _PL_INCOME_KEYWORDS
+            )
 
         row = {
             "type": "account",
@@ -741,7 +745,7 @@ def get_profit_loss(params):
     # 6. Assemble hierarchical response
     def _build_group_tree(group_bucket):
         result = []
-        for grp_id, sg_accounts in sorted(group_bucket.items(), key=lambda x: (pl_groups_map.get(x[0], GroupMaster()).group_name or "")):
+        for grp_id, sg_accounts in sorted(group_bucket.items(), key=lambda x: (pl_groups_map.get(x[0], GroupMaster()).sort_order or 0, pl_groups_map.get(x[0], GroupMaster()).group_name or "")):
             grp = pl_groups_map.get(grp_id)
             grp_name = grp.group_name if grp else "Ungrouped"
 
