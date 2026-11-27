@@ -54,3 +54,63 @@ def api_delete(member_id):
 @page_permission("recruitment", "EDIT")
 def api_followup(member_id):
     return add_followup(member_id, request.get_json() or {})
+
+
+# ── conversations (topic → people → follow-ups) ──────────────────────────────
+from . import thread_service as ts  # noqa: E402
+
+
+@gang_tracker_bp.route("/people", methods=["GET"])
+@jwt_required()
+@page_permission("recruitment", "VIEW")
+def api_people():
+    return ts.list_people(request.args.to_dict())
+
+
+@gang_tracker_bp.route("/threads", methods=["GET"])
+@jwt_required()
+@page_permission("recruitment", "VIEW")
+def api_threads():
+    return ts.list_threads(request.args.to_dict())
+
+
+@gang_tracker_bp.route("/threads/projects", methods=["GET"])
+@jwt_required()
+@page_permission("recruitment", "VIEW")
+def api_thread_projects():
+    return ts.list_thread_projects()
+
+
+@gang_tracker_bp.route("/threads/<int:thread_id>", methods=["GET"])
+@jwt_required()
+@page_permission("recruitment", "VIEW")
+def api_thread_get(thread_id):
+    return ts.get_thread(thread_id)
+
+
+@gang_tracker_bp.route("/threads", methods=["POST"])
+@jwt_required()
+@page_permission("recruitment", "EDIT")
+def api_thread_create():
+    return ts.create_thread(request.get_json() or {}, user_id=int(get_jwt_identity()))
+
+
+@gang_tracker_bp.route("/threads/<int:thread_id>/entries", methods=["POST"])
+@jwt_required()
+@page_permission("recruitment", "EDIT")
+def api_thread_entry(thread_id):
+    return ts.add_entry(thread_id, request.get_json() or {}, user_id=int(get_jwt_identity()))
+
+
+@gang_tracker_bp.route("/threads/<int:thread_id>", methods=["PUT"])
+@jwt_required()
+@page_permission("recruitment", "EDIT")
+def api_thread_update(thread_id):
+    return ts.update_thread(thread_id, request.get_json() or {})
+
+
+@gang_tracker_bp.route("/threads/<int:thread_id>", methods=["DELETE"])
+@jwt_required()
+@page_permission("recruitment", "EDIT")
+def api_thread_delete(thread_id):
+    return ts.delete_thread(thread_id)

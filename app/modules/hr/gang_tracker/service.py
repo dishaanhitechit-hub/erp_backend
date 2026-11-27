@@ -47,8 +47,8 @@ def get_member(member_id):
 def create_member(data, user_id=None):
     name   = (data.get("name") or "").strip()
     mobile = (data.get("mobile") or "").strip()
-    if not name or not mobile:
-        return res("name and mobile are required", {}, 400)
+    if not name:
+        return res("name is required", {}, 400)
 
     followup = None
     if data.get("followup"):
@@ -60,7 +60,7 @@ def create_member(data, user_id=None):
     m = GangMember(
         name=name,
         skill=data.get("skill"),
-        mobile=mobile,
+        mobile=mobile or None,
         whatsapp=data.get("whatsapp"),
         location=data.get("location"),
         status=data.get("status", "Available"),
