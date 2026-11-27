@@ -1156,7 +1156,7 @@ def update_category(categoryId, data):
 
 def get_all_groups():
     groups = GroupMaster.query.order_by(
-        GroupMaster.id.desc()
+        GroupMaster.sort_order.asc(), GroupMaster.id.asc()
     ).all()
 
     data = []
@@ -1167,6 +1167,7 @@ def get_all_groups():
             "groupId": group.id,
             "groupName": group.group_name,
             "headUnder": group.head_under,
+            "sortOrder": group.sort_order,
             "status": group.status
         })
 
@@ -1175,6 +1176,31 @@ def get_all_groups():
         data,
         200
     )
+
+
+def reorder_groups(data):
+    """PATCH /group/reorder — [{groupId, sortOrder}]"""
+    if not isinstance(data, list):
+        return res("Expected a list of {groupId, sortOrder}", [], 400)
+    for item in data:
+        g = GroupMaster.query.get(item.get("groupId"))
+        if g:
+            g.sort_order = int(item.get("sortOrder", 0))
+    db.session.commit()
+    return res("Groups reordered successfully", [], 200)
+
+
+def reorder_sub_groups_service(data):
+    """PATCH /sub-group/reorder — [{subGroupId, sortOrder}]"""
+    from app.models.category_group import SubGroupMaster
+    if not isinstance(data, list):
+        return res("Expected a list of {subGroupId, sortOrder}", [], 400)
+    for item in data:
+        s = SubGroupMaster.query.get(item.get("subGroupId"))
+        if s:
+            s.sort_order = int(item.get("sortOrder", 0))
+    db.session.commit()
+    return res("Sub groups reordered successfully", [], 200)
 
 
 

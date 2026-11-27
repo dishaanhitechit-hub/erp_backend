@@ -149,6 +149,7 @@ def row(sub):
         "pathIds": [n.id for n in path],
         "hasChildren": len(sub.children) > 0,
         "canHaveChildren": sub.level < SUB_GROUP_MAX_LEVELS - 1,
+        "sortOrder": sub.sort_order,
         "status": sub.status,
     }
 
@@ -321,8 +322,12 @@ def get_all_sub_groups(args):
         q = q.filter(SubGroupMaster.status == args.get("status"))
 
     rows = [row(s) for s in q.all()]
-    # tree order: group, then path
-    rows.sort(key=lambda r: ((r["groupName"] or "").lower(), r["path"].lower()))
+    # tree order: group sort_order, then within-parent sort_order, then path
+    rows.sort(key=lambda r: (
+        (r["groupName"] or "").lower(),
+        r.get("sortOrder", 0),
+        r["path"].lower(),
+    ))
     return res("Sub Group list fetched successfully", rows, 200)
 
 

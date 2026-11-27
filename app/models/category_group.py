@@ -28,6 +28,8 @@ class GroupMaster(db.Model):
     )
     # Profit & Loss / Balance Sheet
 
+    sort_order = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
     status = db.Column(
         db.String(30),
         default="Active"
@@ -145,6 +147,8 @@ class SubGroupMaster(db.Model):
 
     # 0 = Sub Group, 1 = Sub Group 1, 2 = Sub Group 2
     level = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    sort_order = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     status = db.Column(db.String(30), default="Active")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -20,6 +20,7 @@ from app.modules.master.sub_group_service import (
     create_sub_group, update_sub_group, get_all_sub_groups, get_sub_group_by_id,
     delete_sub_group, check_sub_group_code, suggest_sub_group_code,
 )
+from app.modules.master.service import reorder_groups, reorder_sub_groups_service
 
 master_bp = Blueprint('master', __name__)
 UPLOAD_FOLDER = "/uploads/vendor"
@@ -233,6 +234,12 @@ def group_update(groupId):
     return update_group(groupId, request.json)
 
 
+@master_bp.route("/group/reorder", methods=["PATCH"])
+@login_required
+@require_admin
+def group_reorder():
+    return reorder_groups(request.json or [])
+
 
 # SUB GROUP ROUTES
 
@@ -282,6 +289,13 @@ def sub_group_update(subGroupId):
 @require_admin
 def sub_group_delete(subGroupId):
     return delete_sub_group(subGroupId)
+
+
+@master_bp.route("/sub-group/reorder", methods=["PATCH"])
+@login_required
+@require_admin
+def sub_group_reorder():
+    return reorder_sub_groups_service(request.json or [])
 
 
 # CATEGORY ROUTES
