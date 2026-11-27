@@ -9,7 +9,10 @@ from app.extensions import db
 
 TASK_STATUSES = ("To Do", "In Progress", "On Hold", "Done", "Cancelled")
 OPEN_STATUSES = ("To Do", "In Progress", "On Hold")
-TASK_PRIORITIES = ("Low", "Medium", "High", "Critical")
+# Immediate = do now; Scheduled = do on its planned date. Older Low/Medium/High/Critical rows were
+# migrated (High/Critical → Immediate, Low/Medium → Scheduled) in the mis_task_priority_handover migration.
+TASK_PRIORITIES = ("Immediate", "Scheduled")
+DEFAULT_PRIORITY = "Scheduled"
 REOPEN_STATUSES = ("Pending", "Approved", "Rejected")
 
 # ── Boards (Azure Boards style, Scrum process) ──────────────────────────────
@@ -80,8 +83,10 @@ class MisTask(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=True, index=True)  # NULL = company-level
 
-    priority = db.Column(db.String(20), nullable=False, default="Medium")
+    priority = db.Column(db.String(20), nullable=False, default=DEFAULT_PRIORITY)
     status = db.Column(db.String(20), nullable=False, default="To Do", index=True)
+    # who the finished work is handed over to (optional, informational)
+    handover_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
 
     start_date = db.Column(db.Date)
     start_time = db.Column(db.Time)                 # optional, local time
@@ -124,6 +129,7 @@ class MisTask(db.Model):
 
     owner = db.relationship("User", foreign_keys=[owner_user_id])
     creator = db.relationship("User", foreign_keys=[created_by])
+    handover_user = db.relationship("User", foreign_keys=[handover_user_id])
     project = db.relationship("Project")
     parent = db.relationship("MisTask", remote_side=[id], backref=db.backref("children", lazy="dynamic"))
     sprint = db.relationship("MisSprint", foreign_keys=[sprint_id])
@@ -166,6 +172,8 @@ class MisTask(db.Model):
             "ownerEmpCode": self.owner.emp_code if self.owner else None,
             "createdBy": self.created_by,
             "createdByName": self.creator.username if self.creator else None,
+            "handoverUserId": self.handover_user_id,
+            "handoverName": self.handover_user.username if self.handover_user else None,
             "projectId": self.project_id,
             "projectCode": self.project.project_code if self.project else None,
             "projectName": self.project.project_name if self.project else None,

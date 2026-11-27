@@ -19,7 +19,7 @@ from sqlalchemy import or_, func
 from app.extensions import db
 from app.response import res
 from app.models.misTask import (
-    MisTask, MisActivity, MisTaskReopenRequest, TASK_STATUSES, OPEN_STATUSES, TASK_PRIORITIES,
+    MisTask, MisActivity, MisTaskReopenRequest, TASK_STATUSES, OPEN_STATUSES, TASK_PRIORITIES, DEFAULT_PRIORITY,
 )
 from app.models.user import User
 from app.models.project import Project
@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 PERM_KEY = "self_task_all"
 ENTITY = "task"
 _EDITABLE = ("title", "description", "priority", "startDate", "startTime", "dueDate", "dueTime",
-             "estimatedHours", "tags")
+             "estimatedHours", "tags", "handoverUserId")
 LOCKED_MSG = "This task is Done and locked. Raise a reopen request to work on it again."
 
 
@@ -232,6 +232,19 @@ def _apply_fields(task, data):
         if not isinstance(tags, list):
             raise _Err("tags must be a list")
         task.tags = [str(t)[:40] for t in tags][:20]
+    if "handoverUserId" in data:
+        hid = data.get("handoverUserId")
+        if hid in (None, ""):
+            task.handover_user_id = None
+        else:
+            try:
+                hid = int(hid)
+            except (TypeError, ValueError):
+                raise _Err("handoverUserId must be a number")
+            hu = User.query.get(hid)
+            if not hu or hu.is_active is False:
+                raise _Err("Handover user not found or inactive", 404)
+            task.handover_user_id = hid
 
 
 def _log(task_id, user_id, action, old=None, new=None, comment=None):
@@ -453,7 +466,7 @@ def create_task(data, user_id):
 
     t = MisTask(owner_user_id=owner_id, created_by=user_id,
                 project_id=project.id if project else None,
-                priority=data.get("priority") or "Medium", status="To Do")
+                priority=data.get("priority") or DEFAULT_PRIORITY, status="To Do")
     if "title" not in data:
         raise _Err("Title is required")
     _apply_fields(t, {k: data[k] for k in _EDITABLE if k in data})
@@ -483,6 +496,7 @@ def update_task(task_id, data, user_id):
 
     changes = []
     before = {k: getattr(t, k) for k in ("title", "priority", "due_date")}
+    old_handover = t.handover_user_id
     _apply_fields(t, {k: data[k] for k in _EDITABLE if k in data})
 
     if "projectCode" in data:
@@ -520,6 +534,9 @@ def update_task(task_id, data, user_id):
     for k, v in before.items():
         if getattr(t, k) != v:
             changes.append(("UPDATED", k, getattr(t, k)))
+    if t.handover_user_id != old_handover:
+        hu = User.query.get(t.handover_user_id) if t.handover_user_id else None
+        changes.append(("UPDATED", "handover", hu.username if hu else None))
     for action, field, val in changes:
         _log(t.id, user_id, action, old=field, new=str(val) if val is not None else None)
 
@@ -620,6 +637,14 @@ def assignable_users(args, user_id):
     """Users the caller may assign a task to (optionally within a project)."""
     user_id = _uid(user_id)
     project = _project(args.get("projectCode"))
+    if args.get("purpose") == "handover":
+        # handover is informational: anyone active in the project (or anyone, for company tasks)
+        q = User.query.filter(or_(User.is_active.is_(True), User.is_active.is_(None)))
+        if project is not None:
+            members = db.session.query(ProjectUserRole.user_id).filter(ProjectUserRole.project_id == project.id)
+            q = q.filter(or_(User.id.in_(members), User.id == user_id))
+        users = q.order_by(User.username.asc()).all()
+        return res("ok", [{"id": u.id, "name": u.username, "empCode": u.emp_code} for u in users])
     scope = _scope(user_id, "EDIT")
 
     q = User.query.filter(or_(User.is_active.is_(True), User.is_active.is_(None)))

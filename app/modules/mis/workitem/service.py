@@ -435,7 +435,7 @@ def create_item(data, user_id):
     choice(state, WI_STATES[typ], "state")
 
     t = MisTask(work_item_type=typ, owner_user_id=owner.id, created_by=user_id, project_id=pid,
-                priority=data.get("priority") or "Medium", status=state,
+                priority=data.get("priority") or "Scheduled", status=state,
                 parent_id=parent.id if parent else None, sprint_id=sprint.id if sprint else None,
                 backlog_rank=_next_rank(pid))
     _apply_common(t, data)
